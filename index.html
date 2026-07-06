@@ -67,15 +67,41 @@
   .roundhdr{text-align:center;color:var(--muted);font-weight:700;letter-spacing:1px;text-transform:uppercase;font-size:.8rem;margin-top:4px}
   .confetti{position:fixed;top:-10px;width:10px;height:16px;opacity:.9;z-index:99;animation:fall linear forwards}
   @keyframes fall{to{transform:translateY(110vh) rotate(720deg);opacity:0}}
+  /* som */
+  #muteBtn{position:fixed;top:10px;right:10px;z-index:100;width:44px;height:44px;border:none;border-radius:50%;
+     background:var(--card2);color:#fff;font-size:1.2rem;cursor:pointer;box-shadow:0 3px 10px rgba(0,0,0,.4)}
+  /* animações de resposta */
+  .shake{animation:shake .5s}
+  @keyframes shake{10%,90%{transform:translateX(-2px)}20%,80%{transform:translateX(4px)}30%,50%,70%{transform:translateX(-8px)}40%,60%{transform:translateX(8px)}}
+  .pulse{animation:pulse .5s}
+  @keyframes pulse{0%{transform:scale(1)}40%{transform:scale(1.12)}100%{transform:scale(1)}}
+  .bounce{display:inline-block;animation:bounce 1s ease infinite}
+  @keyframes bounce{0%,100%{transform:translateY(0)}30%{transform:translateY(-12px)}50%{transform:translateY(0)}}
+  /* variação de pontos */
+  .scorebar .p .delta{position:absolute;top:2px;right:6px;font-size:.9rem;font-weight:900;animation:floatUp 1.2s ease forwards}
+  .delta.up{color:var(--green)} .delta.down{color:var(--red)}
+  @keyframes floatUp{0%{opacity:0;transform:translateY(6px)}20%{opacity:1}100%{opacity:0;transform:translateY(-16px)}}
+  .scorebar .p.flash{animation:flashp .7s}
+  @keyframes flashp{0%,100%{background:var(--card)}40%{background:var(--card2)}}
+  /* editor família */
+  .qrow{display:flex;justify-content:space-between;align-items:center;gap:8px;background:var(--card);border-radius:12px;padding:10px 12px;margin:6px 0;text-align:left}
+  .qrow .qx{font-size:.9rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+  .qrow button{border:none;background:var(--red);color:#fff;border-radius:8px;width:32px;height:32px;font-size:1rem;cursor:pointer;flex:none}
+  label.fld{display:block;text-align:left;color:var(--muted);font-size:.8rem;margin:8px 2px 0}
+  .tierpick{display:flex;gap:6px;margin:8px 0}
+  .tierpick button{flex:1;padding:10px;border:none;border-radius:10px;font-weight:700;cursor:pointer;background:var(--card);color:var(--ink);opacity:.5}
+  .tierpick button.sel{opacity:1;outline:2px solid var(--gold)}
 </style>
 </head>
 <body>
+<button id="muteBtn" onclick="toggleMute()" title="Som">🔊</button>
 <div id="app"></div>
 <script>
 /* ============================ BANCO DE PERGUNTAS (PT-PT) ============================ */
 /* tier: 1 = Seguro, 2 = Médio, 3 = Difícil. correct = resposta certa; wrong = 3 erradas */
-const CATS = ["Cultura Geral","História","Ciência","Desporto","Música & Cinema","Portugal & Madeira"];
-const CAT_ICON = {"Cultura Geral":"🧠","História":"🏛️","Ciência":"🔬","Desporto":"⚽","Música & Cinema":"🎬","Portugal & Madeira":"🇵🇹"};
+const BUILTIN_CATS = ["Cultura Geral","História","Ciência","Desporto","Música & Cinema","Portugal & Madeira","Geografia","Natureza & Animais","Comida & Bebida"];
+let CATS = BUILTIN_CATS.slice();
+const CAT_ICON = {"Cultura Geral":"🧠","História":"🏛️","Ciência":"🔬","Desporto":"⚽","Música & Cinema":"🎬","Portugal & Madeira":"🇵🇹","Geografia":"🗺️","Natureza & Animais":"🦁","Comida & Bebida":"🍕","Família":"👨‍👩‍👧"};
 const BANK = {
 "Cultura Geral":{
  1:[
@@ -286,6 +312,111 @@ const BANK = {
   {q:"Que português ganhou o Prémio Nobel da Literatura em 1998?",correct:"José Saramago",wrong:["Fernando Pessoa","Eça de Queirós","Miguel Torga"]},
   {q:"Em que pau é tradicionalmente servida a espetada madeirense?",correct:"Loureiro",wrong:["Alecrim","Oliveira","Pinheiro"]},
   {q:"Qual é a dança e música tradicional do folclore madeirense?",correct:"Bailinho da Madeira",wrong:["Corridinho","Vira","Fandango"]}]
+},
+"Geografia":{
+ 1:[
+  {q:"Em que continente fica Portugal?",correct:"Europa",wrong:["Ásia","África","América"]},
+  {q:"Qual é o maior país do mundo em área?",correct:"Rússia",wrong:["China","Canadá","EUA"]},
+  {q:"Em que continente fica o deserto do Sara?",correct:"África",wrong:["Ásia","Europa","Oceânia"]},
+  {q:"Qual é a capital de Itália?",correct:"Roma",wrong:["Milão","Veneza","Nápoles"]},
+  {q:"Qual é o oceano entre a Europa e a América?",correct:"Atlântico",wrong:["Pacífico","Índico","Ártico"]},
+  {q:"Que país tem a forma de uma bota?",correct:"Itália",wrong:["Espanha","Grécia","Portugal"]},
+  {q:"Qual é a capital de Inglaterra?",correct:"Londres",wrong:["Manchester","Liverpool","Oxford"]},
+  {q:"Em que continente fica o Brasil?",correct:"América do Sul",wrong:["África","Europa","Ásia"]},
+  {q:"Qual é o país vizinho de Portugal?",correct:"Espanha",wrong:["França","Marrocos","Itália"]},
+  {q:"Qual é a maior floresta tropical do mundo?",correct:"Amazónia",wrong:["Congo","Bornéu","Taiga"]}],
+ 2:[
+  {q:"Qual é o rio mais longo de África?",correct:"Nilo",wrong:["Congo","Níger","Zambeze"]},
+  {q:"Qual é a capital do Japão?",correct:"Tóquio",wrong:["Osaka","Quioto","Nagoya"]},
+  {q:"Qual era o país mais populoso do mundo em 2023?",correct:"Índia",wrong:["China","EUA","Indonésia"]},
+  {q:"Em que país fica a Torre Eiffel?",correct:"França",wrong:["Itália","Bélgica","Reino Unido"]},
+  {q:"Qual é a maior massa de gelo e o maior deserto frio do mundo?",correct:"Antártida",wrong:["Sara","Gobi","Gronelândia"]},
+  {q:"Qual é a cordilheira mais longa do mundo?",correct:"Andes",wrong:["Himalaias","Alpes","Montanhas Rochosas"]},
+  {q:"Que estreito separa a Europa de África junto a Gibraltar?",correct:"Estreito de Gibraltar",wrong:["Bósforo","Canal da Mancha","Dardanelos"]},
+  {q:"Qual é a capital dos Estados Unidos?",correct:"Washington D.C.",wrong:["Nova Iorque","Los Angeles","Chicago"]},
+  {q:"Qual é o maior país da América do Sul?",correct:"Brasil",wrong:["Argentina","Peru","Colômbia"]},
+  {q:"Qual é a capital da Grécia?",correct:"Atenas",wrong:["Esparta","Salónica","Creta"]}],
+ 3:[
+  {q:"Qual é a capital do Canadá?",correct:"Otava",wrong:["Toronto","Vancouver","Montreal"]},
+  {q:"Qual é o rio mais longo da Europa?",correct:"Volga",wrong:["Danúbio","Reno","Douro"]},
+  {q:"Qual é o lago de água doce mais profundo do mundo?",correct:"Baical",wrong:["Superior","Vitória","Tanganica"]},
+  {q:"Qual é o ponto mais baixo da superfície terrestre?",correct:"Mar Morto",wrong:["Mar Cáspio","Mar Negro","Mar Vermelho"]},
+  {q:"Qual é a capital da Rússia?",correct:"Moscovo",wrong:["São Petersburgo","Kiev","Minsk"]},
+  {q:"Qual é a montanha mais alta de África?",correct:"Kilimanjaro",wrong:["Monte Quénia","Atlas","Elbrus"]},
+  {q:"Que canal liga o Mediterrâneo ao Mar Vermelho?",correct:"Canal do Suez",wrong:["Canal do Panamá","Canal da Mancha","Canal de Corinto"]},
+  {q:"Qual é o país mais pequeno da América do Sul?",correct:"Suriname",wrong:["Uruguai","Guiana","Equador"]},
+  {q:"Qual é o maior arquipélago do mundo em número de ilhas?",correct:"Indonésia",wrong:["Filipinas","Japão","Grécia"]},
+  {q:"Qual é a capital da China?",correct:"Pequim",wrong:["Xangai","Hong Kong","Cantão"]}]
+},
+"Natureza & Animais":{
+ 1:[
+  {q:"Qual é o maior animal terrestre?",correct:"Elefante",wrong:["Girafa","Rinoceronte","Hipopótamo"]},
+  {q:"Que animal faz 'muu'?",correct:"Vaca",wrong:["Cão","Gato","Ovelha"]},
+  {q:"Qual é a maior ave de África, que não voa?",correct:"Avestruz",wrong:["Pinguim","Águia","Pombo"]},
+  {q:"Qual animal é o 'melhor amigo do homem'?",correct:"Cão",wrong:["Gato","Cavalo","Peixe"]},
+  {q:"De que cor é normalmente uma cenoura?",correct:"Laranja",wrong:["Verde","Vermelho","Roxo"]},
+  {q:"Que animal marinho é conhecido pelos seus 8 tentáculos?",correct:"Polvo",wrong:["Golfinho","Tubarão","Baleia"]},
+  {q:"Que inseto produz mel?",correct:"Abelha",wrong:["Formiga","Mosca","Aranha"]},
+  {q:"Que animal tem uma tromba comprida?",correct:"Elefante",wrong:["Girafa","Zebra","Leão"]},
+  {q:"Qual destes é um réptil?",correct:"Cobra",wrong:["Sapo","Golfinho","Morcego"]},
+  {q:"Que animal muda de cor para se camuflar?",correct:"Camaleão",wrong:["Papagaio","Coelho","Esquilo"]}],
+ 2:[
+  {q:"Qual é o maior animal do mundo, que vive no oceano?",correct:"Baleia-azul",wrong:["Elefante","Tubarão-baleia","Cachalote"]},
+  {q:"Quantas patas tem um caranguejo?",correct:"10",wrong:["8","6","12"]},
+  {q:"Que ave é símbolo da paz?",correct:"Pomba",wrong:["Águia","Coruja","Gaivota"]},
+  {q:"Qual é o animal mais alto do mundo?",correct:"Girafa",wrong:["Elefante","Avestruz","Camelo"]},
+  {q:"Qual é o único mamífero que voa?",correct:"Morcego",wrong:["Esquilo-voador","Pinguim","Coruja"]},
+  {q:"Que animal costuma hibernar durante o inverno?",correct:"Urso",wrong:["Leão","Lobo","Raposa"]},
+  {q:"Que árvore dá bolotas?",correct:"Carvalho",wrong:["Pinheiro","Oliveira","Faia"]},
+  {q:"Qual é o maior felino do mundo?",correct:"Tigre",wrong:["Leão","Leopardo","Jaguar"]},
+  {q:"Qual peixe é considerado o mais rápido do oceano?",correct:"Peixe-vela",wrong:["Golfinho","Atum","Tubarão"]},
+  {q:"Que animal é conhecido por ser o mais lento, vivendo nas árvores?",correct:"Preguiça",wrong:["Coala","Tartaruga","Panda"]}],
+ 3:[
+  {q:"Qual é o animal com a mordida mais forte do reino animal?",correct:"Crocodilo",wrong:["Tubarão","Leão","Hipopótamo"]},
+  {q:"Qual é a maior espécie de pinguim?",correct:"Pinguim-imperador",wrong:["Pinguim-rei","Pinguim-gentoo","Pinguim-africano"]},
+  {q:"Que animal tem o mesmo número de vértebras no pescoço que o humano (7)?",correct:"Girafa",wrong:["Cobra","Cisne","Avestruz"]},
+  {q:"Qual é a ave que põe o maior ovo do mundo?",correct:"Avestruz",wrong:["Águia","Emu","Pinguim"]},
+  {q:"Como se chama a fase da borboleta entre a lagarta e o voo?",correct:"Crisálida",wrong:["Girino","Ninho","Semente"]},
+  {q:"Qual é o maior réptil vivo do mundo?",correct:"Crocodilo-de-água-salgada",wrong:["Píton","Dragão-de-Komodo","Jacaré"]},
+  {q:"Que animal 'dorme' com apenas metade do cérebro de cada vez?",correct:"Golfinho",wrong:["Gato","Coruja","Preguiça"]},
+  {q:"Qual é a planta que cresce mais depressa no mundo?",correct:"Bambu",wrong:["Girassol","Trepadeira","Eucalipto"]},
+  {q:"Que animal australiano carrega a cria numa bolsa?",correct:"Canguru",wrong:["Coala","Ornitorrinco","Wombat"]},
+  {q:"Quantos 'corações' (arcos aórticos) tem uma minhoca?",correct:"5",wrong:["1","3","10"]}]
+},
+"Comida & Bebida":{
+ 1:[
+  {q:"De que fruta se faz o vinho?",correct:"Uva",wrong:["Maçã","Laranja","Pera"]},
+  {q:"Qual é o ingrediente principal do pão?",correct:"Farinha",wrong:["Açúcar","Sal","Ovo"]},
+  {q:"Que bebida quente é feita de grãos torrados e dá energia de manhã?",correct:"Café",wrong:["Chá","Leite","Sumo"]},
+  {q:"De que animal vem o leite mais consumido?",correct:"Vaca",wrong:["Cabra","Ovelha","Búfalo"]},
+  {q:"De que cor é uma banana madura?",correct:"Amarela",wrong:["Verde","Vermelha","Azul"]},
+  {q:"Que fruta pequena e vermelha, com caroço, é típica do verão?",correct:"Cereja",wrong:["Uva","Ameixa","Morango"]},
+  {q:"Qual destes é um doce?",correct:"Bolo",wrong:["Alface","Cenoura","Batata"]},
+  {q:"De que é feito o guacamole?",correct:"Abacate",wrong:["Tomate","Banana","Pepino"]},
+  {q:"Que massa italiana é comprida e fina?",correct:"Esparguete",wrong:["Lasanha","Ravioli","Gnocchi"]},
+  {q:"Qual é a base de uma piza?",correct:"Massa",wrong:["Arroz","Batata","Peixe"]}],
+ 2:[
+  {q:"De que país é originária a piza?",correct:"Itália",wrong:["França","Grécia","Espanha"]},
+  {q:"Qual é o prato português de bacalhau desfiado com batata palha e ovo?",correct:"Bacalhau à Brás",wrong:["Francesinha","Caldo verde","Cozido"]},
+  {q:"De que país é originário o sushi?",correct:"Japão",wrong:["China","Coreia","Tailândia"]},
+  {q:"Qual é o fruto seco alergénio usado numa manteiga popular?",correct:"Amendoim",wrong:["Noz","Amêndoa","Avelã"]},
+  {q:"Qual é o fruto de que se faz o azeite?",correct:"Azeitona",wrong:["Girassol","Milho","Soja"]},
+  {q:"Que bebida alcoólica é feita de cevada e lúpulo?",correct:"Cerveja",wrong:["Vinho","Vodka","Rum"]},
+  {q:"Qual é a sopa verde típica do norte de Portugal?",correct:"Caldo verde",wrong:["Sopa da pedra","Açorda","Gaspacho"]},
+  {q:"De que país é originário o taco?",correct:"México",wrong:["Espanha","Brasil","Argentina"]},
+  {q:"Qual é a cor da gema de um ovo?",correct:"Amarela",wrong:["Branca","Laranja","Castanha"]},
+  {q:"Que especiaria dá a cor amarela ao caril?",correct:"Curcuma",wrong:["Canela","Pimenta","Cominhos"]}],
+ 3:[
+  {q:"A francesinha é um prato típico de que cidade portuguesa?",correct:"Porto",wrong:["Lisboa","Braga","Coimbra"]},
+  {q:"Que queijo azul francês é mundialmente famoso?",correct:"Roquefort",wrong:["Brie","Camembert","Emmental"]},
+  {q:"Qual é o país que mais café produz no mundo?",correct:"Brasil",wrong:["Colômbia","Vietname","Etiópia"]},
+  {q:"Que bebida japonesa é feita de arroz fermentado?",correct:"Saqué",wrong:["Soju","Vodka","Rum"]},
+  {q:"Em que região portuguesa se produz o vinho do Porto?",correct:"Douro",wrong:["Alentejo","Dão","Minho"]},
+  {q:"Que fruta asiática tem espinhos e um cheiro muito intenso?",correct:"Durião",wrong:["Manga","Papaia","Lichia"]},
+  {q:"Qual é a massa italiana em forma de tubo curto?",correct:"Penne",wrong:["Esparguete","Fusilli","Tagliatelle"]},
+  {q:"Que cogumelo raro é conhecido como o 'diamante negro' da cozinha?",correct:"Trufa",wrong:["Shiitake","Portobello","Chanterelle"]},
+  {q:"De que fruto seco é feito tradicionalmente o maçapão?",correct:"Amêndoa",wrong:["Noz","Avelã","Amendoim"]},
+  {q:"Que doce conventual do Algarve é feito de ovos e amêndoa?",correct:"Dom Rodrigo",wrong:["Pastel de nata","Bolo-rei","Queijada"]}]
 }
 };
 
@@ -309,6 +440,56 @@ const LUCK = [
  {ico:"🛡️",t:"Escudo!",d:"Se falhares esta ronda, não perdes pontos.",fn:s=>{s.shield=true}},
  {ico:"🚀",t:"Boleia!",d:"O jogador em último recebe 3 pontos.",fn:s=>{gain(lastIdx(),3)}}
 ];
+
+/* ============================ SOM (Web Audio, sem ficheiros) ============================ */
+let AC=null, muted=false;
+try{ muted=(localStorage.getItem('rv_mute')==='1'); }catch(e){}
+function ac(){ if(!AC){ try{ AC=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} } if(AC&&AC.state==='suspended'){ try{AC.resume()}catch(e){} } return AC; }
+function tone(freq,dur,type,vol,delay){
+  const c=ac(); if(!c) return;
+  const o=c.createOscillator(), g=c.createGain();
+  o.type=type||'sine'; o.frequency.value=freq;
+  const t=c.currentTime+(delay||0);
+  g.gain.setValueAtTime(0.0001,t);
+  g.gain.exponentialRampToValueAtTime(vol||0.2,t+0.012);
+  g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+  o.connect(g); g.connect(c.destination);
+  o.start(t); o.stop(t+dur+0.03);
+}
+function sfx(name){
+  if(muted) return;
+  switch(name){
+    case 'click': tone(320,0.06,'triangle',0.10); break;
+    case 'correct': [523,659,784,1047].forEach((f,i)=>tone(f,0.20,'sine',0.20,i*0.08)); break;
+    case 'wrong': tone(180,0.30,'sawtooth',0.18,0); tone(120,0.42,'sawtooth',0.16,0.06); break;
+    case 'luck': [660,880,1174,1568,2093].forEach((f,i)=>tone(f,0.22,'triangle',0.12,i*0.05)); break;
+    case 'challenge': [440,554,659,880].forEach((f,i)=>tone(f,0.14,'square',0.10,i*0.09)); break;
+    case 'tick': tone(1000,0.04,'square',0.07); break;
+    case 'buzz': tone(90,0.5,'sawtooth',0.2); break;
+    case 'final': tone(160,0.8,'sawtooth',0.10,0); for(let i=0;i<10;i++) tone(140+i*14,0.09,'square',0.06,0.1+i*0.07); break;
+    case 'win': [523,523,523,659,0,784,0,659,784,1047].forEach((f,i)=>{ if(f) tone(f,0.24,'square',0.16,i*0.16); }); break;
+  }
+}
+function toggleMute(){
+  muted=!muted;
+  try{ localStorage.setItem('rv_mute',muted?'1':'0'); }catch(e){}
+  const b=document.getElementById('muteBtn'); if(b) b.textContent=muted?'🔇':'🔊';
+  if(!muted) sfx('click');
+}
+/* clique geral em qualquer botão -> som suave (e retoma áudio) */
+document.addEventListener('click',e=>{ if(e.target.closest('button')&&e.target.id!=='muteBtn'){ ac(); sfx('click'); } },true);
+
+/* ============================ CATEGORIA FAMÍLIA (perguntas personalizadas) ============================ */
+let FAMILIA=[];
+function loadFamilia(){ try{ FAMILIA=JSON.parse(localStorage.getItem('rv_familia')||'[]'); }catch(e){ FAMILIA=[]; } if(!Array.isArray(FAMILIA)) FAMILIA=[]; }
+function saveFamilia(){ try{ localStorage.setItem('rv_familia',JSON.stringify(FAMILIA)); }catch(e){} }
+function famBank(){ const b={1:[],2:[],3:[]}; FAMILIA.forEach(x=>{ (b[x.tier]||b[2]).push({q:x.q,correct:x.correct,wrong:x.wrong}); }); return b; }
+function refreshCats(){
+  CATS=BUILTIN_CATS.slice();
+  if(FAMILIA.length){ BANK["Família"]=famBank(); CATS.push("Família"); }
+  else { delete BANK["Família"]; }
+}
+loadFamilia();
 
 /* ============================ ESTADO ============================ */
 let S = null;
@@ -342,14 +523,16 @@ let _seed = 123456789;
 function rnd(){ _seed=(_seed*1103515245+12345)&0x7fffffff; return _seed/0x7fffffff; }
 function seedFromNames(){ let h=0; S.players.forEach(p=>{for(const c of p.name)h=(h*31+c.charCodeAt(0))&0x7fffffff}); _seed=(h||987654321); }
 
+function catAll(cat){ const a=[]; if(BANK[cat]) [1,2,3].forEach(t=>a.push(...(BANK[cat][t]||[]))); return a; }
 function pickQuestion(cat,tier){
- const key=cat+"|"+tier;
- if(!S.used[key]) S.used[key]=[];
- let pool=BANK[cat][tier].filter((_,i)=>!S.used[key].includes(i));
- if(pool.length===0){ S.used[key]=[]; pool=BANK[cat][tier].slice(); }
- const all=BANK[cat][tier];
+ if(!S.usedQ) S.usedQ=new Set();
+ // pool preferido: categoria+nível; se vazio, toda a categoria; se ainda vazio, outra categoria
+ let base=(BANK[cat]&&BANK[cat][tier]&&BANK[cat][tier].length)?BANK[cat][tier]:catAll(cat);
+ if(!base.length){ const other=BUILTIN_CATS.find(c=>catAll(c).length); base=catAll(other); }
+ let pool=base.filter(q=>!S.usedQ.has(q));
+ if(pool.length===0){ base.forEach(q=>S.usedQ.delete(q)); pool=base.slice(); }
  const q=pool[Math.floor(rnd()*pool.length)];
- S.used[key].push(all.indexOf(q));
+ S.usedQ.add(q);
  return q;
 }
 function makeOptions(q){ return shuffle([q.correct,...q.wrong]); }
@@ -357,11 +540,14 @@ function makeOptions(q){ return shuffle([q.correct,...q.wrong]); }
 /* ============================ RENDER ============================ */
 const app=()=>document.getElementById("app");
 function render(html,fade=true){ app().innerHTML=`<div class="${fade?'fade':''}">${html}</div>`; }
-function scorebar(){
+function scorebar(deltas){
  const l=leaderIdx(), last=lastIdx();
  return `<div class="scorebar">`+S.players.map((p,i)=>{
-   const cls=(S.players.filter(x=>x.score===p.score).length<3)?(i===l?'lead':(i===last?'last':'')):'';
-   return `<div class="p ${cls}"><div class="nm">${i===l?'👑 ':''}${esc(p.name)}</div><div class="sc">${p.score}</div></div>`;
+   let cls=(S.players.filter(x=>x.score===p.score).length<3)?(i===l?'lead':(i===last?'last':'')):'';
+   const d=deltas&&deltas[i];
+   if(d) cls+=' flash';
+   const badge=d?`<span class="delta ${d>0?'up':'down'}">${d>0?'+'+d:d}</span>`:'';
+   return `<div class="p ${cls}">${badge}<div class="nm">${i===l?'👑 ':''}${esc(p.name)}</div><div class="sc">${p.score}</div></div>`;
  }).join("")+`</div>`;
 }
 function esc(s){ return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
@@ -377,9 +563,50 @@ function screenSetup(){
     <input id="n2" type="text" placeholder="Jogador 3" maxlength="14">
   </div>
   <button class="btn gold" onclick="startGame()">Começar jogo 🎉</button>
+  <button class="btn ghost" onclick="screenFamilia()">👨‍👩‍👧 Perguntas da Família${FAMILIA.length?` (${FAMILIA.length})`:''}</button>
   <button class="btn ghost" onclick="showRules()">Como se joga?</button>
  `);
 }
+
+/* -------- EDITOR DE PERGUNTAS DA FAMÍLIA -------- */
+let _famTier=2;
+function screenFamilia(){
+ render(`
+  <h2>👨‍👩‍👧 Perguntas da Família</h2>
+  <p class="sub">Cria as tuas próprias perguntas. Ficam guardadas neste dispositivo e passam a ser uma categoria no jogo.</p>
+  ${FAMILIA.length?`<div>`+FAMILIA.map((x,i)=>`<div class="qrow"><span class="qx">${['','🟢','🟡','🔴'][x.tier]} ${esc(x.q)}</span><button onclick="delFamilia(${i})">🗑️</button></div>`).join("")+`</div>`:`<p class="sub">Ainda não há perguntas. Adiciona a primeira 👇</p>`}
+  <div class="card">
+   <label class="fld">Pergunta</label>
+   <input id="fq" type="text" placeholder="Ex: Qual é a comida preferida do avô?" maxlength="90">
+   <label class="fld">Resposta CERTA</label>
+   <input id="fc" type="text" placeholder="Resposta correta" maxlength="40">
+   <label class="fld">3 respostas erradas</label>
+   <input id="fw0" type="text" placeholder="Errada 1" maxlength="40">
+   <input id="fw1" type="text" placeholder="Errada 2" maxlength="40">
+   <input id="fw2" type="text" placeholder="Errada 3" maxlength="40">
+   <label class="fld">Nível (dificuldade / pontos)</label>
+   <div class="tierpick">
+     <button id="t1" class="${_famTier===1?'sel':''}" onclick="setFamTier(1)">🟢 Fácil</button>
+     <button id="t2" class="${_famTier===2?'sel':''}" onclick="setFamTier(2)">🟡 Médio</button>
+     <button id="t3" class="${_famTier===3?'sel':''}" onclick="setFamTier(3)">🔴 Difícil</button>
+   </div>
+   <small class="hint" id="fmsg"></small>
+  </div>
+  <button class="btn green" onclick="addFamilia()">➕ Adicionar pergunta</button>
+  <button class="btn ghost" onclick="screenSetup()">← Voltar</button>
+ `);
+}
+function setFamTier(t){ _famTier=t; ['1','2','3'].forEach(n=>{const b=document.getElementById('t'+n); if(b) b.classList.toggle('sel',+n===t);}); }
+function addFamilia(){
+ const g=id=>document.getElementById(id).value.trim();
+ const q=g('fq'),c=g('fc'),w=[g('fw0'),g('fw1'),g('fw2')];
+ const msg=document.getElementById('fmsg');
+ if(!q||!c||w.some(x=>!x)){ if(msg){msg.textContent='⚠️ Preenche a pergunta, a resposta certa e as 3 erradas.'; msg.style.color='var(--red)';} return; }
+ FAMILIA.push({q,correct:c,wrong:w,tier:_famTier});
+ saveFamilia();
+ screenFamilia();
+}
+function delFamilia(i){ FAMILIA.splice(i,1); saveFamilia(); screenFamilia(); }
 function showRules(){
  render(`
   <h2>Como se joga</h2>
@@ -396,7 +623,7 @@ function showRules(){
 }
 function startGame(){
  const names=[0,1,2].map(i=>{const v=document.getElementById("n"+i).value.trim();return v||("Jogador "+(i+1))});
- S=newState(names); seedFromNames(); S.queue=buildQueue(); nextEvent();
+ S=newState(names); seedFromNames(); refreshCats(); S.queue=buildQueue(); nextEvent();
 }
 
 /* -------- MOTOR DE EVENTOS -------- */
@@ -419,6 +646,7 @@ function startQuizRound(){
 }
 function screenLuck(){
  const c=S.luckCard;
+ sfx('luck');
  render(`
   ${scorebar()}
   <div class="roundhdr">Ronda ${S.quizCount} de 9 · ${esc(S.players[S.answerer].name)} responde</div>
@@ -532,6 +760,7 @@ function answer(choice){
  const q=S.question;
  const correct=(choice===q.correct);
  let base=S.tier*S.multiplier;
+ const before=scores();
  // pontos do respondente
  if(correct){ gain(S.answerer,base); }
  else { if(!S.shield) gain(S.answerer,-base); }
@@ -544,14 +773,17 @@ function answer(choice){
    gain(i,hit?1:-1);
    betRes.push({i,txt:v==="acerta"?"apostou ACERTA":"apostou FALHA",d:hit?1:-1});
  });
- screenReveal(correct,choice,base,betRes);
+ const deltas=diffScores(before);
+ sfx(correct?'correct':'wrong');
+ screenReveal(correct,choice,base,betRes,deltas);
 }
-function screenReveal(correct,choice,base,betRes){
+function diffScores(before){ const d={}; S.players.forEach((p,i)=>{ if(p.score-before[i]!==0) d[i]=p.score-before[i]; }); return d; }
+function screenReveal(correct,choice,base,betRes,deltas){
  const q=S.question;
  render(`
-  ${scorebar()}
-  <h2 class="${correct?'reveal-ok':'reveal-no'}">${correct?'✅ Certo!':'❌ Errado!'}</h2>
-  <div class="card center">
+  ${scorebar(deltas)}
+  <h2 class="${correct?'reveal-ok pulse':'reveal-no'}">${correct?'✅ Certo!':'❌ Errado!'}</h2>
+  <div class="card center ${correct?'':'shake'}">
    <div class="qbox" style="font-size:1.05rem">${esc(q.q)}</div>
    <p class="big">Resposta certa: <b class="reveal-ok">${esc(q.correct)}</b></p>
    ${!correct?`<p class="sub">${esc(S.players[S.answerer].name)} respondeu: ${esc(choice)}</p>`:''}
@@ -567,6 +799,7 @@ function endRound(){ S.qi++; nextEvent(); }
 function screenDesafio(){
  const d=DESAFIOS[Math.floor(rnd()*DESAFIOS.length)];
  S._desafio=d;
+ sfx('challenge');
  render(`
   ${scorebar()}
   <div class="roundhdr">⚡ Desafio Reviravolta</div>
@@ -583,7 +816,7 @@ function startTimer(n){
  let t=n; el.textContent=t;
  const btn=document.getElementById("startTmr"); if(btn)btn.disabled=true;
  clearInterval(_tmr);
- _tmr=setInterval(()=>{ t--; if(el)el.textContent=t; if(t<=0){clearInterval(_tmr); if(el){el.textContent="⏰";}} },1000);
+ _tmr=setInterval(()=>{ t--; if(el)el.textContent=t; if(t>0&&t<=5) sfx('tick'); if(t<=0){clearInterval(_tmr); sfx('buzz'); if(el){el.textContent="⏰";}} },1000);
 }
 function desafioWinner(){
  clearInterval(_tmr);
@@ -670,12 +903,15 @@ function setFinalAns(o){
  if(S.secret.idx<S.secret.queue.length) return secretCoverFinalAns();
  // resolver
  const q=S.finalQuestion;
+ const before=scores();
  const res=S.players.map((p,i)=>{
    const ok=S.finalAnswers[i]===q.correct;
    const w=S.finalWagers[i];
    gain(i,ok?w:-w);
    return {i,ok,w};
  });
+ const deltas=diffScores(before);
+ sfx('final');
  render(`
   <h1 style="font-size:1.6rem">🎆 Resultado Final</h1>
   <div class="card center">
@@ -683,7 +919,7 @@ function setFinalAns(o){
    <p class="big">Resposta: <b class="reveal-ok">${esc(q.correct)}</b></p>
    ${res.map(r=>`<p class="tag ${r.ok?'gold':'pink'}">${esc(S.players[r.i].name)}: ${r.ok?'✅ +'+r.w:'❌ -'+r.w}</p>`).join("")}
   </div>
-  ${scorebar()}
+  ${scorebar(deltas)}
   <button class="btn gold" onclick="screenGameOver()">Ver o vencedor 🏆</button>
  `);
 }
@@ -693,8 +929,9 @@ function screenGameOver(){
  const order=S.players.map((p,i)=>({...p,i})).sort((a,b)=>b.score-a.score);
  const win=order[0];
  confetti();
+ sfx('win');
  render(`
-  <h1>🏆 ${esc(win.name)} vence!</h1>
+  <h1>🏆 <span class="bounce">${esc(win.name)}</span> vence!</h1>
   <p class="sub">${win.score} pontos</p>
   <div class="card">
    ${order.map((p,r)=>`<div class="big" style="display:flex;justify-content:space-between;padding:8px 4px;border-bottom:1px solid rgba(255,255,255,.1)">
@@ -704,7 +941,7 @@ function screenGameOver(){
   <button class="btn ghost" onclick="screenSetup()">Novos jogadores</button>
  `);
 }
-function rematch(){ const names=S.players.map(p=>p.name); S=newState(names); seedFromNames(); _seed=(_seed*7919+13)&0x7fffffff; S.queue=buildQueue(); nextEvent(); }
+function rematch(){ const names=S.players.map(p=>p.name); S=newState(names); seedFromNames(); _seed=(_seed*7919+13)&0x7fffffff; refreshCats(); S.queue=buildQueue(); nextEvent(); }
 function confetti(){
  const cols=["#ffcc33","#ff2e88","#7b2ff7","#20e37a","#ff4d6d"];
  for(let k=0;k<60;k++){

@@ -13,7 +13,18 @@ Abre o ficheiro **`index.html`** num browser (duplo-clique). Escreve os 3 nomes
 e carrega em **Começar jogo**. Joga-se em modo *passa-e-joga*: o telemóvel anda
 à volta da mesa e o ecrã avisa a quem deve passar (as apostas são secretas).
 
-Uma partida dura ~15–20 min.
+Uma partida dura ~15–20 min. Há um botão de **som** 🔊 no canto (podes silenciar).
+
+## Categorias (9 fixas + a vossa)
+
+Cultura Geral · História · Ciência · Desporto · Música & Cinema ·
+Portugal & Madeira · Geografia · Natureza & Animais · Comida & Bebida —
+**270 perguntas** no total.
+
+E ainda uma categoria **👨‍👩‍👧 Família**: no ecrã inicial, em *Perguntas da
+Família*, cada família cria as suas próprias perguntas (resposta certa + 3
+erradas + nível). Ficam guardadas no dispositivo e passam a ser uma categoria
+escolhível no jogo.
 
 ## Estrutura de uma partida
 
@@ -54,13 +65,22 @@ sempre hipótese de virada. As mecânicas de *catch-up* **dão ferramentas a que
 está atrás** em vez de castigar quem lidera — para o jogo se manter emocionante
 e justo até ao fim.
 
+## Som e animações
+
+Tudo self-contained (funciona offline, sem ficheiros externos):
+- **Sons** sintetizados via Web Audio API — acerto, erro, carta de sorte,
+  desafio, tique-taque do cronómetro e fanfarra de vitória. Botão 🔊/🔇 para
+  ligar/desligar (a preferência fica guardada).
+- **Animações** — variação de pontos a flutuar (+N/−N) sobre o placar, "pulse"
+  no acerto, "shake" no erro, salto no nome do vencedor e confétti no final.
+
 ## Personalizar
 
-O jogo inclui **180 perguntas** (6 categorias × 3 níveis × 10). Todo o jogo está
-num único ficheiro `index.html`. Para adicionar mais, edita o objeto `BANK` no
-`<script>` (6 categorias × 3 níveis). Cada pergunta é
-`{q, correct, wrong:[3 erradas]}`. Os desafios estão em `DESAFIOS` e as cartas
-em `LUCK`.
+O jogo inclui **270 perguntas** (9 categorias × 3 níveis × 10), mais as da
+categoria Família. Todo o jogo está num único ficheiro `index.html`. Para
+adicionar mais perguntas fixas, edita o objeto `BANK` no `<script>`. Cada
+pergunta é `{q, correct, wrong:[3 erradas]}`. Os desafios estão em `DESAFIOS`,
+as cartas em `LUCK` e os sons em `sfx()`.
 
 ---
 *Testado de ponta a ponta (setup → 9 rondas → cartas → desafios → aposta final →
