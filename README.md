@@ -56,8 +56,9 @@ e justo até ao fim.
 
 ## Personalizar
 
-Todo o jogo está num único ficheiro `index.html`. Para adicionar perguntas,
-edita o objeto `BANK` no `<script>` (6 categorias × 3 níveis). Cada pergunta é
+O jogo inclui **180 perguntas** (6 categorias × 3 níveis × 10). Todo o jogo está
+num único ficheiro `index.html`. Para adicionar mais, edita o objeto `BANK` no
+`<script>` (6 categorias × 3 níveis). Cada pergunta é
 `{q, correct, wrong:[3 erradas]}`. Os desafios estão em `DESAFIOS` e as cartas
 em `LUCK`.
 
