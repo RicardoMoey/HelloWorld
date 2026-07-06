@@ -10,7 +10,9 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Reviravolta">
 <meta name="theme-color" content="#2b1055">
-<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Crect width='180' height='180' rx='40' fill='%232b1055'/%3E%3Ctext x='90' y='128' font-size='104' text-anchor='middle'%3E🎲%3C/text%3E%3C/svg%3E">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-180.png">
 <style>
   :root{
     --bg1:#1a0b2e; --bg2:#2b1055; --accent:#ff2e88; --accent2:#7b2ff7;
@@ -962,6 +964,14 @@ function confetti(){
 
 /* ============================ ARRANQUE ============================ */
 screenSetup();
+</script>
+<script>
+/* Regista o service worker (só funciona via http/https, ex.: GitHub Pages) — permite jogar offline como app */
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  });
+}
 </script>
 </body>
 </html>

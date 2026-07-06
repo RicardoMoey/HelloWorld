@@ -15,6 +15,19 @@ e carrega em **Começar jogo**. Joga-se em modo *passa-e-joga*: o telemóvel and
 
 Uma partida dura ~15–20 min. Há um botão de **som** 🔊 no canto (podes silenciar).
 
+## Instalar como app (iPad / iPhone / Android)
+
+O jogo é uma **PWA** (app web instalável): `manifest.json` + `sw.js` (service
+worker) fazem-no abrir em ecrã inteiro com ícone próprio e funcionar **offline**.
+Para instalar, precisa de ser servido por um link **https** (ex.: GitHub Pages):
+
+1. No repositório: **Settings → Pages → Deploy from a branch** → escolhe a branch
+   com estes ficheiros e a pasta `/(root)` → **Save**.
+2. Abre o URL de Pages no **Safari** (iPad/iPhone) ou **Chrome** (Android).
+3. **Partilhar → Adicionar ao ecrã principal**. Fica com ícone 🎲 e abre como app.
+
+Depois da primeira abertura, funciona sem internet.
+
 ## Categorias (9 fixas + a vossa)
 
 Cultura Geral · História · Ciência · Desporto · Música & Cinema ·
