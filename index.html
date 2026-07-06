@@ -2,8 +2,15 @@
 <html lang="pt-PT">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Reviravolta — Jogo de Quiz para 3 Jogadores</title>
+<!-- iPad / iPhone: abrir em ecrã inteiro tipo app quando adicionado ao ecrã principal -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Reviravolta">
+<meta name="theme-color" content="#2b1055">
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Crect width='180' height='180' rx='40' fill='%232b1055'/%3E%3Ctext x='90' y='128' font-size='104' text-anchor='middle'%3E🎲%3C/text%3E%3C/svg%3E">
 <style>
   :root{
     --bg1:#1a0b2e; --bg2:#2b1055; --accent:#ff2e88; --accent2:#7b2ff7;
@@ -17,7 +24,8 @@
     background:linear-gradient(160deg,var(--bg1),var(--bg2) 60%,#3a1560);
     color:var(--ink); min-height:100vh; overflow-x:hidden;
   }
-  #app{max-width:520px;margin:0 auto;padding:16px 16px 40px;min-height:100vh;display:flex;flex-direction:column}
+  #app{max-width:520px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column;
+     padding:calc(16px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right)) calc(40px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left))}
   h1{font-size:2.4rem;margin:.2em 0;text-align:center;
      background:linear-gradient(90deg,var(--gold),var(--accent),var(--accent2));
      -webkit-background-clip:text;background-clip:text;color:transparent;font-weight:900;letter-spacing:-1px}
@@ -68,7 +76,7 @@
   .confetti{position:fixed;top:-10px;width:10px;height:16px;opacity:.9;z-index:99;animation:fall linear forwards}
   @keyframes fall{to{transform:translateY(110vh) rotate(720deg);opacity:0}}
   /* som */
-  #muteBtn{position:fixed;top:10px;right:10px;z-index:100;width:44px;height:44px;border:none;border-radius:50%;
+  #muteBtn{position:fixed;top:calc(10px + env(safe-area-inset-top));right:calc(10px + env(safe-area-inset-right));z-index:100;width:44px;height:44px;border:none;border-radius:50%;
      background:var(--card2);color:#fff;font-size:1.2rem;cursor:pointer;box-shadow:0 3px 10px rgba(0,0,0,.4)}
   /* animações de resposta */
   .shake{animation:shake .5s}
