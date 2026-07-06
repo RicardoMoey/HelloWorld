@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Reviravolta — Jogo de Quiz para 3 Jogadores</title>
+<style>
+  :root{
+    --bg1:#1a0b2e; --bg2:#2b1055; --accent:#ff2e88; --accent2:#7b2ff7;
+    --gold:#ffcc33; --green:#20e37a; --red:#ff4d6d; --ink:#f5f0ff; --muted:#b9a7e0;
+    --card:#2a1a4a; --card2:#38235f;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+  html,body{margin:0;padding:0;height:100%}
+  body{
+    font-family:"Segoe UI",system-ui,-apple-system,sans-serif;
+    background:linear-gradient(160deg,var(--bg1),var(--bg2) 60%,#3a1560);
+    color:var(--ink); min-height:100vh; overflow-x:hidden;
+  }
+  #app{max-width:520px;margin:0 auto;padding:16px 16px 40px;min-height:100vh;display:flex;flex-direction:column}
+  h1{font-size:2.4rem;margin:.2em 0;text-align:center;
+     background:linear-gradient(90deg,var(--gold),var(--accent),var(--accent2));
+     -webkit-background-clip:text;background-clip:text;color:transparent;font-weight:900;letter-spacing:-1px}
+  h2{font-size:1.5rem;margin:.3em 0;text-align:center}
+  p.sub{text-align:center;color:var(--muted);margin:.2em 0 1em}
+  .btn{display:block;width:100%;padding:16px;margin:8px 0;border:none;border-radius:16px;
+       font-size:1.1rem;font-weight:700;cursor:pointer;color:#fff;
+       background:linear-gradient(135deg,var(--accent2),var(--accent));
+       box-shadow:0 6px 0 #4a1a8a, 0 8px 20px rgba(0,0,0,.4);transition:transform .06s, box-shadow .06s}
+  .btn:active{transform:translateY(4px);box-shadow:0 2px 0 #4a1a8a}
+  .btn.ghost{background:var(--card);box-shadow:0 6px 0 #1c1030}
+  .btn.ghost:active{box-shadow:0 2px 0 #1c1030}
+  .btn.gold{background:linear-gradient(135deg,#ffb300,var(--gold));color:#3a1560;box-shadow:0 6px 0 #a97a00}
+  .btn.gold:active{box-shadow:0 2px 0 #a97a00}
+  .btn.green{background:linear-gradient(135deg,#0f9d58,var(--green));box-shadow:0 6px 0 #0a6b3c}
+  .btn.red{background:linear-gradient(135deg,#c9184a,var(--red));box-shadow:0 6px 0 #7a0f2c}
+  .btn:disabled{opacity:.35;cursor:default}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .card{background:var(--card);border-radius:20px;padding:18px;margin:10px 0;box-shadow:inset 0 0 0 1px rgba(255,255,255,.06)}
+  input[type=text]{width:100%;padding:14px;border-radius:12px;border:2px solid var(--accent2);
+     background:#1c1030;color:var(--ink);font-size:1.1rem;margin:6px 0}
+  .scorebar{display:flex;gap:6px;margin:10px 0}
+  .scorebar .p{flex:1;background:var(--card);border-radius:12px;padding:8px 6px;text-align:center;position:relative;overflow:hidden}
+  .scorebar .p.lead{outline:2px solid var(--gold)}
+  .scorebar .p.last{outline:2px solid var(--accent)}
+  .scorebar .nm{font-size:.82rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .scorebar .sc{font-size:1.5rem;font-weight:900}
+  .tag{display:inline-block;background:var(--accent2);color:#fff;border-radius:999px;padding:3px 12px;font-size:.8rem;font-weight:700;margin:4px 2px}
+  .tag.gold{background:var(--gold);color:#3a1560}
+  .tag.pink{background:var(--accent)}
+  .center{text-align:center}
+  .big{font-size:1.3rem}
+  .spacer{flex:1}
+  .qbox{font-size:1.35rem;font-weight:700;text-align:center;margin:12px 0 6px;line-height:1.35}
+  .luck{animation:pop .5s ease}
+  @keyframes pop{0%{transform:scale(.3) rotate(-12deg);opacity:0}70%{transform:scale(1.08) rotate(3deg)}100%{transform:scale(1) rotate(0);opacity:1}}
+  .luckcard{background:linear-gradient(135deg,#ffcc33,#ff2e88 60%,#7b2ff7);border-radius:24px;padding:26px;text-align:center;color:#fff;box-shadow:0 10px 30px rgba(0,0,0,.5)}
+  .luckcard .ico{font-size:4rem}
+  .luckcard .t{font-size:1.6rem;font-weight:900;margin:6px 0}
+  .timer{font-size:3.5rem;font-weight:900;text-align:center;color:var(--gold)}
+  .reveal-ok{color:var(--green)} .reveal-no{color:var(--red)}
+  .fade{animation:fade .35s ease}
+  @keyframes fade{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+  .cover{background:var(--card2);border-radius:24px;padding:40px 20px;text-align:center}
+  .cover .ico{font-size:3.5rem}
+  small.hint{display:block;text-align:center;color:var(--muted);margin-top:8px}
+  .roundhdr{text-align:center;color:var(--muted);font-weight:700;letter-spacing:1px;text-transform:uppercase;font-size:.8rem;margin-top:4px}
+  .confetti{position:fixed;top:-10px;width:10px;height:16px;opacity:.9;z-index:99;animation:fall linear forwards}
+  @keyframes fall{to{transform:translateY(110vh) rotate(720deg);opacity:0}}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+/* ============================ BANCO DE PERGUNTAS (PT-PT) ============================ */
+/* tier: 1 = Seguro, 2 = Médio, 3 = Difícil. correct = resposta certa; wrong = 3 erradas */
+const CATS = ["Cultura Geral","História","Ciência","Desporto","Música & Cinema","Portugal & Madeira"];
+const CAT_ICON = {"Cultura Geral":"🧠","História":"🏛️","Ciência":"🔬","Desporto":"⚽","Música & Cinema":"🎬","Portugal & Madeira":"🇵🇹"};
+const BANK = {
+"Cultura Geral":{
+ 1:[
+  {q:"Quantos lados tem um hexágono?",correct:"6",wrong:["5","7","8"]},
+  {q:"Que cor se obtém ao misturar azul com amarelo?",correct:"Verde",wrong:["Laranja","Roxo","Castanho"]},
+  {q:"Quantos meses do ano têm 31 dias?",correct:"7",wrong:["6","5","8"]}],
+ 2:[
+  {q:"Qual é o maior oceano da Terra?",correct:"Pacífico",wrong:["Atlântico","Índico","Ártico"]},
+  {q:"Que metal é líquido à temperatura ambiente?",correct:"Mercúrio",wrong:["Chumbo","Ferro","Alumínio"]},
+  {q:"Qual é o único número primo par?",correct:"2",wrong:["1","4","0"]}],
+ 3:[
+  {q:"Qual é a língua mais falada como língua materna no mundo?",correct:"Chinês mandarim",wrong:["Inglês","Espanhol","Hindi"]},
+  {q:"Quantos elementos tem hoje a tabela periódica?",correct:"118",wrong:["108","112","124"]},
+  {q:"Qual destes NÃO é um dos sete pecados capitais?",correct:"Cobardia",wrong:["Gula","Preguiça","Inveja"]}]
+},
+"História":{
+ 1:[
+  {q:"Quem descobriu o caminho marítimo para a Índia?",correct:"Vasco da Gama",wrong:["Cristóvão Colombo","Fernão de Magalhães","Pedro Álvares Cabral"]},
+  {q:"Em que continente fica o Egito?",correct:"África",wrong:["Ásia","Europa","América"]},
+  {q:"Em que século vivemos atualmente?",correct:"Século XXI",wrong:["Século XIX","Século XX","Século XXII"]}],
+ 2:[
+  {q:"Em que ano foi a Revolução dos Cravos?",correct:"1974",wrong:["1910","1926","1986"]},
+  {q:"Quem foi o primeiro homem a pisar a Lua?",correct:"Neil Armstrong",wrong:["Buzz Aldrin","Yuri Gagarin","Michael Collins"]},
+  {q:"Que civilização construiu Machu Picchu?",correct:"Inca",wrong:["Maia","Asteca","Egípcia"]}],
+ 3:[
+  {q:"Em que ano terminou a Segunda Guerra Mundial?",correct:"1945",wrong:["1918","1939","1948"]},
+  {q:"Quem era o rei de Portugal aquando do terramoto de 1755?",correct:"D. José I",wrong:["D. João V","D. Manuel I","D. Pedro IV"]},
+  {q:"Que povo inventou a escrita cuneiforme?",correct:"Sumérios",wrong:["Egípcios","Fenícios","Gregos"]}]
+},
+"Ciência":{
+ 1:[
+  {q:"Qual planeta é conhecido como 'planeta vermelho'?",correct:"Marte",wrong:["Vénus","Júpiter","Saturno"]},
+  {q:"Quantas patas tem uma aranha?",correct:"8",wrong:["6","10","4"]},
+  {q:"Que gás as plantas absorvem para a fotossíntese?",correct:"Dióxido de carbono",wrong:["Oxigénio","Hidrogénio","Azoto"]}],
+ 2:[
+  {q:"Qual é o osso mais comprido do corpo humano?",correct:"Fémur",wrong:["Tíbia","Úmero","Coluna"]},
+  {q:"Qual é o símbolo químico do ouro?",correct:"Au",wrong:["Ag","Or","Go"]},
+  {q:"Quantos corações tem um polvo?",correct:"3",wrong:["1","2","4"]}],
+ 3:[
+  {q:"Qual planeta tem o maior número de luas conhecidas?",correct:"Saturno",wrong:["Júpiter","Neptuno","Úrano"]},
+  {q:"Que cientista propôs a Teoria da Relatividade?",correct:"Albert Einstein",wrong:["Isaac Newton","Niels Bohr","Galileu"]},
+  {q:"Qual é aproximadamente a velocidade da luz no vácuo?",correct:"300 000 km/s",wrong:["30 000 km/s","3 000 km/s","3 milhões km/s"]}]
+},
+"Desporto":{
+ 1:[
+  {q:"Quantos jogadores tem uma equipa de futebol em campo?",correct:"11",wrong:["10","9","12"]},
+  {q:"Em que desporto se disputa o torneio de Wimbledon?",correct:"Ténis",wrong:["Golfe","Ciclismo","Natação"]},
+  {q:"De que país é Cristiano Ronaldo?",correct:"Portugal",wrong:["Espanha","Brasil","Argentina"]}],
+ 2:[
+  {q:"De quantos em quantos anos se realizam os Jogos Olímpicos de Verão?",correct:"4",wrong:["2","3","5"]},
+  {q:"Que seleção venceu o Campeonato do Mundo de Futebol de 2022?",correct:"Argentina",wrong:["França","Brasil","Alemanha"]},
+  {q:"Quantos pontos vale um 'try' no râguebi?",correct:"5",wrong:["3","6","7"]}],
+ 3:[
+  {q:"Em que cidade se realizaram os Jogos Olímpicos de 2016?",correct:"Rio de Janeiro",wrong:["Londres","Tóquio","Pequim"]},
+  {q:"Em que ano venceu Portugal o Campeonato da Europa de Futebol?",correct:"2016",wrong:["2004","2012","2020"]},
+  {q:"Que piloto tem mais títulos mundiais de Fórmula 1 (recorde partilhado)?",correct:"Lewis Hamilton",wrong:["Ayrton Senna","Sebastian Vettel","Alain Prost"]}]
+},
+"Música & Cinema":{
+ 1:[
+  {q:"Qual banda britânica ficou conhecida como os 'Fab Four' de Liverpool?",correct:"The Beatles",wrong:["The Rolling Stones","Queen","Oasis"]},
+  {q:"Em que filme aparece a personagem 'Simba'?",correct:"O Rei Leão",wrong:["Madagáscar","Kung Fu Panda","Zootrópolis"]},
+  {q:"Quantas cordas tem uma guitarra clássica normal?",correct:"6",wrong:["4","5","7"]}],
+ 2:[
+  {q:"Quem realizou o filme 'Titanic' (1997)?",correct:"James Cameron",wrong:["Steven Spielberg","Christopher Nolan","Martin Scorsese"]},
+  {q:"Que artista português venceu a Eurovisão em 2017?",correct:"Salvador Sobral",wrong:["Luísa Sobral","Rui Veloso","D.A.M.A."]},
+  {q:"Quantas notas tem a escala musical básica (dó a si)?",correct:"7",wrong:["5","6","8"]}],
+ 3:[
+  {q:"Que filme sul-coreano venceu o Óscar de Melhor Filme (2020)?",correct:"Parasitas",wrong:["1917","Joker","Coringa 2"]},
+  {q:"Que compositor era surdo e compôs a 9.ª Sinfonia?",correct:"Beethoven",wrong:["Mozart","Bach","Chopin"]},
+  {q:"Quem compôs a banda sonora de 'Star Wars'?",correct:"John Williams",wrong:["Hans Zimmer","Ennio Morricone","Danny Elfman"]}]
+},
+"Portugal & Madeira":{
+ 1:[
+  {q:"Qual é a capital de Portugal?",correct:"Lisboa",wrong:["Porto","Funchal","Coimbra"]},
+  {q:"Como se chama a capital da Madeira?",correct:"Funchal",wrong:["Câmara de Lobos","Machico","Santana"]},
+  {q:"Qual é o vinho generoso famoso da ilha da Madeira?",correct:"Vinho Madeira",wrong:["Vinho do Porto","Vinho Verde","Moscatel"]}],
+ 2:[
+  {q:"Qual é o ponto mais alto da ilha da Madeira?",correct:"Pico Ruivo",wrong:["Pico do Areeiro","Torre","Pico da Vara"]},
+  {q:"Que rio passa em Lisboa?",correct:"Tejo",wrong:["Douro","Mondego","Guadiana"]},
+  {q:"Qual é o ponto mais alto de Portugal continental?",correct:"Torre (Serra da Estrela)",wrong:["Pico Ruivo","Foia","Marão"]}],
+ 3:[
+  {q:"Em que ano foi oficialmente descoberta a ilha da Madeira pelos portugueses?",correct:"1419",wrong:["1415","1425","1434"]},
+  {q:"Como se chama o bolo tradicional da Madeira feito com mel de cana?",correct:"Bolo de mel",wrong:["Broa","Malasada","Queijada"]},
+  {q:"Que casa de fado tornou Amália Rodrigues mundialmente famosa como género?",correct:"O Fado",wrong:["O Corridinho","A Chula","O Vira"]}]
+}
+};
+
+/* Desafios (avaliados pela família) */
+const DESAFIOS = [
+ {t:"Nomeia 5 marcas de carros",d:"Em 15 segundos, cada um tenta. O primeiro a dizer 5 sem repetir ganha."},
+ {t:"Alfabeto ao contrário",d:"Diz o alfabeto de Z a A o mais rápido possível. Os outros dois julgam quem foi melhor."},
+ {t:"Mímica relâmpago",d:"Escolham um filme em segredo. Um faz mímica em 20s; quem adivinhar primeiro ganha (ou o mímico, se ninguém acertar)."},
+ {t:"Faz-nos rir",d:"Tens 20 segundos para fazer rir os outros dois SEM falar. Se conseguires, ganhas."},
+ {t:"3 capitais europeias",d:"Em 10 segundos, diz 3 capitais europeias diferentes. Consegues? Ganhas."},
+ {t:"Equilíbrio cantante",d:"Fica num pé só e canta o refrão de uma música. Quem aguentar mais tempo ganha."},
+ {t:"Imita um animal",d:"Imita um animal à escolha. Os outros dois votam se foi convincente."}
+];
+
+/* Cartas de sorte */
+const LUCK = [
+ {ico:"🎁",t:"Presente!",d:"Ganhas 2 pontos já.",fn:s=>{gain(s.answerer,2)}},
+ {ico:"🥷",t:"Assalto!",d:"Roubas 2 pontos ao líder.",fn:s=>{let l=leaderIdx(); if(l===s.answerer)l=secondIdx(); if(l>=0){gain(l,-2);gain(s.answerer,2)}}},
+ {ico:"🔄",t:"Troca de Destinos!",d:"O 1.º e o último trocam de pontuação.",fn:s=>{const a=leaderIdx(),b=lastIdx(); if(a!==b){const t=S.players[a].score;S.players[a].score=S.players[b].score;S.players[b].score=t}}},
+ {ico:"✖️2",t:"Aposta Dobrada!",d:"A tua aposta desta ronda conta a DOBRAR.",fn:s=>{s.multiplier=2}},
+ {ico:"🛡️",t:"Escudo!",d:"Se falhares esta ronda, não perdes pontos.",fn:s=>{s.shield=true}},
+ {ico:"🚀",t:"Boleia!",d:"O jogador em último recebe 3 pontos.",fn:s=>{gain(lastIdx(),3)}}
+];
+
+/* ============================ ESTADO ============================ */
+let S = null;
+function newState(names){
+ return {
+  screen:"setup",
+  players:names.map(n=>({name:n,score:0})),
+  queue:[], qi:0, quizCount:0, answerer:0,
+  category:null, question:null, options:[], tier:null,
+  multiplier:1, shield:false, fifty:false, removed:[], lifelineUsed:false,
+  sideBets:{}, secret:null, used:{}, luckCard:null,
+  finalWagers:{}, finalQuestion:null, finalOptions:[]
+ };
+}
+function buildQueue(){
+ const q=[];
+ for(let i=1;i<=9;i++){ q.push({type:"quiz"}); if(i===3||i===6) q.push({type:"desafio"}); }
+ q.push({type:"final"});
+ return q;
+}
+
+/* ============================ HELPERS DE PONTUAÇÃO ============================ */
+function gain(i,n){ if(i>=0&&i<S.players.length) S.players[i].score+=n; }
+function scores(){ return S.players.map(p=>p.score); }
+function leaderIdx(){ let b=-Infinity,x=0; S.players.forEach((p,i)=>{if(p.score>b){b=p.score;x=i}}); return x; }
+function secondIdx(){ const l=leaderIdx(); let b=-Infinity,x=-1; S.players.forEach((p,i)=>{if(i!==l&&p.score>b){b=p.score;x=i}}); return x; }
+function lastIdx(){ let b=Infinity,x=0; S.players.forEach((p,i)=>{if(p.score<b){b=p.score;x=i}}); return x; }
+function shuffle(a){ a=a.slice(); for(let i=a.length-1;i>0;i--){const j=Math.floor(rnd()*(i+1));[a[i],a[j]]=[a[j],a[i]]} return a; }
+/* PRNG simples baseado num contador para evitar dependência de Date/Math.random em ambientes restritos */
+let _seed = 123456789;
+function rnd(){ _seed=(_seed*1103515245+12345)&0x7fffffff; return _seed/0x7fffffff; }
+function seedFromNames(){ let h=0; S.players.forEach(p=>{for(const c of p.name)h=(h*31+c.charCodeAt(0))&0x7fffffff}); _seed=(h||987654321); }
+
+function pickQuestion(cat,tier){
+ const key=cat+"|"+tier;
+ if(!S.used[key]) S.used[key]=[];
+ let pool=BANK[cat][tier].filter((_,i)=>!S.used[key].includes(i));
+ if(pool.length===0){ S.used[key]=[]; pool=BANK[cat][tier].slice(); }
+ const all=BANK[cat][tier];
+ const q=pool[Math.floor(rnd()*pool.length)];
+ S.used[key].push(all.indexOf(q));
+ return q;
+}
+function makeOptions(q){ return shuffle([q.correct,...q.wrong]); }
+
+/* ============================ RENDER ============================ */
+const app=()=>document.getElementById("app");
+function render(html,fade=true){ app().innerHTML=`<div class="${fade?'fade':''}">${html}</div>`; }
+function scorebar(){
+ const l=leaderIdx(), last=lastIdx();
+ return `<div class="scorebar">`+S.players.map((p,i)=>{
+   const cls=(S.players.filter(x=>x.score===p.score).length<3)?(i===l?'lead':(i===last?'last':'')):'';
+   return `<div class="p ${cls}"><div class="nm">${i===l?'👑 ':''}${esc(p.name)}</div><div class="sc">${p.score}</div></div>`;
+ }).join("")+`</div>`;
+}
+function esc(s){ return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+/* -------- SETUP -------- */
+function screenSetup(){
+ render(`
+  <h1>Reviravolta</h1>
+  <p class="sub">Quiz de família para 3 jogadores · sorte · desafios · viradas épicas</p>
+  <div class="card">
+    <input id="n0" type="text" placeholder="Jogador 1" maxlength="14">
+    <input id="n1" type="text" placeholder="Jogador 2" maxlength="14">
+    <input id="n2" type="text" placeholder="Jogador 3" maxlength="14">
+  </div>
+  <button class="btn gold" onclick="startGame()">Começar jogo 🎉</button>
+  <button class="btn ghost" onclick="showRules()">Como se joga?</button>
+ `);
+}
+function showRules(){
+ render(`
+  <h2>Como se joga</h2>
+  <div class="card" style="text-align:left;line-height:1.5">
+   <p>🎯 <b>9 rondas</b> de quiz + <b>2 desafios</b> + a <b>Reviravolta Final</b>.</p>
+   <p>🧠 Em cada ronda, um jogador responde. Ele escolhe o <b>nível</b> da pergunta (Seguro=1, Médio=2, Difícil=3) — esses são os pontos em jogo.</p>
+   <p>🎲 Os <b>outros dois apostam</b> em segredo se ele acerta ou falha (±1 ponto).</p>
+   <p>🃏 <b>Cartas de Sorte</b> podem virar tudo do avesso.</p>
+   <p>🤝 Quem está em <b>último escolhe a categoria</b> e tem um <b>50/50</b> por turno (rede de segurança).</p>
+   <p>🏆 Na <b>Reviravolta Final</b>, cada um aposta em segredo até tudo o que tem numa só pergunta. Nada está decidido até ao fim!</p>
+  </div>
+  <button class="btn" onclick="screenSetup()">Voltar</button>
+ `);
+}
+function startGame(){
+ const names=[0,1,2].map(i=>{const v=document.getElementById("n"+i).value.trim();return v||("Jogador "+(i+1))});
+ S=newState(names); seedFromNames(); S.queue=buildQueue(); nextEvent();
+}
+
+/* -------- MOTOR DE EVENTOS -------- */
+function nextEvent(){
+ if(S.qi>=S.queue.length){ return screenGameOver(); }
+ const ev=S.queue[S.qi];
+ if(ev.type==="quiz") return startQuizRound();
+ if(ev.type==="desafio") return screenDesafio();
+ if(ev.type==="final") return screenFinalIntro();
+}
+
+/* -------- RONDA DE QUIZ -------- */
+function startQuizRound(){
+ S.quizCount++;
+ S.answerer=(S.quizCount-1)%3;
+ S.multiplier=1; S.shield=false; S.fifty=false; S.removed=[]; S.tier=null; S.sideBets={}; S.luckCard=null;
+ // carta de sorte ~45%
+ if(rnd()<0.45){ S.luckCard=LUCK[Math.floor(rnd()*LUCK.length)]; return screenLuck(); }
+ screenCategory();
+}
+function screenLuck(){
+ const c=S.luckCard;
+ render(`
+  ${scorebar()}
+  <div class="roundhdr">Ronda ${S.quizCount} de 9 · ${esc(S.players[S.answerer].name)} responde</div>
+  <div class="luck"><div class="luckcard">
+    <div class="ico">${c.ico}</div>
+    <div class="t">${c.t}</div>
+    <div class="big">${c.d}</div>
+  </div></div>
+  <small class="hint">Carta virada por ${esc(S.players[S.answerer].name)}</small>
+  <button class="btn gold" onclick="applyLuck()">Aplicar carta ✨</button>
+ `);
+}
+function applyLuck(){ S.luckCard.fn(S); screenCategory(); }
+
+function screenCategory(){
+ const chooser=lastIdx();
+ render(`
+  ${scorebar()}
+  <div class="roundhdr">Ronda ${S.quizCount} de 9</div>
+  <h2>${esc(S.players[S.answerer].name)} responde</h2>
+  <p class="sub">📋 ${esc(S.players[chooser].name)} (em último) escolhe a categoria:</p>
+  <div class="grid2">
+   ${CATS.map(c=>`<button class="btn ghost" style="font-size:.95rem" onclick="chooseCat('${c}')">${CAT_ICON[c]}<br>${c}</button>`).join("")}
+  </div>
+ `);
+}
+function chooseCat(c){ S.category=c; screenDifficulty(); }
+
+function screenDifficulty(){
+ const canLifeline=(S.answerer===lastIdx());
+ render(`
+  ${scorebar()}
+  <div class="roundhdr">${CAT_ICON[S.category]} ${esc(S.category)}</div>
+  <h2>${esc(S.players[S.answerer].name)}, quanto arriscas?</h2>
+  <p class="sub">Acertas → ganhas os pontos. Falhas → perde-los.</p>
+  <button class="btn green" onclick="chooseTier(1)">🟢 Seguro · 1 ponto</button>
+  <button class="btn gold" onclick="chooseTier(2)">🟡 Médio · 2 pontos</button>
+  <button class="btn red" onclick="chooseTier(3)">🔴 Difícil · 3 pontos</button>
+  ${canLifeline&&!S.lifelineUsed?`<button class="btn ghost" onclick="useFifty()">🆘 Usar 50/50 (última posição)</button>`:''}
+  ${S.fifty?`<small class="hint">✅ 50/50 ativado para esta pergunta</small>`:''}
+ `);
+}
+function useFifty(){ S.fifty=true; S.lifelineUsed=true; screenDifficulty(); }
+function chooseTier(t){
+ S.tier=t; S.question=pickQuestion(S.category,t); S.options=makeOptions(S.question);
+ S.removed=[];
+ if(S.fifty){
+   const wrongOpts=S.options.filter(o=>o!==S.question.correct);
+   const toRemove=shuffle(wrongOpts).slice(0,2);
+   S.removed=toRemove;
+ }
+ startSideBets();
+}
+
+/* -------- APOSTAS SECRETAS DOS OUTROS DOIS -------- */
+function startSideBets(){
+ const others=[0,1,2].filter(i=>i!==S.answerer);
+ S.secret={queue:others,idx:0,mode:"sidebet"};
+ secretCover();
+}
+function secretCover(){
+ const i=S.secret.queue[S.secret.idx];
+ render(`
+  <div class="cover">
+   <div class="ico">🙈</div>
+   <h2>Passa o telemóvel a<br>${esc(S.players[i].name)}</h2>
+   <p class="sub">Só ${esc(S.players[i].name)} deve ver o ecrã.</p>
+  </div>
+  <button class="btn" onclick="secretShow()">Sou ${esc(S.players[i].name)} — ver</button>
+ `,false);
+}
+function secretShow(){
+ if(S.secret.mode==="sidebet") return sideBetInput();
+ return finalWagerInput();
+}
+function sideBetInput(){
+ const i=S.secret.queue[S.secret.idx];
+ render(`
+  ${scorebar()}
+  <div class="roundhdr">${CAT_ICON[S.category]} ${esc(S.category)} · nível ${S.tier}</div>
+  <h2>${esc(S.players[i].name)}, aposta!</h2>
+  <p class="sub">Achas que ${esc(S.players[S.answerer].name)} vai acertar? (±1 ponto)</p>
+  <button class="btn green" onclick="setBet('acerta')">✅ Acerta (+1 se certo)</button>
+  <button class="btn red" onclick="setBet('falha')">❌ Falha (+1 se certo)</button>
+  <button class="btn ghost" onclick="setBet('passo')">🤷 Passo (0 pontos)</button>
+ `);
+}
+function setBet(v){
+ const i=S.secret.queue[S.secret.idx];
+ S.sideBets[i]=v; S.secret.idx++;
+ if(S.secret.idx<S.secret.queue.length) return secretCover();
+ // todas as apostas feitas -> pergunta
+ render(`<div class="cover"><div class="ico">📱</div><h2>Devolve o telemóvel a<br>${esc(S.players[S.answerer].name)}</h2><p class="sub">Chegou a hora de responder!</p></div>
+   <button class="btn gold" onclick="screenQuestion()">Ver a pergunta</button>`,false);
+}
+
+/* -------- PERGUNTA -------- */
+function screenQuestion(){
+ const q=S.question;
+ render(`
+  ${scorebar()}
+  <div class="roundhdr">${CAT_ICON[S.category]} ${esc(S.category)} · ${['','Seguro','Médio','Difícil'][S.tier]} · ${S.tier} pt${S.tier>1?'s':''}${S.multiplier>1?' ✖️2':''}</div>
+  <div class="qbox">${esc(q.q)}</div>
+  ${S.options.map(o=>{
+    const rem=S.removed.includes(o);
+    return `<button class="btn ${rem?'':'ghost'}" ${rem?'disabled style="opacity:.2;text-decoration:line-through"':''} onclick="answer('${esc(o).replace(/'/g,"\\'")}')">${esc(o)}</button>`;
+  }).join("")}
+ `);
+}
+function answer(choice){
+ const q=S.question;
+ const correct=(choice===q.correct);
+ let base=S.tier*S.multiplier;
+ // pontos do respondente
+ if(correct){ gain(S.answerer,base); }
+ else { if(!S.shield) gain(S.answerer,-base); }
+ // resolver apostas laterais
+ const betRes=[];
+ Object.entries(S.sideBets).forEach(([i,v])=>{
+   i=+i;
+   if(v==="passo"){ betRes.push({i,txt:"passou",d:0}); return; }
+   const hit=(v==="acerta"&&correct)||(v==="falha"&&!correct);
+   gain(i,hit?1:-1);
+   betRes.push({i,txt:v==="acerta"?"apostou ACERTA":"apostou FALHA",d:hit?1:-1});
+ });
+ screenReveal(correct,choice,base,betRes);
+}
+function screenReveal(correct,choice,base,betRes){
+ const q=S.question;
+ render(`
+  ${scorebar()}
+  <h2 class="${correct?'reveal-ok':'reveal-no'}">${correct?'✅ Certo!':'❌ Errado!'}</h2>
+  <div class="card center">
+   <div class="qbox" style="font-size:1.05rem">${esc(q.q)}</div>
+   <p class="big">Resposta certa: <b class="reveal-ok">${esc(q.correct)}</b></p>
+   ${!correct?`<p class="sub">${esc(S.players[S.answerer].name)} respondeu: ${esc(choice)}</p>`:''}
+   <p class="tag ${correct?'gold':'pink'}">${esc(S.players[S.answerer].name)} ${correct?'+'+base:(S.shield?'0 (escudo 🛡️)':'-'+base)}</p>
+   ${betRes.map(b=>`<span class="tag">${esc(S.players[b.i].name)} ${b.txt}: ${b.d>0?'+'+b.d:b.d}</span>`).join("")}
+  </div>
+  <button class="btn gold" onclick="endRound()">Continuar ➡️</button>
+ `);
+}
+function endRound(){ S.qi++; nextEvent(); }
+
+/* -------- DESAFIO -------- */
+function screenDesafio(){
+ const d=DESAFIOS[Math.floor(rnd()*DESAFIOS.length)];
+ S._desafio=d;
+ render(`
+  ${scorebar()}
+  <div class="roundhdr">⚡ Desafio Reviravolta</div>
+  <h2>${esc(d.t)}</h2>
+  <div class="card center"><p class="big">${esc(d.d)}</p><p class="sub">Vale <b>3 pontos</b> para o vencedor!</p></div>
+  <div class="timer" id="tmr">20</div>
+  <button class="btn gold" id="startTmr" onclick="startTimer(20)">▶️ Iniciar 20s</button>
+  <button class="btn ghost" onclick="desafioWinner()">Já está — escolher vencedor</button>
+ `);
+}
+let _tmr=null;
+function startTimer(n){
+ const el=document.getElementById("tmr"); if(!el)return;
+ let t=n; el.textContent=t;
+ const btn=document.getElementById("startTmr"); if(btn)btn.disabled=true;
+ clearInterval(_tmr);
+ _tmr=setInterval(()=>{ t--; if(el)el.textContent=t; if(t<=0){clearInterval(_tmr); if(el){el.textContent="⏰";}} },1000);
+}
+function desafioWinner(){
+ clearInterval(_tmr);
+ render(`
+  ${scorebar()}
+  <h2>Quem ganhou o desafio?</h2>
+  <p class="sub">Decidam em conjunto — o vencedor leva 3 pontos.</p>
+  ${S.players.map((p,i)=>`<button class="btn" onclick="awardDesafio(${i})">🏅 ${esc(p.name)}</button>`).join("")}
+  <button class="btn ghost" onclick="awardDesafio(-1)">Empate / ninguém</button>
+ `);
+}
+function awardDesafio(i){ if(i>=0) gain(i,3); S.qi++; nextEvent(); }
+
+/* -------- REVIRAVOLTA FINAL -------- */
+function screenFinalIntro(){
+ render(`
+  ${scorebar()}
+  <h1 style="font-size:1.8rem">🎆 Reviravolta Final</h1>
+  <div class="card center">
+   <p class="big">Uma última pergunta <b>difícil</b> decide tudo.</p>
+   <p>Cada jogador aposta em <b>segredo</b> quantos pontos arrisca (até tudo o que tem, e um pouco mais).</p>
+   <p>Acertas → <b class="reveal-ok">ganhas a aposta</b>. Falhas → <b class="reveal-no">perde-la</b>.</p>
+  </div>
+  <button class="btn gold" onclick="startFinal()">Fazer as apostas 🤫</button>
+ `);
+}
+function startFinal(){
+ // pergunta difícil aleatória
+ const cat=CATS[Math.floor(rnd()*CATS.length)];
+ S.finalQuestion=pickQuestion(cat,3); S.finalCat=cat;
+ S.finalOptions=makeOptions(S.finalQuestion);
+ S.finalWagers={};
+ S.secret={queue:[0,1,2],idx:0,mode:"final"};
+ secretCover();
+}
+function finalWagerInput(){
+ const i=S.secret.queue[S.secret.idx];
+ const max=Math.max(S.players[i].score,8);
+ render(`
+  <div class="roundhdr">Reviravolta Final</div>
+  <h2>${esc(S.players[i].name)}</h2>
+  <p class="sub">Tens <b>${S.players[i].score}</b> pontos. Aposta entre 0 e ${max}.</p>
+  <div class="timer" id="wv">0</div>
+  <input id="wager" type="range" min="0" max="${max}" value="0" style="width:100%" oninput="document.getElementById('wv').textContent=this.value">
+  <button class="btn gold" onclick="setWager()">Confirmar aposta 🔒</button>
+  <small class="hint">Ninguém mais vê a tua aposta.</small>
+ `,false);
+}
+function setWager(){
+ const i=S.secret.queue[S.secret.idx];
+ S.finalWagers[i]=+document.getElementById("wager").value;
+ S.secret.idx++;
+ if(S.secret.idx<S.secret.queue.length) return secretCover();
+ finalQuestionScreen();
+}
+function finalQuestionScreen(){
+ // Todos respondem em segredo? Para simplicidade: cada um responde à vez (secreto).
+ S.finalAnswers={};
+ S.secret={queue:[0,1,2],idx:0,mode:"finalans"};
+ secretCoverFinalAns();
+}
+function secretCoverFinalAns(){
+ const i=S.secret.queue[S.secret.idx];
+ render(`
+  <div class="cover"><div class="ico">🤐</div>
+   <h2>Passa a ${esc(S.players[i].name)}</h2>
+   <p class="sub">Responde em segredo.</p></div>
+  <button class="btn" onclick="finalAnsInput()">Sou ${esc(S.players[i].name)} — responder</button>
+ `,false);
+}
+function finalAnsInput(){
+ const i=S.secret.queue[S.secret.idx];
+ const q=S.finalQuestion;
+ render(`
+  <div class="roundhdr">${CAT_ICON[S.finalCat]} ${esc(S.finalCat)} · Difícil · aposta ${S.finalWagers[i]}</div>
+  <h2>${esc(S.players[i].name)}</h2>
+  <div class="qbox">${esc(q.q)}</div>
+  ${S.finalOptions.map(o=>`<button class="btn ghost" onclick="setFinalAns('${esc(o).replace(/'/g,"\\'")}')">${esc(o)}</button>`).join("")}
+ `,false);
+}
+function setFinalAns(o){
+ const i=S.secret.queue[S.secret.idx];
+ S.finalAnswers[i]=o; S.secret.idx++;
+ if(S.secret.idx<S.secret.queue.length) return secretCoverFinalAns();
+ // resolver
+ const q=S.finalQuestion;
+ const res=S.players.map((p,i)=>{
+   const ok=S.finalAnswers[i]===q.correct;
+   const w=S.finalWagers[i];
+   gain(i,ok?w:-w);
+   return {i,ok,w};
+ });
+ render(`
+  <h1 style="font-size:1.6rem">🎆 Resultado Final</h1>
+  <div class="card center">
+   <div class="qbox" style="font-size:1.05rem">${esc(q.q)}</div>
+   <p class="big">Resposta: <b class="reveal-ok">${esc(q.correct)}</b></p>
+   ${res.map(r=>`<p class="tag ${r.ok?'gold':'pink'}">${esc(S.players[r.i].name)}: ${r.ok?'✅ +'+r.w:'❌ -'+r.w}</p>`).join("")}
+  </div>
+  ${scorebar()}
+  <button class="btn gold" onclick="screenGameOver()">Ver o vencedor 🏆</button>
+ `);
+}
+
+/* -------- FIM DE JOGO -------- */
+function screenGameOver(){
+ const order=S.players.map((p,i)=>({...p,i})).sort((a,b)=>b.score-a.score);
+ const win=order[0];
+ confetti();
+ render(`
+  <h1>🏆 ${esc(win.name)} vence!</h1>
+  <p class="sub">${win.score} pontos</p>
+  <div class="card">
+   ${order.map((p,r)=>`<div class="big" style="display:flex;justify-content:space-between;padding:8px 4px;border-bottom:1px solid rgba(255,255,255,.1)">
+     <span>${['🥇','🥈','🥉'][r]} ${esc(p.name)}</span><b>${p.score}</b></div>`).join("")}
+  </div>
+  <button class="btn gold" onclick="rematch()">Jogar outra vez 🔁</button>
+  <button class="btn ghost" onclick="screenSetup()">Novos jogadores</button>
+ `);
+}
+function rematch(){ const names=S.players.map(p=>p.name); S=newState(names); seedFromNames(); _seed=(_seed*7919+13)&0x7fffffff; S.queue=buildQueue(); nextEvent(); }
+function confetti(){
+ const cols=["#ffcc33","#ff2e88","#7b2ff7","#20e37a","#ff4d6d"];
+ for(let k=0;k<60;k++){
+   const d=document.createElement("div"); d.className="confetti";
+   d.style.left=(rnd()*100)+"vw"; d.style.background=cols[Math.floor(rnd()*cols.length)];
+   d.style.animationDuration=(1.5+rnd()*2)+"s"; d.style.animationDelay=(rnd()*0.6)+"s";
+   document.body.appendChild(d); setTimeout(()=>d.remove(),4000);
+ }
+}
+
+/* ============================ ARRANQUE ============================ */
+screenSetup();
+</script>
+</body>
+</html>
