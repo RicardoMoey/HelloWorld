@@ -1,4 +1,14 @@
-# 🎲 Reviravolta
+# HelloWorld — Jogos de Família
+
+Projeto dedicado a **jogos de família**. Cada jogo é uma app web num único
+ficheiro, jogável no telemóvel, tablet ou computador — sem instalações.
+
+**Jogos disponíveis:**
+- 🎲 **[Reviravolta](index.html)** — quiz para 3 jogadores com sorte, desafios e viradas.
+
+---
+
+## 🎲 Reviravolta
 
 **Jogo de quiz de família, otimizado para exatamente 3 jogadores.**
 Mérito (saber e apostar bem) + sorte (cartas de reviravolta) + desafios + uma
