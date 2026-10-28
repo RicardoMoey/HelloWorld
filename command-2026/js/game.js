@@ -26,7 +26,8 @@
     const facIds = Object.keys(CG.FACTIONS);
     const rng = CG.RNG(seed ^ 0x1234567);
     for (let i = 0; i < nPlayers; i++) {
-      const o = i === 0 ? { faction: opts.faction, difficulty: null } : opts.opponents[i - 1];
+      // com opts.humanAI o jogador 0 também é controlado pela IA (simulações IA-contra-IA)
+      const o = i === 0 ? { faction: opts.faction, difficulty: opts.humanAI ? opts.humanDifficulty || 'normal' : null } : opts.opponents[i - 1];
       let fid = o.faction;
       if (!CG.FACTIONS[fid]) fid = facIds[rng.int(facIds.length)];
       const diff = o.difficulty ? CG.DIFFICULTY[o.difficulty] : null;
