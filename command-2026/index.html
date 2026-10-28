@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Command &amp; Geopolitics: 2026</title>
+<meta name="description" content="Estratégia em tempo real inspirada em Command &amp; Conquer, no contexto geopolítico de 2026.">
+<meta name="theme-color" content="#06090c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="icon" href="../icon-192.png">
+<link rel="apple-touch-icon" href="../icon-180.png">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="game" class="hidden">
+  <div id="viewport">
+    <canvas id="view"></canvas>
+    <div id="hud-top">
+      <div id="clock">00:00</div>
+      <div id="msgs" aria-live="polite"></div>
+      <div id="fps" class="hidden"></div>
+    </div>
+    <div id="hint" class="hidden"></div>
+  </div>
+  <aside id="sidebar">
+    <div id="radar">
+      <canvas id="minimap"></canvas>
+      <div id="radar-off"><span>SEM RADAR</span><small>Constrói um Centro de Comunicações</small></div>
+    </div>
+    <div id="eco">
+      <div class="capital"><span class="lbl">CAPITAL</span><span id="credits">0</span></div>
+      <div class="power">
+        <div class="lbl">ENERGIA <span id="power-txt">0 / 0</span></div>
+        <div id="power-bar"><div id="power-fill"></div><div id="power-use"></div></div>
+      </div>
+    </div>
+    <div id="powers"></div>
+    <nav id="tabs"></nav>
+    <div id="build"></div>
+    <div id="selinfo"></div>
+    <div id="cmds"></div>
+  </aside>
+</div>
+
+<div id="tooltip" class="hidden"></div>
+
+<section id="screen-menu" class="screen">
+  <div class="panel menu">
+    <header class="title">
+      <div class="kicker">ESTRATÉGIA EM TEMPO REAL</div>
+      <h1>COMMAND <span>&amp;</span> GEOPOLITICS</h1>
+      <div class="year">2026</div>
+      <p class="brief">A escassez de terras raras e a corrida às redes de energia reacendem conflitos por procuração em três continentes. Escolhe a tua coligação, ergue uma base, controla os recursos e derrota as forças rivais.</p>
+    </header>
+    <h2 class="sec">Escolhe a coligação</h2>
+    <div id="factions" class="factions"></div>
+    <div class="opts">
+      <div class="opt"><label>Adversários</label><div class="seg" data-key="opponents"></div></div>
+      <div class="opt"><label>Dificuldade</label><div class="seg" data-key="difficulty"></div></div>
+      <div class="opt"><label>Mapa</label><div class="seg" data-key="mapSize"></div></div>
+      <div class="opt"><label>Capital inicial</label><div class="seg" data-key="credits"></div></div>
+      <div class="opt"><label>Teatro</label><div class="seg" data-key="theme"></div></div>
+    </div>
+    <div class="actions">
+      <button id="btn-start" class="btn primary">▶ Iniciar operação</button>
+      <button id="btn-help" class="btn">Como jogar</button>
+    </div>
+    <div class="toggles">
+      <label><input type="checkbox" id="opt-sound"> Som</label>
+      <label><input type="checkbox" id="opt-music"> Música</label>
+      <label><input type="checkbox" id="opt-voice"> Voz de comando</label>
+      <a class="back" href="../index.html">← Jogos de Família</a>
+    </div>
+    <p class="note">Melhor em computador (rato ou trackpad + teclado). No iPad: toque para selecionar/ordenar, arrastar para mover o mapa, pinça para zoom.</p>
+  </div>
+</section>
+
+<section id="screen-help" class="screen hidden">
+  <div class="panel help">
+    <h2>Como jogar</h2>
+    <div class="cols">
+      <div>
+        <h3>Objetivo</h3>
+        <p>Destrói todos os edifícios inimigos (e os seus MCV). Perdes se ficares sem edifícios e sem MCV.</p>
+        <h3>Economia</h3>
+        <ul>
+          <li><b>Capital</b>: os <b>Extratores</b> recolhem terras raras (cristais verdes/violeta) e entregam-nas na <b>Refinaria</b>. Captura <b>Poços de Petróleo</b> com Engenheiros para rendimento extra.</li>
+          <li><b>Energia</b>: as Centrais Elétricas produzem; os restantes edifícios consomem. <b>Energia negativa</b>: produção a 30%, radar desligado, defesas com energia (Antitanque, SAM) offline e poderes de apoio em pausa.</li>
+          <li>A produção paga-se aos poucos: sem capital, a fila fica em espera.</li>
+          <li>Os edifícios só podem ser colocados a <b>4 tiles</b> de outro edifício teu (exceto defesas).</li>
+        </ul>
+        <h3>Triângulo tático</h3>
+        <div id="rps"></div>
+        <p class="small">Veículos esmagam infantaria · Aéreos destroem veículos · Infantaria (sobretudo MANPADS) abate aéreos. Antiaéreos e SAM também protegem contra o ar.</p>
+      </div>
+      <div>
+        <h3>Rato / trackpad</h3>
+        <table class="keys">
+          <tr><td>Clique</td><td>Selecionar (Shift/⌘ adiciona)</td></tr>
+          <tr><td>Arrastar</td><td>Caixa de seleção</td></tr>
+          <tr><td>Duplo clique</td><td>Todas as unidades desse tipo no ecrã</td></tr>
+          <tr><td>Botão direito / ctrl+clique</td><td>Ordem contextual: mover, atacar, colher, capturar, ponto de reunião</td></tr>
+          <tr><td>Bordas do ecrã / setas / 2 dedos</td><td>Mover o mapa</td></tr>
+          <tr><td>Pinça / + −</td><td>Zoom</td></tr>
+          <tr><td>Minimapa</td><td>Clique move a câmara; botão direito envia unidades</td></tr>
+        </table>
+        <h3>Teclado</h3>
+        <table class="keys">
+          <tr><td>A</td><td>Atacar-mover (ataca tudo pelo caminho)</td></tr>
+          <tr><td>S</td><td>Parar</td></tr>
+          <tr><td>D</td><td>Implantar MCV</td></tr>
+          <tr><td>Ctrl/⌥ + 1–9</td><td>Criar grupo · 1–9 seleciona (2× centra)</td></tr>
+          <tr><td>Q / W / E</td><td>Exército no ecrã / exército todo / mesmo tipo</td></tr>
+          <tr><td>R / V</td><td>Modo reparar / vender</td></tr>
+          <tr><td>H / Espaço</td><td>Ir para a base / último alerta</td></tr>
+          <tr><td>Tab</td><td>Mudar separador de construção</td></tr>
+          <tr><td>P / Esc</td><td>Pausa · Esc cancela modos</td></tr>
+        </table>
+        <h3>Barra lateral</h3>
+        <p class="small">Clique num ícone para produzir (Shift+clique: 5 unidades). Botão direito cancela. Estruturas prontas: clica no ícone «PRONTO» e depois no mapa para colocar.</p>
+      </div>
+    </div>
+    <div class="actions"><button class="btn primary" data-close="screen-help">Entendido</button></div>
+  </div>
+</section>
+
+<section id="screen-pause" class="screen hidden">
+  <div class="panel small">
+    <h2>Pausa</h2>
+    <div class="stack">
+      <button class="btn primary" id="btn-resume">Continuar</button>
+      <div class="opt"><label>Velocidade</label><div class="seg" data-key="speed"></div></div>
+      <div class="toggles">
+        <label><input type="checkbox" id="opt-sound2"> Som</label>
+        <label><input type="checkbox" id="opt-music2"> Música</label>
+        <label><input type="checkbox" id="opt-voice2"> Voz</label>
+      </div>
+      <button class="btn" id="btn-help2">Como jogar</button>
+      <button class="btn" id="btn-restart">Recomeçar</button>
+      <button class="btn danger" id="btn-quit">Sair para o menu</button>
+    </div>
+  </div>
+</section>
+
+<section id="screen-end" class="screen hidden">
+  <div class="panel end">
+    <h2 id="end-title">VITÓRIA</h2>
+    <p id="end-sub"></p>
+    <div id="end-stats"></div>
+    <div class="actions">
+      <button class="btn primary" id="btn-again">Jogar de novo</button>
+      <button class="btn" id="btn-menu">Menu</button>
+    </div>
+  </div>
+</section>
+
+<script src="js/core.js"></script>
+<script src="js/data.js"></script>
+<script src="js/map.js"></script>
+<script src="js/spatial.js"></script>
+<script src="js/path.js"></script>
+<script src="js/entities.js"></script>
+<script src="js/units.js"></script>
+<script src="js/combat.js"></script>
+<script src="js/fog.js"></script>
+<script src="js/ai.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/sprites.js"></script>
+<script src="js/render.js"></script>
+<script src="js/input.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/game.js"></script>
+<script>
+  /* service worker do projeto (cache offline), só via http/https */
+  if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+    window.addEventListener('load', () => navigator.serviceWorker.register('../sw.js').catch(() => {}));
+  }
+</script>
+</body>
+</html>

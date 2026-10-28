@@ -1,6 +1,10 @@
-/* Service worker do Reviravolta — cache para funcionar offline como app */
-const CACHE = 'reviravolta-v1';
-const ASSETS = ['./', './index.html', './manifest.json', './icon-180.png', './icon-192.png', './icon-512.png'];
+/* Service worker dos Jogos de Família — cache para funcionar offline como app */
+const CACHE = 'jogos-familia-v2';
+const ASSETS = [
+  './', './index.html', './reviravolta.html', './manifest.json', './icon-180.png', './icon-192.png', './icon-512.png',
+  './command-2026/index.html', './command-2026/css/style.css',
+  ...['core', 'data', 'map', 'spatial', 'path', 'entities', 'units', 'combat', 'fog', 'ai', 'audio', 'sprites', 'render', 'input', 'ui', 'game'].map((f) => './command-2026/js/' + f + '.js'),
+];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
 });

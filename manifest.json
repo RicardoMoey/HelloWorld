@@ -3,7 +3,7 @@
   "short_name": "Reviravolta",
   "description": "Jogo de quiz de família para 3 jogadores — com sorte, desafios e reviravoltas.",
   "lang": "pt-PT",
-  "start_url": "./index.html",
+  "start_url": "./reviravolta.html",
   "scope": "./",
   "display": "standalone",
   "orientation": "any",

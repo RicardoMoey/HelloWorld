@@ -1,10 +1,115 @@
 # HelloWorld — Jogos de Família
 
-Projeto dedicado a **jogos de família**. Cada jogo é uma app web num único
-ficheiro, jogável no telemóvel, tablet ou computador — sem instalações.
+Projeto dedicado a **jogos de família**. Cada jogo é uma app web jogável no
+browser, sem instalações. A página **`index.html`** é o menu de entrada.
 
 **Jogos disponíveis:**
-- 🎲 **[Reviravolta](index.html)** — quiz para 3 jogadores com sorte, desafios e viradas.
+- 🎲 **[Reviravolta](reviravolta.html)** — quiz para 3 jogadores com sorte, desafios e viradas.
+- 🎯 **[Command & Geopolitics: 2026](command-2026/index.html)** — estratégia em tempo real (RTS) ao estilo Command & Conquer, 1 jogador contra IA.
+
+## Como correr (macOS)
+
+Duplo-clique em `index.html` funciona para o Reviravolta. Para o RTS, o Safari
+bloqueia alguns recursos em `file://`, por isso o mais fiável é servir a pasta:
+
+```bash
+cd HelloWorld
+python3 -m http.server 8000
+```
+
+Abre `http://localhost:8000` no Safari ou Chrome. Tudo é self-contained: sem
+dependências, sem internet, sem servidor para além deste.
+
+### Instalar como app (iPad / iPhone / Android)
+
+`manifest.json` + `sw.js` (service worker) fazem o projeto abrir em ecrã inteiro
+e funcionar **offline**. Precisa de ser servido por **https** (ex.: GitHub Pages):
+
+1. No repositório: **Settings → Pages → Deploy from a branch** → branch `main`, pasta `/(root)` → **Save**.
+2. Abre o URL de Pages no **Safari** (iPad/iPhone) ou **Chrome** (Android).
+3. **Partilhar → Adicionar ao ecrã principal**.
+
+---
+
+## 🎯 Command & Geopolitics: 2026
+
+RTS clássico (construção de base, economia, combate pedra-papel-tesoura, nevoeiro
+de guerra) ambientado na geopolítica de 2026: escassez de terras raras, redes de
+energia, conflitos por procuração e ciberguerra. Tudo em `command-2026/`:
+`index.html` + módulos JS/CSS, Canvas 2D, zero dependências.
+
+### Coligações
+
+| Coligação | Doutrina | Unidades únicas | Poderes de apoio |
+|---|---|---|---|
+| **Aliança Atlântica** (NATO/UE) | Tecnologia equilibrada, mobilidade; defesas com +20% de alcance | Atirador de Elite, Blindado Ágil, Lança-Foguetes de Precisão, Drone de Vigilância | Varredura de Satélite, Ataque Orbital |
+| **Eixo Euroasiático** | Blindados pesados, artilharia; produção 20% mais rápida | Tanque Pesado, Artilharia Autopropulsada, Lança-Foguetes Múltiplo | Barragem de Artilharia, Míssil Hipersónico |
+| **Vanguarda do Sul Global** | Assimétrica; edifícios 15% mais baratos | Hacker, Tanque Fantasma (furtivo), Técnicas, Enxame de Drones | Ciberataque, Pulso EMP |
+
+### Mecânicas
+
+- **Economia de 2 recursos.** *Capital*: Extratores recolhem terras raras e
+  descarregam na Refinaria; Engenheiros capturam Poços de Petróleo neutros.
+  *Energia*: Centrais produzem, o resto consome. Com energia negativa a
+  produção cai para 30%, o radar apaga-se, as defesas com energia (Antitanque,
+  SAM) desligam-se e os poderes de apoio param.
+- **Construção em grelha** com validação de raio (4 tiles de outro edifício teu),
+  terreno, unidades no local e saída da refinaria. Edifícios vendem-se (50%) e
+  reparam-se (custo gradual).
+- **Triângulo tático:** Veículos > Infantaria > Aéreo > Veículos. Cada arma tem
+  uma ogiva com multiplicadores por tipo de blindagem.
+- **Micro:** atacar-mover (A), parar (S), grupos de controlo (Ctrl+1–9),
+  seleção por caixa, duplo-clique por tipo, ponto de reunião, Engenheiros
+  capturam/reparam, MCV implanta um novo Centro de Comando (D).
+- **Nevoeiro de guerra** por jogador (visível / explorado), unidades furtivas
+  reveladas por proximidade, detetores ou radar.
+- **IA adversária:** árvore de comportamento (behavior tree) que gere energia e
+  economia, constrói a base por plano, produz contra-unidades segundo o que
+  avista, defende a base, lança vagas (reunir → atacar → recuar), envia
+  batedores, captura poços e usa poderes de apoio. Três dificuldades.
+- **Apresentação:** HUD militar, minimapa/radar, tremor de ecrã na artilharia,
+  crateras e destroços, partículas, áudio procedimental (Web Audio API), música
+  generativa e voz de comando em português (síntese de fala do sistema).
+
+### Controlos
+
+| | |
+|---|---|
+| Clique / arrastar | Selecionar / caixa de seleção (Shift ou ⌘ adiciona) |
+| Botão direito (ou ctrl+clique) | Ordem contextual: mover, atacar, colher, capturar, reunião |
+| Bordas do ecrã, setas, 2 dedos no trackpad | Mover a câmara · pinça ou `+`/`-` para zoom |
+| A / S / D | Atacar-mover · Parar · Implantar MCV |
+| Q / W / E | Exército no ecrã · todo o exército · mesmo tipo |
+| R / V | Modo reparar · modo vender |
+| H / Espaço | Ir para a base · ir para o último alerta |
+| Tab · P · Esc · F2 | Separador de construção · pausa · cancelar · FPS |
+
+No iPad: toque seleciona/ordena, arrastar move o mapa, toque longo + arrastar
+faz caixa de seleção, pinça faz zoom.
+
+### Arquitetura (`command-2026/js/`)
+
+| Ficheiro | Responsabilidade |
+|---|---|
+| `core.js` | namespace, matemática, RNG determinístico (mulberry32), ruído, armazenamento |
+| `data.js` | ogivas, armas, unidades, edifícios, fações, poderes, dificuldades |
+| `map.js` | mapa procedimental com simetria de rotação, campos de terras raras, poços |
+| `spatial.js` | partição espacial por grelha (hash) para consultas por raio |
+| `path.js` | A* com heap binária e carimbos de geração, suavização por linha de vista, fila com orçamento por tick |
+| `entities.js` | criação, colocação, energia, filas de produção, captura, destruição |
+| `units.js` | ordens, movimento e separação local, colheita, engenheiros, MCV, aquisição de alvos, torres |
+| `combat.js` | disparo, projéteis, dano em área, poderes de apoio, partículas e tremor |
+| `fog.js` | nevoeiro de guerra e deteção de furtivos |
+| `ai.js` | árvore de comportamento da IA |
+| `audio.js` | efeitos sintetizados posicionais, música generativa, voz |
+| `sprites.js` | desenho vetorial de unidades/edifícios (nítido em Retina), ícones |
+| `render.js` | terreno pré-calculado, atlas por escala, entidades interpoladas, nevoeiro, minimapa |
+| `input.js` | rato, trackpad, teclado, toque; modos de ordem |
+| `ui.js` | menu, barra lateral, dicas, pausa, ecrã final |
+| `game.js` | estado, ciclo de simulação a 60 Hz com passo fixo e interpolação no render, vitória/derrota |
+
+A simulação é determinística dada a semente; o motor corre também em Node.js
+sem browser (útil para testar IA contra IA).
 
 ---
 
@@ -14,97 +119,37 @@ ficheiro, jogável no telemóvel, tablet ou computador — sem instalações.
 Mérito (saber e apostar bem) + sorte (cartas de reviravolta) + desafios + uma
 grande virada final. Nada está decidido até à última pergunta.
 
-Corre no telemóvel, tablet ou computador — basta abrir um ficheiro. Sem
-instalações, sem internet, sem servidor.
+### Como jogar
 
-## Como jogar
+Abre **`reviravolta.html`**. Escreve os 3 nomes e carrega em **Começar jogo**.
+Joga-se em modo *passa-e-joga*: o telemóvel anda à volta da mesa e o ecrã avisa
+a quem deve passar (as apostas são secretas). Uma partida dura ~15–20 min.
+Há um botão de **som** 🔊 no canto.
 
-Abre o ficheiro **`index.html`** num browser (duplo-clique). Escreve os 3 nomes
-e carrega em **Começar jogo**. Joga-se em modo *passa-e-joga*: o telemóvel anda
-à volta da mesa e o ecrã avisa a quem deve passar (as apostas são secretas).
-
-Uma partida dura ~15–20 min. Há um botão de **som** 🔊 no canto (podes silenciar).
-
-## Instalar como app (iPad / iPhone / Android)
-
-O jogo é uma **PWA** (app web instalável): `manifest.json` + `sw.js` (service
-worker) fazem-no abrir em ecrã inteiro com ícone próprio e funcionar **offline**.
-Para instalar, precisa de ser servido por um link **https** (ex.: GitHub Pages):
-
-1. No repositório: **Settings → Pages → Deploy from a branch** → escolhe a branch
-   com estes ficheiros e a pasta `/(root)` → **Save**.
-2. Abre o URL de Pages no **Safari** (iPad/iPhone) ou **Chrome** (Android).
-3. **Partilhar → Adicionar ao ecrã principal**. Fica com ícone 🎲 e abre como app.
-
-Depois da primeira abertura, funciona sem internet.
-
-## Categorias (9 fixas + a vossa)
+### Categorias (9 fixas + a vossa)
 
 Cultura Geral · História · Ciência · Desporto · Música & Cinema ·
 Portugal & Madeira · Geografia · Natureza & Animais · Comida & Bebida —
-**270 perguntas** no total.
+**270 perguntas** no total. E ainda a categoria **👨‍👩‍👧 Família**: cada família
+cria as suas próprias perguntas (guardadas no dispositivo).
 
-E ainda uma categoria **👨‍👩‍👧 Família**: no ecrã inicial, em *Perguntas da
-Família*, cada família cria as suas próprias perguntas (resposta certa + 3
-erradas + nível). Ficam guardadas no dispositivo e passam a ser uma categoria
-escolhível no jogo.
-
-## Estrutura de uma partida
+### Estrutura de uma partida
 
 - **9 rondas de quiz** + **2 desafios** (a seguir às rondas 3 e 6) + a **Reviravolta Final**.
+- Quem está em **último escolhe a categoria**; quem responde escolhe o nível
+  (🟢 1 pt · 🟡 2 pts · 🔴 3 pts) e arrisca esses pontos.
+- **Apostas laterais:** os outros dois apostam em segredo se acerta ou falha (±1 pt).
+- Quem está em último pode usar um **50/50** por turno.
+- 🃏 **Cartas de Sorte** (Presente, Assalto, Troca de Destinos, Aposta Dobrada,
+  Escudo, Boleia) podem sair no início de uma ronda.
+- ⚡ **Desafios** (mímica, rapidez, criatividade) valem 3 pontos.
+- 🎆 **Reviravolta Final:** aposta secreta de pontos numa última pergunta difícil.
 
-### Ronda de quiz
-1. Quem responde vai rodando entre os três jogadores.
-2. **Catch-up:** quem está em **último escolhe a categoria** (6 à escolha).
-3. Quem responde escolhe o **nível** — e esses são os pontos que arrisca:
-   - 🟢 Seguro · 1 pt   🟡 Médio · 2 pts   🔴 Difícil · 3 pts
-   - Acerta → ganha esses pontos. Falha → perde-os.
-4. **Apostas laterais:** os outros dois apostam em segredo se ele *acerta* ou *falha* (±1 pt) — ninguém fica de fora.
-5. Rede de segurança: quem está em último pode usar um **50/50** por turno.
+Equilíbrio ~70% mérito / 30% sorte; as mecânicas de *catch-up* dão ferramentas
+a quem está atrás em vez de castigar quem lidera.
 
-### 🃏 Cartas de Sorte (podem sair no início de uma ronda)
-| Carta | Efeito |
-|-------|--------|
-| 🎁 Presente | +2 pontos para quem responde |
-| 🥷 Assalto | Rouba 2 pontos ao líder |
-| 🔄 Troca de Destinos | O 1.º e o último trocam de pontuação |
-| ✖️2 Aposta Dobrada | A aposta da ronda conta a dobrar |
-| 🛡️ Escudo | Se falhares, não perdes pontos |
-| 🚀 Boleia | +3 pontos para o jogador em último |
+### Personalizar
 
-### ⚡ Desafios
-Mini-provas fora do quiz (mímica, rapidez, criatividade) avaliadas pela família.
-Valem 3 pontos — quem não é craque de cultura geral também brilha.
-
-### 🎆 Reviravolta Final
-Uma última pergunta difícil. Cada jogador aposta **em segredo** quantos pontos
-arrisca (até tudo o que tem — e um pouco mais). Acerta → ganha a aposta; falha →
-perde-a. É aqui que o último pode roubar a vitória.
-
-## Filosofia de design
-
-Equilíbrio ~70% mérito / 30% sorte: o bom jogador ganha mais vezes, mas há
-sempre hipótese de virada. As mecânicas de *catch-up* **dão ferramentas a quem
-está atrás** em vez de castigar quem lidera — para o jogo se manter emocionante
-e justo até ao fim.
-
-## Som e animações
-
-Tudo self-contained (funciona offline, sem ficheiros externos):
-- **Sons** sintetizados via Web Audio API — acerto, erro, carta de sorte,
-  desafio, tique-taque do cronómetro e fanfarra de vitória. Botão 🔊/🔇 para
-  ligar/desligar (a preferência fica guardada).
-- **Animações** — variação de pontos a flutuar (+N/−N) sobre o placar, "pulse"
-  no acerto, "shake" no erro, salto no nome do vencedor e confétti no final.
-
-## Personalizar
-
-O jogo inclui **270 perguntas** (9 categorias × 3 níveis × 10), mais as da
-categoria Família. Todo o jogo está num único ficheiro `index.html`. Para
-adicionar mais perguntas fixas, edita o objeto `BANK` no `<script>`. Cada
-pergunta é `{q, correct, wrong:[3 erradas]}`. Os desafios estão em `DESAFIOS`,
-as cartas em `LUCK` e os sons em `sfx()`.
-
----
-*Testado de ponta a ponta (setup → 9 rondas → cartas → desafios → aposta final →
-vencedor) sem erros.*
+Todo o jogo está num único ficheiro. Para adicionar perguntas fixas, edita o
+objeto `BANK` no `<script>` (`{q, correct, wrong:[3 erradas]}`). Os desafios
+estão em `DESAFIOS`, as cartas em `LUCK` e os sons em `sfx()`.
