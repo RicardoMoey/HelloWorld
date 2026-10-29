@@ -1,5 +1,115 @@
-/* por implementar: textos pt-PT desta área (Object.assign(OV.STR, {...})) */
+/* Textos pt-PT da interceção (janela de dogfight: js/ui/dogfight_ui.js). Chaves df.*;
+   df.start e df.end.<resultado> servem também os avisos do Geoscape (CAMPAIGN_API §4). */
 (function (OV) {
   'use strict';
   OV.STR = OV.STR || {};
+  Object.assign(OV.STR, {
+    'df.title': 'Interceção',
+    'df.start': 'Contacto! {craft} interceta {ufo}',
+    'df.vs': 'contra',
+    'df.ufoLabel': 'OVNI-{n}',
+    'df.alt': 'Altitude {alt}',
+    'df.elapsed': 'Tempo de combate',
+
+    // posturas (Data.dogfight.modeOrder)
+    'df.modes': 'Postura de combate',
+    'df.mode.standoff': 'Distância',
+    'df.mode.cautious': 'Cauteloso',
+    'df.mode.standard': 'Normal',
+    'df.mode.aggressive': 'Agressivo',
+    'df.mode.disengage': 'Desengatar',
+    'df.mode.standoff.hint': 'Mantém-se fora do alcance de tudo, sem disparar.',
+    'df.mode.cautious.hint': 'Ataca ao alcance da arma mais longa e recarrega devagar. Com 50 % de dano recua para Distância.',
+    'df.mode.standard.hint': 'Aproxima-se até ao alcance da arma mais curta e recarrega à cadência normal.',
+    'df.mode.aggressive.hint': 'Cola-se ao OVNI e dispara à cadência máxima, sob o fogo inimigo.',
+    'df.mode.disengage.hint': 'Afasta-se e termina a interceção; a nave regressa à base.',
+    'df.mode.blocked': 'O OVNI está a fugir mais depressa do que a nave: nenhuma postura o alcança.',
+
+    // cascos e alcance
+    'df.hull': 'Casco',
+    'df.ufoDmg': 'Dano no OVNI',
+    'df.crashMark': 'queda',
+    'df.hull.tip': 'Casco da nave: com 0 a nave perde-se com a tripulação.',
+    'df.ufoDmg.tip': 'Acima de 50 % o OVNI despenha-se; a 100 % é destruído no ar.',
+    'df.dist': 'Dist.',
+    'df.range.tip': 'Distância ao OVNI. Marcas: alcance de cada arma da nave, alcance das armas do OVNI (zona vermelha) e a posição pretendida pela postura (triângulo).',
+    'df.ufoWeapon': 'Armas do OVNI',
+    'df.ufoUnarmed': 'OVNI desarmado',
+    'df.target': 'Alvo da postura',
+
+    // armas
+    'df.w.empty': 'Ponto vazio',
+    'df.w.ammo': 'Munições',
+    'df.w.hit': 'Acerto {p} %',
+    'df.w.range': 'Alcance {r}',
+    'df.w.st.ready': 'Pronta',
+    'df.w.st.reload': 'A recarregar',
+    'df.w.st.range': 'Fora de alcance',
+    'df.w.st.off': 'Desligada',
+    'df.w.st.empty': 'Sem munições',
+    'df.w.st.hold': 'Em espera',
+    'df.w.on': 'Ligada',
+    'df.w.off': 'Desligada',
+    'df.w.toggle': 'Ligar ou desligar {w}',
+    'df.w.toggle.hint': 'Uma arma desligada não dispara nem conta para a distância das posturas.',
+
+    // estado
+    'df.st.standoff.short': 'Distância segura — sem disparar',
+    'df.st.approach': 'A aproximar para {mode}',
+    'df.st.inRange': 'Em alcance: {w}',
+    'df.st.holding': 'Em posição — {mode}',
+    'df.st.standoff': 'Distância segura. Escolha Cauteloso, Normal ou Agressivo (2–4) para atacar.',
+    'df.st.retreating': 'A recuar para {mode}',
+    'df.st.disengage': 'A desengatar…',
+    'df.st.fleeing': 'OVNI a fugir — é mais rápido do que a nave',
+    'df.st.noAmmo': 'Sem munições — a recuar',
+    'df.st.paused': 'Pausa',
+    'df.st.underFire': 'Ao alcance das armas do OVNI!',
+    'df.st.safe': 'Fora do alcance do OVNI',
+    'df.st.retreat': 'Dano ≥ 50 %: recuo automático para Distância',
+    'df.st.breakOff': 'O OVNI acelerou para fugir!',
+    'df.st.hullHit': 'Nave atingida!',
+
+    // HUD do canvas
+    'df.hud.lock': 'NA MIRA',
+    'df.hud.track': 'A SEGUIR',
+    'df.hud.miss': 'falhou',
+    'df.hud.paused': 'PAUSA',
+
+    // resultados (também usados pelo Geoscape)
+    'df.end.crashed': 'OVNI despenhado',
+    'df.end.destroyed': 'OVNI destruído',
+    'df.end.escaped': 'OVNI escapou',
+    'df.end.disengaged': 'Interceção interrompida',
+    'df.end.craftDestroyed': 'Nave destruída',
+    'df.end.craftRetreated': 'Sem munições',
+    'df.end.seaCrash': 'OVNI destruído no mar',
+    'df.end.damaged': 'Nave danificada',
+    'df.sub.crashed': 'Envie uma equipa ao local da queda para recuperar a nave alienígena.',
+    'df.sub.destroyed': 'Desintegrado no ar: nada a recuperar, mas a pontuação é dobrada.',
+    'df.sub.seaCrash': 'Caiu no mar: nada a recuperar, mas a pontuação é dobrada.',
+    'df.sub.escaped': 'Perdeu-se o contacto. A nave regressa à base.',
+    'df.sub.disengaged': 'A nave regressa à base.',
+    'df.sub.craftDestroyed': 'A nave perdeu-se com toda a tripulação.',
+    'df.sub.craftRetreated': 'Esgotou as munições e regressa à base para rearmar.',
+    'df.sub.damaged': 'Casco a {p} %: a nave volta à base para reparações.',
+
+    // resumo
+    'df.sum.shots': 'Disparos',
+    'df.sum.hits': 'Acertos',
+    'df.sum.dealt': 'Dano infligido',
+    'df.sum.taken': 'Dano sofrido',
+    'df.sum.time': 'Duração',
+    'df.sum.seconds': '{s} s',
+
+    // botões e atalhos
+    'df.btn.minimise': 'Minimizar',
+    'df.btn.minimise.hint': 'Esconde a janela para ver o Geoscape; o combate continua.',
+    'df.btn.pause': 'Pausa',
+    'df.btn.resume': 'Retomar',
+    'df.btn.continue': 'Continuar',
+    'df.btn.restore': 'Abrir a interceção de {craft}',
+    'df.btn.next': 'Outra interceção',
+    'df.closing': 'A fechar…',
+  });
 })(globalThis.OV || (globalThis.OV = {}));
