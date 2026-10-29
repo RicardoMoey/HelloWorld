@@ -29,17 +29,32 @@ module.exports = function load(opts) {
   if (loaded) return loaded;
   globalThis.OV = {};
   const missing = [];
+  const loadErrors = [];
   for (const f of nodeFiles(opts)) {
     const abs = path.join(ROOT, f);
     if (!fs.existsSync(abs)) {
       missing.push(f);
       continue;
     }
-    vm.runInThisContext(fs.readFileSync(abs, 'utf8'), { filename: abs });
+    try {
+      vm.runInThisContext(fs.readFileSync(abs, 'utf8'), { filename: abs });
+    } catch (e) {
+      // um ficheiro partido não impede o carregamento dos restantes (trabalho em paralelo)
+      loadErrors.push(f + ': ' + (e && e.message ? e.message : e));
+      if (opts.strict) throw e;
+    }
   }
   const OV = globalThis.OV;
   OV.__missing = missing;
-  if (opts.finalize !== false && OV.Data && OV.Data.finalize) OV.Data.finalize();
+  OV.__loadErrors = loadErrors;
+  if (opts.finalize !== false && OV.Data && OV.Data.finalize) {
+    try {
+      OV.Data.finalize();
+    } catch (e) {
+      OV.__finalizeError = e;
+      if (opts.strict) throw e;
+    }
+  }
   loaded = OV;
   return OV;
 };

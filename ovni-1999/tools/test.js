@@ -20,13 +20,10 @@ for (let i = 0; i < argv.length; i++) {
   } else filters.push(a);
 }
 
-let OV;
-try {
-  OV = require('./load')({ finalize: true });
-} catch (e) {
-  console.error('✗ falha ao carregar/finalizar os dados:\n' + (e.stack || e));
-  process.exit(1);
-}
+const OV = require('./load')({ finalize: true, strict: !!args.strict });
+let loadProblems = 0;
+for (const e of OV.__loadErrors || []) { console.log('✗ carregar ' + e); loadProblems++; }
+if (OV.__finalizeError) { console.log('✗ OV.Data.finalize: ' + OV.__finalizeError.message); loadProblems++; }
 
 const dir = path.join(__dirname, 'tests');
 const files = fs.readdirSync(dir).filter((f) => f.endsWith('.test.js') && (!filters.length || filters.some((x) => f.includes(x)))).sort();
@@ -78,4 +75,5 @@ if (OV.__missing && OV.__missing.length && args.missing) console.log('ficheiros 
 if (OV.T && OV.T.missing.size && args.i18n) console.log('chaves i18n em falta: ' + [...OV.T.missing].join(', '));
 for (const m of failures) console.log('✗ ' + m);
 console.log((fail ? '✗' : '✓') + ' ' + pass + ' passaram, ' + fail + ' falharam (' + files.length + ' ficheiros, ' + (Date.now() - t0) + ' ms)');
-process.exit(fail ? 1 : 0);
+if (loadProblems) console.log('✗ ' + loadProblems + ' problema(s) de carregamento (ver acima)');
+process.exit(fail || loadProblems ? 1 : 0);
