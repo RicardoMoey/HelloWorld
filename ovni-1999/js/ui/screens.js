@@ -7,8 +7,11 @@
      briefing    {mission, meta?, quick?}
      debrief     {B, debrief?, outcome?, mission?, meta?, quick?, progression?, onDone?(debrief)}
      options     {inGame?}   (sobreposição; isScreen:false)
+   Campanha: startBattle(mission, meta) com meta.campaign e resumeGame(st) com st.G passam a OV.CampaignUI; o menu
+   chama OV.CampaignUI.newGame / loadDialog quando existem.
    API: OV.Screens = { VERSION, Backdrop, startBattle, buildQuickMission, quickFromURL, missionTitle, loadoutFor,
-                       defaultQuick, openOptions, saves, resumeGame } */
+                       defaultQuick, openOptions, saves, resumeGame, missionRating, battleExit,
+                       ui: {makeScreen, header, panelSection, seg, goBack, portraitEl, itemIconEl, unitSpriteEl, canvasCopy} } */
 (function (OV) {
   'use strict';
 
@@ -632,6 +635,8 @@
   }
   function resumeGame(st) {
     if (!st || (!st.G && !st.B)) { loadFailed(); return false; }
+    // gravação de campanha (com ou sem batalha): o fluxo da campanha retoma e aplica o resultado
+    if (st.G && OV.CampaignUI && typeof OV.CampaignUI.resume === 'function') return OV.CampaignUI.resume(st);
     OV.Game.G = st.G || null;
     OV.Game.B = st.B || null;
     if (st.B && OV.SceneDefs.battlescape) {
@@ -814,6 +819,7 @@
 
   // cria B e entra no battlescape (substitui a cena do topo)
   function startBattle(mission, meta) {
+    if (meta && meta.campaign && OV.CampaignUI && typeof OV.CampaignUI.startBattle === 'function') return OV.CampaignUI.startBattle(mission, meta);
     if (!OV.SceneDefs.battlescape) {
       OV.Dom.modal({ title: missionTitle(OV.Battle.normalizeMission(mission), meta), body: T('scr.br.noBattle') });
       return false;
@@ -839,6 +845,7 @@
     let cont = null;
 
     function newCampaign() {
+      if (OV.CampaignUI && typeof OV.CampaignUI.newGame === 'function') { OV.CampaignUI.newGame(); return; }
       if (OV.SceneDefs.newgame) { OV.Scenes.push('newgame', {}); return; }
       OV.Dom.modal({
         title: T('scr.newgame.title'), body: T('scr.newgame.soon'),
@@ -853,7 +860,8 @@
       { id: 'new', key: 'scr.menu.new', act: newCampaign },
       { id: 'continue', key: 'scr.menu.continue', act: continueGame },
       { id: 'quick', key: 'scr.menu.quick', act: () => OV.Scenes.push('quickbattle', {}) },
-      { id: 'load', key: 'scr.menu.load', act: loadDialog },
+      { id: 'load', key: 'scr.menu.load', act: () => (OV.CampaignUI && typeof OV.CampaignUI.loadDialog === 'function' ? OV.CampaignUI.loadDialog() : loadDialog()) },
+      { id: 'ufopaedia', key: 'up.menu', act: () => OV.Ufopaedia.open(null) },
       { id: 'options', key: 'scr.menu.options', act: () => OV.Scenes.push('options', {}) },
       { id: 'howto', key: 'scr.menu.howto', act: () => OV.Scenes.push('howto', {}) },
       { id: 'credits', key: 'scr.menu.credits', act: () => OV.Scenes.push('credits', {}) },
@@ -1552,5 +1560,6 @@
   OV.Screens = Object.assign(OV.Screens || {}, {
     VERSION, Backdrop, startBattle, buildQuickMission, quickFromURL, missionTitle, loadoutFor, defaultQuick,
     openOptions, saves, resumeGame, missionRating, battleExit, _urlUsed: false,
+    ui: { makeScreen, header, panelSection, seg, goBack, portraitEl, itemIconEl, unitSpriteEl, canvasCopy },
   });
 })(globalThis.OV || (globalThis.OV = {}));

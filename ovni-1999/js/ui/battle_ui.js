@@ -1,6 +1,7 @@
 /* Battlescape: cena, câmara, seleção, pré-visualizações e HUD (DESIGN.md §15.1–15.3, §17).
-   OV.SceneDefs.battlescape(params) com params = {B, onExit(result)}; result = {outcome, debrief, B}. Quem chama
-   onExit decide a cena seguinte; sem onExit abre 'debrief' (se existir) ou um resumo em modal.
+   OV.SceneDefs.battlescape(params) com params = {B, onExit(result), onPlayerTurn?(B)}; result = {outcome, debrief, B}.
+   Quem chama onExit decide a cena seguinte; sem onExit abre 'debrief' (se existir) ou um resumo em modal.
+   onPlayerTurn(B) corre no início de cada turno do jogador (ponto quiescente: gravação automática da campanha).
    A interface nunca altera B diretamente: ações por OV.Act.validate/perform, turnos por OV.Battle.* (a reserva
    de UT é a preferência do jogador guardada em B.reserve / B.reserveKneel), animação por OV.Presenter.
    OV.BattleUI = {scene (cena ativa | null), open(B, opts), openInventory(unitId), debug: {tileToScreen(x,y,z),
@@ -872,8 +873,15 @@
     S.lastFire = null;
     await playGen(OV.Battle.endPlayerTurn(S.B));
     if (!S || S.ended) return;
+    playerTurnHook();
     const u = squad().filter(selectable).find(hasTU);
     if (u) select(u.id, { centre: true, quiet: true });
+  }
+
+  // início de um turno do jogador sem gerador ativo: avisa quem abriu a cena (gravação automática da campanha)
+  function playerTurnHook() {
+    if (!S || S.ended || !S.onPlayerTurn || S.B.side !== 'xcom' || S.B.phase === 'over') return;
+    try { S.onPlayerTurn(S.B); } catch (e) { console.warn('onPlayerTurn', e); }
   }
 
   async function abortMission() {
@@ -2033,7 +2041,7 @@
       if (OV.Game) OV.Game.B = B;
       const anim = { units: {}, hidden: new Set(), hideItems: new Set() };
       S = {
-        B, onExit: typeof p.onExit === 'function' ? p.onExit : null, scene: sc,
+        B, onExit: typeof p.onExit === 'function' ? p.onExit : null, onPlayerTurn: typeof p.onPlayerTurn === 'function' ? p.onPlayerTurn : null, scene: sc,
         view: {
           cam: { x: 0, y: 0, zoom: 1 }, w: OV.View.w, h: OV.View.h, viewZ: 0, time: 0, selectedId: null, hover: null, cursor: 'move',
           path: null, reach: null, target: null, throwArc: null, throwInfo: null, throwRange: null, anim, showAll: false, blips: null,
@@ -2085,6 +2093,7 @@
           if (S && !S.ended) {
             ensureSelection();
             updateMusic();
+            playerTurnHook();
           }
         });
       } else if (B.phase === 'over') finishBattle();

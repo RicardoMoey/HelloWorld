@@ -69,7 +69,7 @@ try {
   await page.goto(BASE + '?nosw=1');
   await page.waitForSelector('.scr-menu .scr-mi', { timeout: 15000 });
   await sleep(900);
-  check((await page.locator('.scr-menu .scr-mi').count()) === 7, 'menu: 7 entradas');
+  check((await page.locator('.scr-menu .scr-mi').count()) === 8, 'menu: 8 entradas');
   check(await page.locator('.scr-logo-big').isVisible(), 'menu: logótipo visível');
   check((await page.locator('a.scr-family').getAttribute('href')) === '../index.html', 'menu: ligação ao hub');
   check(await page.locator('.scr-mi[data-id="continue"]').isDisabled(), 'menu: «Continuar» desativado sem gravações');
