@@ -6,6 +6,7 @@ browser, sem instalações. A página **`index.html`** é o menu de entrada.
 **Jogos disponíveis:**
 - 🎲 **[Reviravolta](reviravolta.html)** — quiz para 3 jogadores com sorte, desafios e viradas.
 - 🎯 **[Command & Geopolitics: 2026](command-2026/index.html)** — estratégia em tempo real (RTS) ao estilo Command & Conquer, 1 jogador contra IA.
+- 🛸 **[OVNI: Inimigo Desconhecido](ovni-1999/index.html)** — engenharia reversa de UFO: Enemy Unknown (1994): Geoscape, bases e combate tático por turnos.
 
 ## Como correr (macOS)
 
@@ -17,7 +18,7 @@ cd HelloWorld
 python3 -m http.server 8000
 ```
 
-Abre `http://localhost:8000` no Safari ou Chrome. Tudo é self-contained: sem
+Abre `http://localhost:8000` no Safari ou Chrome (se já tinhas clonado antes, corre primeiro `git switch main && git pull`). Tudo é self-contained: sem
 dependências, sem internet, sem servidor para além deste.
 
 ### Instalar como app (iPad / iPhone / Android)
@@ -28,6 +29,42 @@ e funcionar **offline**. Precisa de ser servido por **https** (ex.: GitHub Pages
 1. No repositório: **Settings → Pages → Deploy from a branch** → branch `main`, pasta `/(root)` → **Save**.
 2. Abre o URL de Pages no **Safari** (iPad/iPhone) ou **Chrome** (Android).
 3. **Partilhar → Adicionar ao ecrã principal**.
+
+---
+
+## 🛸 OVNI: Inimigo Desconhecido
+
+Engenharia reversa jogável de **UFO: Enemy Unknown** (X-COM, 1994), reconstruída
+de raiz para o browser e pensada para o Mac (trackpad e teclado) e para o iPad.
+Tudo em `ovni-1999/`: JavaScript sem dependências, arte procedimental e som
+sintetizado em tempo real.
+
+- **Geoscape:** globo em tempo real com seis velocidades; radares detetam OVNIs,
+  os Intercetores abatem-nos numa janela de duelo própria e o Skyranger leva a
+  equipa ao local. No fim de cada mês, o conselho de 17 países avalia e financia.
+- **Bases:** grelha 6×6, 13 instalações, mercado, 45 projetos de investigação,
+  25 produtos de fabrico, contenção e interrogatórios até Cidónia, em Marte.
+- **Battlescape:** combate por turnos com Unidades de Tempo, fogo de reação,
+  precisão e desvio reais, moral e pânico, noite e sinalizadores, terreno
+  destrutível, 9 terrenos e 8 classes de OVNI. Pré-visualização do caminho, da
+  probabilidade de acerto e da área de explosão.
+- **Ufopédia:** 80 artigos com ilustrações e fichas geradas a partir das regras.
+- **Gravações:** automática, por turno e três espaços manuais, com exportação.
+
+Para jogar: servir a pasta como acima e abrir `http://localhost:8000/ovni-1999/`
+(ou duplo clique em `ovni-1999/serve.command`). O «Como Jogar» do menu tem os
+controlos de trackpad, teclado e toque.
+
+Para desenvolver: `node ovni-1999/tools/test.js --strict` (testes),
+`node ovni-1999/tools/sim.js battle|campaign …` (simulações com bots) e os
+scripts Playwright em `ovni-1999/qa/`. O desenho está em
+[`ovni-1999/DESIGN.md`](ovni-1999/DESIGN.md), a engenharia reversa em
+[`ovni-1999/docs/rea/`](ovni-1999/docs/rea) e o contrato da campanha em
+[`ovni-1999/docs/CAMPAIGN_API.md`](ovni-1999/docs/CAMPAIGN_API.md).
+
+UFO: Enemy Unknown © 1994 MicroProse / Mythos Games (Julian Gollop). Projeto de
+fãs, sem fins comerciais. Regras com base na documentação do OpenXcom; mapa-mundo
+Natural Earth.
 
 ---
 
