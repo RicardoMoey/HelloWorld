@@ -1,6 +1,11 @@
 /* Áudio procedimental (Web Audio): efeitos sintetizados, música generativa por ambiente com transição
    cruzada, stingers e voz (speechSynthesis pt-PT). Só no navegador; qualquer falha fica em silêncio.
-   Motor adaptado de command-2026/js/audio.js (DESIGN.md §17; durações alinhadas com §10). */
+   Motor adaptado de command-2026/js/audio.js (DESIGN.md §17; durações alinhadas com §10).
+   API: init, configure, play(nome, {vol, pan, rate, delay}), music(ambiente|null), stinger, setMuted, speak,
+   stop, spatial, level, status, setVolumes, names(), moods(), stingers(), renderOffline (QA).
+   Ambientes: menu, geoscape, battle(_tense), terror, interception, base, research, alien_base(_tense),
+   cydonia(_tense), victory, defeat — «X_tense» junta a camada de intensidade a X sem reiniciar.
+   Nomes desconhecidos são ignorados (devolvem false): a interface pode testar names()/moods() antes. */
 (function (OV) {
   'use strict';
 
@@ -18,7 +23,11 @@
   const TICK_MS = 30;
   const FADE = 1.6; // s de transição cruzada entre ambientes
   const SCALE = { master: 0.9, sfx: 1, music: 0.42, stinger: 2 };
-  const MOOD_LIST = ['menu', 'geoscape', 'battle', 'battle_tense', 'terror'];
+  // «<ambiente>_tense» acrescenta a camada de intensidade ao ambiente base sem o reiniciar
+  const MOOD_LIST = [
+    'menu', 'geoscape', 'battle', 'battle_tense', 'terror', 'interception', 'base', 'research',
+    'alien_base', 'alien_base_tense', 'cydonia', 'cydonia_tense', 'victory', 'defeat',
+  ];
 
   const A = {
     ctx: null, comp: null, master: null, meter: null, sfx: null, mus: null, moodMix: null, stBus: null,
@@ -119,7 +128,8 @@
     while (i < k.length) {
       i += 20 + ((rnd() * sr) / 260) | 0;
       const len = 3 + ((rnd() * 40) | 0), amp = (0.3 + rnd() * 0.7) * (rnd() < 0.5 ? -1 : 1);
-      for (let j = 0; j < len && i + j < k.length; j++) k[i + j] = amp * (1 - j / len) * (rnd() * 2 - 1);
+      // ataque de 3 amostras: estala sem picos isolados de uma amostra
+      for (let j = 0; j < len && i + j < k.length; j++) k[i + j] = amp * Math.min(1, (j + 1) / 3) * (1 - j / len) * (rnd() * 2 - 1);
     }
     A.buf = { white, brown, crackle };
 
@@ -141,6 +151,8 @@
   function env(p, t, a, peak, dur, hold) {
     const at = Math.min(a, dur * 0.6);
     const pk = Math.max(0.0002, peak);
+    // valor intrínseco antes do primeiro evento: sem isto a primeira amostra (fracionária) sai com ganho 1 — estalido
+    p.value = 0.0001;
     p.setValueAtTime(0.0001, t);
     p.exponentialRampToValueAtTime(pk, t + at);
     const h = hold ? Math.min(hold, dur - at - 0.01) : 0;
@@ -311,6 +323,40 @@
     const prev = cur.dest;
     cur.dest = dest;
     try { fn(); } finally { cur.dest = prev; }
+  }
+
+  // grupo com envolvente linear (motores e sirenes: sobreposições sem buracos nem estalidos);
+  // as vozes lá dentro usam patamar longo e só o grupo dá a forma
+  function group(t, dur, a, rel, peak, fn) {
+    const c = A.ctx, r = cur.r, d = dur / r, at = a / r;
+    const g = c.createGain();
+    g.gain.value = 0;
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(peak, t + at);
+    g.gain.setValueAtTime(peak, t + Math.max(at, d - rel / r));
+    g.gain.linearRampToValueAtTime(0, t + d);
+    g.connect(cur.dest);
+    into(g, fn);
+    done(t + d);
+  }
+
+  // oscilador com curva de altura por pontos [[s, Hz], ...] (rampas lineares); ganho fixo, para usar dentro de group()
+  function glide(t, type, pts, dur, g, flt, det, vib) {
+    const c = A.ctx, r = cur.r, d = dur / r;
+    const n = c.createOscillator();
+    n.type = type || 'sine';
+    n.frequency.setValueAtTime(pts[0][1] * r, t);
+    for (let i = 1; i < pts.length; i++) n.frequency.linearRampToValueAtTime(pts[i][1] * r, t + pts[i][0] / r);
+    if (det) n.detune.value = det;
+    if (vib) lfo(n.frequency, vib[0], vib[1] * r, t, d);
+    const head = flt ? filt(n, flt, t, d) : n;
+    const gg = c.createGain();
+    gg.gain.value = g;
+    head.connect(gg);
+    gg.connect(cur.dest);
+    n.start(t);
+    n.stop(t + d + 0.05);
+    done(t + d);
   }
 
   // ------------------------------------------------------------------ receitas de efeitos
@@ -609,6 +655,123 @@
       tone(s, 'sine', 98, 60, 0.3, 0.1);
     },
 
+    // estratégia: naves, alarmes, base, finanças
+    // rugido de reator (~2 s): a interceção repete-o a cada 1,7 s e as rampas lineares cruzam-se sem buraco
+    dogfight_engine: (t) => group(t, 2.1, 0.3, 0.5, 0.6, () => {
+      nz({ t, dur: 2.15, flt: ['lowpass', 480, 380, 0.9], g: 0.3, a: 0.02, hold: 2.2, buf: 'brown' });
+      nz({ t, dur: 2.15, flt: ['bandpass', 950, 1150, 0.8], g: 0.045, a: 0.02, hold: 2.2 });
+      osc({ t, type: 'sawtooth', f: 47, dur: 2.15, g: 0.05, a: 0.02, hold: 2.2, trem: [7.5, 0.4], flt: ['lowpass', 170] });
+      osc({ t, f: 2330, f1: 2410, dur: 2.15, g: 0.006, a: 0.02, hold: 2.2, vib: [5, 9] });
+    }),
+    craft_takeoff: (t) => {
+      tone(t, 'sine', 110, 60, 0.14, 0.12);
+      noise(t, 0.3, 'highpass', 3000, 1500, 0.7, 0.05, 0.01);
+      const s = t + 0.08;
+      group(s, 2.4, 0.6, 0.9, 0.7, () => {
+        nz({ t: s, dur: 2.45, flt: ['lowpass', 220, 1400, 0.9], g: 0.3, a: 0.02, hold: 2.5, buf: 'brown' });
+        nz({ t: s, dur: 2.45, flt: ['bandpass', 500, 2600, 1], g: 0.06, a: 0.02, hold: 2.5 });
+        osc({ t: s, f: 700, f1: 2600, glide: 1.6, dur: 2.45, g: 0.01, a: 0.02, hold: 2.5 });
+        osc({ t: s, type: 'sawtooth', f: 42, f1: 70, glide: 1.4, dur: 2.45, g: 0.05, a: 0.02, hold: 2.5, flt: ['lowpass', 200] });
+      });
+    },
+    craft_landing: (t) => {
+      group(t, 1.9, 0.25, 0.9, 0.8, () => {
+        nz({ t, dur: 1.95, flt: ['lowpass', 1300, 260, 0.9], g: 0.28, a: 0.02, hold: 2, buf: 'brown' });
+        nz({ t, dur: 1.95, flt: ['bandpass', 2200, 500, 1], g: 0.055, a: 0.02, hold: 2 });
+        osc({ t, f: 2500, f1: 650, dur: 1.95, g: 0.01, a: 0.02, hold: 2 });
+      });
+      tone(t + 1.55, 'sine', 95, 45, 0.3, 0.2);
+      noise(t + 1.55, 0.15, 'lowpass', 600, 200, 0.8, 0.12, 0.004, 'brown');
+      noise(t + 1.7, 0.5, 'highpass', 3200, 2200, 0.7, 0.04, 0.03);
+    },
+    // sirene de defesa civil (sobe, mantém, desce) com eco tardio da cidade
+    terror_siren: (t) => group(t, 3.2, 0.35, 0.9, 1, () => {
+      const pts = [[0, 330], [1.1, 700], [1.8, 700], [3.2, 360]];
+      glide(t, 'sawtooth', pts, 3.25, 0.045, ['lowpass', 2200], 0, [6, 4]);
+      glide(t, 'sawtooth', pts, 3.25, 0.03, ['lowpass', 1400], 11);
+      glide(t + 0.14, 'triangle', pts, 3.1, 0.02, ['lowpass', 1100]);
+    }),
+    // klaxon de base sob ataque: dois «whoop»
+    base_alarm: (t) => {
+      for (let i = 0; i < 2; i++) {
+        const s = t + i * 0.8;
+        group(s, 0.7, 0.03, 0.12, 1, () => {
+          glide(s, 'square', [[0, 300], [0.55, 760], [0.72, 780]], 0.72, 0.03, ['lowpass', 2000]);
+          glide(s, 'sawtooth', [[0, 302], [0.55, 765], [0.72, 785]], 0.72, 0.022, ['lowpass', 1600]);
+        });
+      }
+    },
+    // sinal perdido: ecos de radar a esmorecer em estática
+    ufo_lost: (t) => {
+      for (const [d, f, g] of [[0, 1500, 0.05], [0.28, 1180, 0.032], [0.56, 900, 0.02]]) tone(t + d, 'sine', f, f * 0.98, 0.5, g, 0.004);
+      nz({ t: t + 0.1, dur: 1.2, flt: ['bandpass', 2600, 1800, 1.2], g: 0.06, a: 0.3, buf: 'crackle' });
+      osc({ t: t + 0.6, type: 'sawtooth', f: 330, f1: 160, dur: 0.7, g: 0.018, a: 0.05, flt: ['lowpass', 900] });
+    },
+    ufo_landed: (t) => {
+      fm({ t, f: 73.4, f1: 55, ratio: 1.5, idx: 2.5, idx1: 0.3, dur: 1.6, g: 0.1, a: 0.2, vib: [5, 2] });
+      tone(t, 'sine', 1200, 1180, 0.5, 0.03);
+      tone(t + 0.25, 'sine', 900, 880, 0.6, 0.02);
+      noise(t + 0.1, 1.2, 'bandpass', 300, 160, 2, 0.06, 0.4, 'brown');
+    },
+    // obra: pancada, três golpes de metal e um berbequim
+    base_build: (t) => {
+      noise(t, 0.12, 'lowpass', 900, 200, 0.8, 0.2, 0.004, 'brown');
+      tone(t, 'sine', 120, 55, 0.18, 0.18);
+      for (const [d, f] of [[0.18, 420], [0.42, 520], [0.62, 380]]) {
+        fm({ t: t + d, f, ratio: 1.41, idx: 3, idx1: 0.1, dur: 0.35, g: 0.035 });
+        noise(t + d, 0.03, 'bandpass', 2800, 0, 3, 0.05);
+      }
+      osc({ t: t + 0.8, type: 'sawtooth', f: 170, f1: 250, dur: 0.5, g: 0.03, trem: [32, 0.8], flt: ['lowpass', 1400] });
+      nz({ t: t + 0.8, dur: 0.5, flt: ['bandpass', 2400, 3000, 1], g: 0.05, buf: 'crackle' });
+    },
+    facility_done: (t) => {
+      noise(t, 0.08, 'lowpass', 700, 200, 0.8, 0.16, 0.004, 'brown');
+      tone(t, 'sine', 140, 70, 0.12, 0.14);
+      noise(t + 0.05, 0.4, 'highpass', 3600, 1600, 0.7, 0.05, 0.02);
+      tone(t + 0.3, 'triangle', 659, 0, 0.16, 0.06);
+      tone(t + 0.42, 'triangle', 988, 0, 0.3, 0.06);
+      bell(t + 0.42, 1976, 0.9, 0.02);
+    },
+    // receita: clique de caixa, moedas e dois sinos claros
+    funds_in: (t) => {
+      noise(t, 0.03, 'bandpass', 3000, 0, 2, 0.06);
+      tone(t, 'square', 180, 90, 0.05, 0.03);
+      nz({ t: t + 0.04, dur: 0.18, flt: ['bandpass', 5000, 4000, 2], g: 0.08, buf: 'crackle' });
+      fm({ t: t + 0.1, f: 2637, ratio: 2.01, idx: 2, idx1: 0.05, dur: 0.8, g: 0.035 });
+      fm({ t: t + 0.18, f: 3520, ratio: 2.01, idx: 2, idx1: 0.05, dur: 0.9, g: 0.03 });
+    },
+    // conselho insatisfeito: acorde menor com segunda menor, tímpano e teletipo
+    council_bad: (t) => {
+      for (const m of [45, 46, 52]) brass(t, mtof(m), 1.3, 0.035, { a: 0.03, lo: 250, hi: 1500, hold: 0.25 });
+      timp(t, 55, 1.0, 0.16);
+      osc({ t: t + 0.35, type: 'sawtooth', f: mtof(57), f1: mtof(52), dur: 1.2, g: 0.02, a: 0.08, flt: ['lowpass', 1200, 500] });
+      for (let i = 0; i < 6; i++) noise(t + 0.9 + i * 0.05, 0.015, 'bandpass', 2600, 0, 3, 0.025);
+    },
+    council_good: (t) => {
+      for (const [m, d] of [[62, 0], [66, 0.1], [69, 0.2]]) brass(t + d, mtof(m), 0.9 - d, 0.032, { a: 0.02, hold: 0.2, hi: 2400 });
+      timp(t, 73.4, 0.6, 0.12);
+      bell(t + 0.25, mtof(86), 1.1, 0.02);
+    },
+    // interrogatório: monitor, oscilação psiónica e voz alienígena
+    interrogation: (t) => {
+      tone(t, 'sine', 1046, 0, 0.07, 0.035);
+      tone(t + 0.35, 'sine', 1046, 0, 0.07, 0.035);
+      fm({ t: t + 0.1, f: 165, f1: 220, ratio: 1.5, idx: 4, idx1: 7, dur: 1.8, g: 0.045, a: 0.5, vib: [5.5, 12] });
+      formant({ t: t + 0.4, f: 260, f1: 180, dur: 1.4, g: 0.06, a: 0.25, vib: [7, 14], forms: [[700, 500, 7, 1], [1600, 2100, 9, 0.6]] });
+      nz({ t: t + 0.2, dur: 1.6, flt: ['highpass', 3500], g: 0.03, a: 0.4, buf: 'crackle' });
+    },
+    // gravação automática: discreto, quase subliminar
+    autosave: (t) => {
+      tone(t, 'sine', 1318.5, 0, 0.12, 0.016);
+      tone(t + 0.09, 'sine', 1760, 0, 0.2, 0.012);
+      noise(t, 0.05, 'bandpass', 4200, 0, 3, 0.008);
+    },
+    purchase: (t) => {
+      osc({ t, type: 'square', f: 880, dur: 0.05, g: 0.03, flt: ['lowpass', 3000] });
+      osc({ t: t + 0.05, type: 'square', f: 1320, dur: 0.09, g: 0.03, flt: ['lowpass', 3000] });
+      noise(t + 0.04, 0.06, 'bandpass', 3500, 2500, 2, 0.04);
+    },
+
     // ritmo de turnos
     end_turn: (t) => {
       fm({ t, f: 110, ratio: 1.4, idx: 3, idx1: 0.1, dur: 1.1, g: 0.08 });
@@ -623,6 +786,8 @@
     },
   };
 
+  SFX.siren = SFX.terror_siren; // nome usado pelos alertas do Geoscape
+
   // intervalo mínimo entre repetições do mesmo efeito (s); por omissão 25 ms
   const MIN_GAP = {
     ui_click: 0.03, ui_select: 0.05, ui_confirm: 0.06, ui_deny: 0.15,
@@ -633,6 +798,9 @@
     alien_spotted: 0.4, reaction_alert: 0.3, hidden_movement: 1.2, end_turn: 0.5,
     ufo_detected: 1.0, radar_ping: 0.4, research_done: 0.5, production_done: 0.5, monthly_report: 1.0,
     dogfight_cannon: 0.06, dogfight_hit: 0.06, ufo_crash: 1.0,
+    dogfight_engine: 1.0, craft_takeoff: 0.8, craft_landing: 0.8, terror_siren: 2.5, siren: 2.5, base_alarm: 1.5,
+    ufo_lost: 1.0, ufo_landed: 1.0, base_build: 0.3, facility_done: 0.5, funds_in: 0.5, council_bad: 1.0,
+    council_good: 1.0, interrogation: 1.0, autosave: 2.0, purchase: 0.06,
   };
   // variação aleatória de altura (fração) para não soar a «metralhadora de amostras»
   const VARY = {
@@ -640,13 +808,16 @@
     pistol: 0.035, rifle: 0.035, rifle_auto: 0.04, auto_cannon: 0.035, heavy_cannon: 0.025, laser: 0.03, plasma: 0.03,
     throw: 0.08, bounce: 0.08, explosion_small: 0.06, explosion_large: 0.04, fire_loop_tick: 0.1,
     glass_break: 0.05, wall_crumble: 0.05, soldier_hit: 0.06, soldier_death: 0.04, chryssalid_skitter: 0.06,
-    dogfight_cannon: 0.03, dogfight_hit: 0.05,
+    dogfight_cannon: 0.03, dogfight_hit: 0.05, dogfight_engine: 0.02, craft_takeoff: 0.03, craft_landing: 0.03,
+    base_build: 0.04, purchase: 0.02,
   };
   for (const k in SFX) if (k.startsWith('alien_death_')) VARY[k] = 0.05;
   // baixar a música sob alertas: [nível, duração s]
   const DUCK = {
     alien_spotted: [0.35, 0.5], ufo_detected: [0.5, 0.8], explosion_large: [0.6, 0.6],
     ufo_crash: [0.5, 2.0], monthly_report: [0.4, 1.4], research_done: [0.6, 1.0],
+    terror_siren: [0.45, 3.0], siren: [0.45, 3.0], base_alarm: [0.45, 1.8], council_bad: [0.5, 1.6],
+    interrogation: [0.6, 1.8], funds_in: [0.7, 0.8], facility_done: [0.7, 0.8],
   };
 
   function duck(level, hold, release) {
@@ -725,6 +896,7 @@
     lo.connect(lg);
     lg.connect(lp.frequency);
     const ge = c.createGain();
+    ge.gain.value = 0.0001;
     ge.gain.setValueAtTime(0.0001, t);
     ge.gain.exponentialRampToValueAtTime(g, t + 2.5);
     lp.connect(ge);
@@ -742,6 +914,27 @@
     m.nodes.push(...nodes);
   }
 
+  // leito de ruído contínuo (ar, vento, zumbido) filtrado; ruído branco em ciclo não tem costura audível
+  function bed(m, type, f, q, g) {
+    const c = A.ctx, t = c.currentTime + 0.05;
+    const s = c.createBufferSource();
+    s.buffer = A.buf.white;
+    s.loop = true;
+    const f1 = c.createBiquadFilter();
+    f1.type = type;
+    f1.frequency.value = f;
+    f1.Q.value = q;
+    const ge = c.createGain();
+    ge.gain.value = 0.0001;
+    ge.gain.setValueAtTime(0.0001, t);
+    ge.gain.exponentialRampToValueAtTime(g, t + 3);
+    s.connect(f1);
+    f1.connect(ge);
+    ge.connect(m.bus);
+    s.start(t, rnd() * (s.buffer.duration - 0.1));
+    m.nodes.push(s);
+  }
+
   const pad = (t, notes, dur, g, cutoff, a, hold) => {
     for (const n of notes) osc({ t, type: 'sawtooth', f: mtof(n), dur, g, a, hold, det: rnd() * 8 - 4, flt: ['lowpass', cutoff] });
   };
@@ -751,6 +944,17 @@
   const TOM = [0, 3, 6, 10, 12];
   const TERROR_BASS = [40, 41, 40, 43, 40, 41, 40, 46, 40, 41, 40, 43, 40, 44, 43, 41];
   const TERROR_SHIFT = [0, 0, 1, -2];
+  const INT_CH = [[52, 55, 59], [52, 55, 59], [48, 52, 55], [50, 54, 57]];
+  const BASE_CH = [[53, 57, 60, 64], [48, 52, 55, 59], [50, 53, 57, 60], [46, 50, 53, 57]];
+  const BASE_ARP = [0, 1, 2, 3, 2, 1, 0, 2];
+  const RES_CH = [[57, 60, 64, 71], [53, 57, 60, 64], [48, 52, 55, 59], [52, 55, 59, 62]];
+  const RES_STEPS = [0, 3, 6, 8, 11, 14];
+  const CYD_CH = [[48, 51, 55], [49, 53, 56], [46, 49, 53], [48, 51, 55]];
+  const CYD_OST = [0, 12, 0, 7, 0, 12, 1, 0];
+  const VIC_CH = [[62, 66, 69], [55, 59, 62], [59, 62, 66], [57, 61, 64], [62, 66, 69], [52, 55, 59], [55, 59, 62], [57, 61, 64]];
+  const VIC_MEL = [[0, 2], [6, 1], [8, 0], [12, 1]];
+  const DEF_CH = [[50, 53, 57], [46, 50, 53], [43, 46, 50], [45, 49, 52]];
+  const tenseOn = (m) => m.tenseOn || A.ctx.currentTime < m.tenseUntil;
 
   const MOODS = {
     // menu: ré menor lento, pad sombrio e sinos esparsos com eco
@@ -794,7 +998,7 @@
         }
         if (s === 0 && bar % 2 === 0) pad(t, [50, 51], spb * 32, 0.012, 480, 1.2, spb * 14);
         if (s === 8 && bar % 4 === 2) osc({ t, f: 1180, f1: 1130, dur: 2.4, g: 0.01, a: 1.0 });
-        if (m.tenseOn || A.ctx.currentTime < m.tenseUntil) {
+        if (tenseOn(m)) {
           into(m.layer, () => {
             if (s % 2 === 0) noise(t, 0.035, 'highpass', 7000, 0, 0.7, s % 4 === 0 ? 0.035 : 0.02);
             if (TOM.includes(s)) osc({ t, f: 98, f1: 52, dur: 0.2, g: 0.13 });
@@ -819,12 +1023,160 @@
         if (rnd() < 0.04) fm({ t, f: pick([311, 330, 466]), ratio: 2.76, idx: 4, idx1: 0.05, dur: 1, g: 0.025 });
       },
     },
+    // interceção: mi menor a 128 BPM, baixo pulsante em colcheias; frases de 4 compassos
+    // (base → arpejo → metais → pausa com subida de ruído) para não cansar
+    interception: {
+      bpm: 128,
+      start: (m) => drone(m, mtof(40), 0.03, 220),
+      step(m, t, s, bar, spb) {
+        const ch = INT_CH[bar % 4], root = ch[0] - 12, sec = (bar >> 2) % 4;
+        if (s % 2 === 0) osc({ t, type: 'sawtooth', f: mtof(root + (s % 8 === 6 ? 12 : 0)), dur: spb * 1.7, g: s % 4 === 0 ? 0.055 : 0.04, a: 0.004, flt: ['lowpass', 900, 260, 4] });
+        if (sec !== 3 && (s === 0 || s === 8 || (s === 10 && bar % 2 === 1))) osc({ t, f: 120, f1: 44, dur: 0.2, g: 0.2 });
+        if (s === 4 || s === 12) noise(t, 0.11, 'bandpass', 1800, 1200, 1, sec === 3 ? 0.035 : 0.065);
+        if (s % 2 === 1) noise(t, 0.03, 'highpass', 7500, 0, 0.7, s % 4 === 3 ? 0.018 : 0.011);
+        if ((sec === 1 || sec === 2) && s % 2 === 0) {
+          const i = s >> 1;
+          osc({ t, type: 'square', f: mtof(ch[i % 3] + 12 * (1 + (((i / 3) | 0) % 2))), dur: spb * 1.4, g: 0.009, a: 0.003, flt: ['lowpass', 2400, 1200] });
+        }
+        if (sec === 2 && bar % 2 === 1 && (s === 0 || s === 3 || s === 6)) for (const n of ch) brass(t, mtof(n), 0.16, 0.016, { a: 0.006, lo: 400, hi: 2600 });
+        if (s === 0) pad(t, ch, spb * 17, 0.007, 700, 0.5, spb * 8);
+        if (bar % 4 === 3 && s === 14 && sec !== 3) osc({ t, f: 1760, f1: 1740, dur: 0.9, g: 0.01 });
+        if (sec === 3 && bar % 4 === 3 && s === 0) nz({ t, dur: spb * 16, flt: ['bandpass', 400, 3200, 2], g: 0.03, a: spb * 14 });
+      },
+    },
+    // Basescape: zumbido subterrâneo, piano elétrico em arpejo suave (fá lídio), máquinas ao longe
+    base: {
+      bpm: 84,
+      start: (m) => {
+        drone(m, mtof(31), 0.035, 170, 'triangle');
+        bed(m, 'lowpass', 240, 0.7, 0.012);
+      },
+      step(m, t, s, bar, spb) {
+        const ch = BASE_CH[(bar >> 1) % 4], sec = (bar >> 3) % 2;
+        if (s === 0 && bar % 2 === 0) {
+          pad(t, ch.slice(0, 3), spb * 33, 0.007, 650, 1.6, spb * 16);
+          osc({ t, type: 'triangle', f: mtof(ch[0] - 24), dur: spb * 30, g: 0.065, a: 0.6, hold: spb * 16 });
+        }
+        if (s % 2 === 0 && (sec === 0 || s % 4 === 0) && rnd() > 0.12) {
+          fm({ t, f: mtof(ch[BASE_ARP[(s >> 1) % 8]] + 12), ratio: 2, idx: 1.1, idx1: 0.1, dur: spb * 5, g: 0.017 });
+        }
+        if (s === 4 || s === 12) noise(t, 0.05, 'lowpass', 320, 160, 0.8, 0.04, 0.004, 'brown');
+        if (s === 6 && bar % 2 === 1) fm({ t, f: pick([210, 236, 280]), ratio: 2.76, idx: 3, idx1: 0.05, dur: 0.9, g: 0.008, flt: ['lowpass', 1500] });
+        if (s === 12 && bar % 4 === 2) nz({ t, dur: 0.7, flt: ['bandpass', 3500, 2500, 1.5], g: 0.006, a: 0.08 });
+        if (sec === 1 && (s === 0 || s === 10) && rnd() < 0.5) bell(t, mtof(ch[(rnd() * 4) | 0] + 24), 2, 0.014, 2);
+      },
+    },
+    // investigação: lá menor contemplativo, arpejo de vidro esparso com eco e filtro do pad a respirar
+    research: {
+      bpm: 66,
+      start: (m) => drone(m, mtof(33), 0.028, 240, 'triangle'),
+      step(m, t, s, bar, spb) {
+        const ch = RES_CH[bar % 4];
+        if (s === 0) {
+          pad(t, ch.slice(0, 3), spb * 18, 0.009, (bar >> 2) % 2 ? 900 : 600, 1.0, spb * 8);
+          osc({ t, f: mtof(ch[0] - 24), dur: spb * 16, g: 0.07, a: 0.4, hold: spb * 8 });
+        }
+        const i = RES_STEPS.indexOf(s);
+        if (i >= 0 && rnd() < 0.62) {
+          const f = mtof(ch[i % 4] + 12 + (i >= 4 ? 12 : 0));
+          bell(t, f, 1.4, 0.014, 3.01);
+          bell(t + spb * 3, f, 1.0, 0.005, 3.01);
+        }
+        if ((s === 4 || s === 12) && bar % 2 === 1) osc({ t, f: 2093, dur: 0.06, g: 0.005 });
+        if (s === 8 && bar % 4 === 2) osc({ t, type: 'triangle', f: mtof(ch[3]), dur: spb * 10, g: 0.02, a: 0.5, hold: spb * 3, vib: [4.5, 3] });
+      },
+    },
+    // base alienígena: orgânico e estranho — batimento grave, respiração filtrada, gotas, gemidos formantes
+    alien_base: {
+      bpm: 60,
+      start: (m) => {
+        drone(m, mtof(37), 0.035, 200);
+        drone(m, mtof(38), 0.02, 160, 'triangle');
+      },
+      step(m, t, s, bar, spb) {
+        if (s === 0 || s === 3) osc({ t, f: s ? 52 : 60, f1: 34, dur: 0.28, g: s ? 0.08 : 0.12 });
+        if (s === 0 && bar % 2 === 0) nz({ t, dur: spb * 30, flt: ['bandpass', 380, 900, 3], g: 0.02, a: spb * 12, hold: spb * 2 });
+        if (rnd() < 0.06) osc({ t, f: 1400 + rnd() * 900, f1: 500, dur: 0.07, g: 0.01 });
+        if (s === 8 && bar % 4 === 1) formant({ t, f: mtof(pick([44, 49, 50])), f1: mtof(46), dur: spb * 22, g: 0.035, a: 0.9, vib: [3.3, 4], forms: [[500, 700, 6, 1], [1100, 900, 8, 0.5]] });
+        if (s === 0 && bar % 4 === 0) pad(t, [49, 50, 56], spb * 64, 0.006, 420, 2.5, spb * 30);
+        if (s === 12 && bar % 2 === 1 && rnd() < 0.6) fm({ t, f: pick([185, 196, 277]), ratio: 1.41, idx: 4, idx1: 0.05, dur: 2.2, g: 0.011, flt: ['lowpass', 1400] });
+        if (tenseOn(m)) {
+          into(m.layer, () => {
+            if (s === 8 || s === 11) osc({ t, f: s === 8 ? 60 : 52, f1: 34, dur: 0.24, g: 0.09 });
+            if (s % 2 === 1) nz({ t, dur: 0.05, flt: ['bandpass', 3200, 2600, 3], g: 0.06, buf: 'crackle' });
+            if (s === 0) for (const n of [61, 62]) osc({ t, type: 'sawtooth', f: mtof(n), dur: spb * 15, g: 0.007, a: 0.4, hold: spb * 6, trem: [9, 0.6], flt: ['lowpass', 1800] });
+          });
+        }
+      },
+    },
+    // Cydonia: dó frígio, ostinato grave, metais em crescendo, coro de formantes e sino fúnebre
+    cydonia: {
+      bpm: 72,
+      start: (m) => drone(m, mtof(24), 0.045, 140),
+      step(m, t, s, bar, spb) {
+        const ch = CYD_CH[bar % 4], r = ch[0] - 24;
+        if (s % 2 === 0) osc({ t, type: 'sawtooth', f: mtof(r + CYD_OST[s >> 1]), dur: spb * 1.8, g: s === 0 ? 0.055 : 0.038, a: 0.005, flt: ['lowpass', 500, 200, 3] });
+        if (s === 0) {
+          timp(t, mtof(r + 12), 0.9, 0.15);
+          for (const n of ch) brass(t, mtof(n), spb * 15, 0.018, { a: spb * 6, lo: 200, hi: 1400, hold: spb * 4 });
+        }
+        if (s === 12 && bar % 2 === 1) {
+          timp(t, mtof(r + 19), 0.4, 0.08);
+          timp(t + spb * 2, mtof(r + 19), 0.4, 0.1);
+        }
+        if (s === 0 && bar % 2 === 0 && (bar >> 2) % 2 === 1) {
+          for (const n of [ch[0] + 12, ch[2] + 12]) formant({ t, f: mtof(n), dur: spb * 30, g: 0.04, a: 1.2, hold: spb * 14, vib: [5, 2], forms: [[750, 750, 6, 1], [1150, 1150, 8, 0.6]] });
+        }
+        if (s === 0 && bar % 4 === 0) bell(t, mtof(r + 36), 4, 0.028, 1.41);
+        if (tenseOn(m)) {
+          into(m.layer, () => {
+            if (s % 2 === 0 || s === 15) noise(t, 0.06, 'bandpass', 1500, 1100, 1.2, s % 4 === 0 ? 0.04 : 0.02);
+            if (s === 0) for (const n of [60, 61]) osc({ t, type: 'sawtooth', f: mtof(n), dur: spb * 15, g: 0.007, a: 0.3, hold: spb * 6, trem: [11, 0.7], flt: ['lowpass', 1800] });
+            if (bar % 2 === 1 && (s === 0 || s === 3 || s === 6)) for (const n of ch) brass(t, mtof(n + 12), 0.2, 0.012, { a: 0.006 });
+          });
+        }
+      },
+    },
+    // vitória: hino em ré maior, metais calmos, sinos e tímpanos espaçados
+    victory: {
+      bpm: 76,
+      start: (m) => drone(m, mtof(38), 0.02, 300, 'triangle'),
+      step(m, t, s, bar, spb) {
+        const ch = VIC_CH[bar % 8];
+        if (s === 0) {
+          pad(t, ch, spb * 17, 0.008, 1100, 0.5, spb * 8);
+          osc({ t, type: 'triangle', f: mtof(ch[0] - 24), dur: spb * 16, g: 0.075, a: 0.1, hold: spb * 8 });
+        }
+        if (s === 0 || s === 8) for (const n of ch) brass(t, mtof(n), spb * 7.5, 0.014, { a: 0.08, hold: spb * 3, lo: 300, hi: 1800 });
+        if (s % 4 === 2 && rnd() < 0.5) bell(t, mtof(ch[(s >> 2) % 3] + 24), 1.6, 0.016, 2);
+        if (s === 0 && bar % 4 === 0) timp(t, mtof(ch[0] - 24), 1, 0.12);
+        if ((bar >> 2) % 2 === 1) for (const [st, k] of VIC_MEL) if (s === st) osc({ t, type: 'triangle', f: mtof(ch[k] + 12), dur: spb * (st === 8 ? 4 : 2.5), g: 0.03, a: 0.02, vib: [5, 3] });
+      },
+    },
+    // derrota: ré menor lento, pad a esmorecer, linha descendente esparsa e vento
+    defeat: {
+      bpm: 50,
+      start: (m) => {
+        drone(m, mtof(26), 0.03, 180);
+        bed(m, 'bandpass', 520, 1.5, 0.01);
+      },
+      step(m, t, s, bar, spb) {
+        const ch = DEF_CH[bar % 4];
+        if (s === 0) {
+          pad(t, ch, spb * 18, 0.01, 520, 1.5, spb * 8);
+          osc({ t, f: mtof(ch[0] - 24), dur: spb * 16, g: 0.08, a: 0.8, hold: spb * 8 });
+        }
+        if (s % 4 === 0 && rnd() < 0.5) fm({ t, f: mtof(ch[2 - ((s >> 2) % 3)] + 12), ratio: 1, idx: 1.5, idx1: 0.05, dur: 2.8, g: 0.02 });
+        if (s === 8 && bar % 4 === 3) bell(t, mtof(62), 3, 0.014, 1.41);
+      },
+    },
   };
 
   let serial = 0;
   function newInst(id, fadeIn) {
     const c = A.ctx, now = c.currentTime;
     const bus = c.createGain();
+    bus.gain.value = 0.0001;
     bus.gain.setValueAtTime(0.0001, now);
     bus.gain.setTargetAtTime(1, now, fadeIn / 3);
     bus.connect(A.moodMix);
@@ -895,18 +1247,20 @@
     }
   }
 
+  const moodBase = (id) => (id && id.endsWith('_tense') ? id.slice(0, -6) : id);
+
   function switchMood(id) {
-    const base = id === 'battle_tense' ? 'battle' : id;
+    const base = moodBase(id), tense = !!id && base !== id;
     const live = A.insts.find((m) => !m.dying);
     A.mood = id;
     if (live && base && live.id === base) {
-      setTense(live, id === 'battle_tense');
+      setTense(live, tense);
       return;
     }
     if (live) fadeOut(live, FADE);
     if (!base) return;
     const m = newInst(base, live ? FADE : 0.5);
-    setTense(m, id === 'battle_tense');
+    setTense(m, tense);
     A.insts.push(m);
     if (!A.timer) A.timer = setInterval(tick, TICK_MS);
     tick();
@@ -1138,6 +1492,76 @@
     });
   }
 
+  // render offline (QA): toca um efeito, ambiente ou stinger num OfflineAudioContext com o mesmo grafo
+  // (compressor, barramentos) e devolve Promise<{buffer, end}> ou null. Volumes no máximo (pior caso de
+  // saturação) salvo o.settings. Não toca no contexto real: o estado é trocado e reposto de forma síncrona.
+  // o: {secs, sampleRate, at:[s,…] (efeitos: instantes de disparo), rate, settings:{volMaster,volSfx,volMusic}}
+  const SWAP = ['ctx', 'comp', 'master', 'meter', 'sfx', 'mus', 'moodMix', 'stBus', 'buf'];
+  function renderOffline(kind, name, o) {
+    o = o || {};
+    const OAC = W.OfflineAudioContext || W.webkitOfflineAudioContext;
+    const known = kind === 'mood' ? MOOD_LIST.indexOf(name) >= 0 : kind === 'stinger' ? !!STINGERS[name] : !!SFX[name];
+    if (!OAC || !known) return Promise.resolve(null);
+    const sr = clamp(num(o.sampleRate, 44100), 8000, 96000), secs = clamp(num(o.secs, 3), 0.1, 120);
+    let c;
+    try {
+      c = new OAC(2, Math.ceil(secs * sr), sr);
+    } catch (e) {
+      return Promise.resolve(null);
+    }
+    const keep = {}, keepCur = cur;
+    for (const k of SWAP) keep[k] = A[k];
+    let end = 0;
+    try {
+      A.ctx = c;
+      build();
+      const st = o.settings || {};
+      A.master.gain.value = clamp(num(st.volMaster, 1), 0, 1) * SCALE.master;
+      A.sfx.gain.value = clamp(num(st.volSfx, 1), 0, 1) * SCALE.sfx;
+      A.mus.gain.value = clamp(num(st.volMusic, 1), 0, 1) * SCALE.music;
+      if (kind === 'sfx') {
+        for (const at of o.at || [0]) {
+          const dest = c.createGain();
+          dest.connect(A.sfx);
+          const t = 0.01 + num(at, 0);
+          cur = { dest, r: o.rate > 0 ? o.rate : 1, end: t };
+          SFX[name](t);
+          end = Math.max(end, cur.end);
+        }
+      } else if (kind === 'stinger') {
+        cur = { dest: A.stBus, r: 1, end: 0 };
+        end = 0.02 + (STINGERS[name](0.02) || 2);
+        end = Math.max(end, cur.end);
+      } else {
+        const base = moodBase(name);
+        const m = newInst(base, 0.5);
+        if (base !== name) {
+          m.tenseOn = true;
+          m.layer.gain.value = 1;
+        }
+        const spb = 60 / m.def.bpm / 4;
+        while (m.t < secs) {
+          cur = { dest: m.bus, r: 1, end: 0 };
+          m.def.step(m, m.t, m.step % 16, Math.floor(m.step / 16), spb);
+          m.t += spb;
+          m.step++;
+        }
+        end = secs;
+      }
+    } catch (e) {
+      end = -1;
+    } finally {
+      cur = keepCur;
+      for (const k of SWAP) A[k] = keep[k];
+    }
+    if (end < 0) return Promise.resolve(null);
+    try {
+      return c.startRendering().then((buffer) => ({ buffer, end }), () => null);
+    } catch (e) {
+      return Promise.resolve(null);
+    }
+  }
+
   OV.audio = {
     init,
     configure,
@@ -1154,5 +1578,6 @@
     names: () => Object.keys(SFX),
     moods: () => MOOD_LIST.slice(),
     stingers: () => Object.keys(STINGERS),
+    renderOffline,
   };
 })(globalThis.OV || (globalThis.OV = {}));
