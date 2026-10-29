@@ -3,12 +3,12 @@
      view = {cam:{x,y,zoom}, w, h (px CSS), viewZ, time (ms), selectedId, hover:{x,y,z}|null,
              cursor:'move'|'target'|'throw'|'none', path:{steps:[{i, tu, state:'ok'|'reserve'|'out'}], label}|null,
              reach:{cost:Int16Array, budgetOk, budgetReserve}|null,
-             target:{fromId, toI, hitPct, blocked, line:[voxel], label?, sub?, subCol?, blockI?, blast?}|null,
+             target:{fromId, toI, hitPct, blocked, line:[voxel], route?, label?, sub?, subCol?, blockI?, blast?}|null,
              throwArc:[voxel]|null, throwInfo:{toI, ok, label, sub?, blast?:{x,y,z,r,smoke,risk}}|null, throwRange:{x,y,z,r}|null, blips:[{x,y,z,size,t0}]|null,
              anim:{units:{[id]:{fx,fy,fz,dir,pose,frame,flash?,show?}}, hidden:Set|[id], hideItems:Set}, showAll, nodes}
      anim.units[id].show = desenhar mesmo fora de vista (animação em curso); target.sub = segunda etiqueta (aviso);
      path.lock = destino bloqueado à espera de confirmação (pulsa); path.noLine = só o destino (inalcançável);
-     target.blockI = tile do obstáculo que tapa o tiro (losango vermelho); safe = {t,r,b,l} px CSS ocupados pelo HUD
+     target.blockI = tile do obstáculo que tapa o tiro (losango vermelho); dangers = [{x,y,z,r}] granadas ativadas no chão; safe = {t,r,b,l} px CSS ocupados pelo HUD
      (as etiquetas ficam dentro do resto do ecrã). clampCam(view, B) usa view.viewZ (0 por omissão).
      view.kcur = {x,y,z} cursor de teclado (contorno branco/preto bem visível); view.palette 'normal'|'cvd';
      view.reduceMotion (sem pulsações); view.textScale (etiquetas); path.sub = segunda etiqueta (dica da porta).
@@ -813,7 +813,15 @@
       }
     }
 
-    // brilhos aditivos (fogo, very-lights, candeeiros) — mais fortes de noite
+    // clarão do disparo (B.flashes): o tile do atirador fica iluminado até ao próximo turno do seu lado
+    for (const f of B.flashes || []) {
+      if (!(f.i >= 0 && f.i < m.n) || !(F.allVisible || F.vis[f.i])) continue;
+      const [fx, fy, fz] = tileCenterDev(F, m, f.i);
+      if (fz > F.viewZ) continue;
+      const k = F.still ? 1 : 0.85 + 0.15 * Math.sin(F.time / 90 + f.i);
+      glows.push({ X: fx, Y: fy - 20 * S, r: 120, col: f.side === 'alien' ? 0xffc070 : 0xfff0c0, a: 0.75 * k });
+    }
+    // brilhos aditivos (fogo, very-lights, candeeiros, clarões) — mais fortes de noite
     if (glows.length && !DBG.noGlow) {
       ctx.globalCompositeOperation = 'lighter';
       for (const g of glows) {
@@ -1173,6 +1181,15 @@
       ctx.lineWidth = 1.6 * d;
       ctx.stroke();
       ctx.setLineDash([]);
+      // rota da bomba guiada: marca cada casa por onde passa
+      if (T.route) {
+        ctx.fillStyle = css(0xffe0a0, 0.95);
+        for (let k = 1; k < pts.length - 1; k++) {
+          ctx.beginPath();
+          ctx.arc(pts[k][0], pts[k][1], 2.4 * d, 0, TAU);
+          ctx.fill();
+        }
+      }
     }
     if (T.blockI !== undefined && T.blockI !== null && T.blockI >= 0 && T.blockI < m.n) {
       // o que tapa o tiro (objeto, parede): losango vermelho nesse tile
@@ -1312,23 +1329,45 @@
   }
   // área da explosão prevista: losango isométrico de raio r tiles (vermelho; fumo a cinzento)
   function drawBlast(ctx, B, F) {
+    // granadas ativadas no chão (aviso em Recruta): raio da explosão, sempre visível
+    for (const g of F.view.dangers || []) if (g.r > 0 && g.z <= F.viewZ) blastRing(ctx, F, g, PAL.out, true);
     const info = F.view.throwInfo, tg = F.view.target;
     const b = (info && info.blast) || (tg && !tg.blocked && tg.blast);
     if (!b || !(b.r > 0) || b.z > F.viewZ) return;
+    blastRing(ctx, F, b, b.smoke ? 0xb8c4cc : b.risk ? PAL.out : PAL.throw, false);
+  }
+  function blastRing(ctx, F, b, col, danger) {
     const S = F.S, d = F.dpr;
     const X = (b.x - b.y) * 32 * S + F.ox, Y = ((b.x + b.y) * 16 + 16 - b.z * 48) * S + F.oy;
     const rx = (b.r + 0.5) * 32 * Math.SQRT2 * S, ry = (b.r + 0.5) * 16 * Math.SQRT2 * S;
-    const col = b.smoke ? 0xb8c4cc : b.risk ? PAL.out : PAL.throw;
     const pulse = F.still ? 0.6 : 0.5 + 0.5 * Math.sin(F.time / 220);
     ctx.save();
     ctx.beginPath();
     ctx.ellipse(X, Y, rx, ry, 0, 0, TAU);
-    ctx.fillStyle = css(col, 0.07 + 0.05 * pulse);
+    ctx.fillStyle = css(col, (danger ? 0.12 : 0.07) + 0.05 * pulse);
     ctx.fill();
-    ctx.setLineDash([5 * d, 4 * d]);
-    ctx.lineWidth = 1.5 * d;
-    ctx.strokeStyle = css(col, 0.75);
-    ctx.stroke();
+    if (danger) {
+      // contorno escuro + traço cheio: lê-se em qualquer chão e sem depender só da cor
+      ctx.lineWidth = 4 * d;
+      ctx.strokeStyle = 'rgba(0,0,0,0.45)';
+      ctx.stroke();
+      ctx.lineWidth = 2 * d;
+      ctx.strokeStyle = css(col, 0.7 + 0.3 * pulse);
+      ctx.stroke();
+      // marca ✱ no centro (a granada)
+      ctx.beginPath();
+      for (let k = 0; k < 4; k++) {
+        const a = k * Math.PI / 4, r = 7 * d;
+        ctx.moveTo(X - Math.cos(a) * r, Y - 10 * S - Math.sin(a) * r);
+        ctx.lineTo(X + Math.cos(a) * r, Y - 10 * S + Math.sin(a) * r);
+      }
+      ctx.stroke();
+    } else {
+      ctx.setLineDash([5 * d, 4 * d]);
+      ctx.lineWidth = 1.5 * d;
+      ctx.strokeStyle = css(col, 0.75);
+      ctx.stroke();
+    }
     ctx.restore();
   }
 

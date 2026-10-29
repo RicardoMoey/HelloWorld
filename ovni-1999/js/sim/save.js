@@ -3,7 +3,8 @@
    O único ficheiro de js/sim que toca no localStorage, sempre atrás de verificação e try/catch.
 
    OV.Save = {
-     SCHEMA, SLOTS:['auto','autoTurn','1','2','3'], KEY(slot) → 'ovni1999.save.' + slot, MIGRATIONS:[]
+     SCHEMA, SLOTS:['auto','auto2','preMission','autoTurn','1','2','3'], KEY(slot) → 'ovni1999.save.' + slot, MIGRATIONS:[]
+       (auto2 = gravação automática anterior; preMission = antes da última missão; ambas escritas pela interface)
      toJSON(G, B?, meta?) → objeto            Error('save.err.busy') com interceções em curso
      fromJSON(obj) → {G, B, meta}            Error('save.err.game'|'save.err.schema'|'save.err.parse'); validação profunda
                                              (repara listas/contadores em falta, recusa o resto) e ensaio dos passos do
@@ -20,7 +21,7 @@
 
   const GAME = 'ovni-1999';
   const SCHEMA = 1;
-  const SLOTS = ['auto', 'autoTurn', '1', '2', '3'];
+  const SLOTS = ['auto', 'auto2', 'preMission', 'autoTurn', '1', '2', '3'];
   const PREFIX = 'ovni1999.save.';
   const MAX_TEXT = 32 * 1024 * 1024;
   const KEY = (slot) => PREFIX + slot;

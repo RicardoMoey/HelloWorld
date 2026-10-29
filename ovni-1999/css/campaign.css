@@ -221,15 +221,8 @@ table.cp-tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
   .cp-sol .scr-stats { gap: 2px 6px; }
   .cp-sol .scr-soldier-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .cp-kit-rest { max-width: 72px; }
-  /* equipar: o cabeçalho do boneco passa a duas linhas e o armazém estreita */
+  /* equipar: o resto do ajuste ao espaço vem das regras @container eq do css/battle.css */
   .cp-eq-host { padding: 10px 14px; }
-  .cp-eq .inv-equip { grid-template-columns: 196px minmax(0, 1fr); gap: 10px; }
-  .cp-eq .inv-equip .inv-body { grid-template-columns: minmax(0, 1fr) 248px; gap: 10px; }
-  .cp-eq .inv-head.eq { grid-template-columns: 48px minmax(0, 1fr) auto; row-gap: 6px; }
-  .cp-eq .inv-head.eq .inv-port { width: 48px; height: 48px; }
-  .cp-eq .inv-head.eq .eq-btns { grid-column: 3; grid-row: 1; max-width: 214px; }
-  .cp-eq .inv-head.eq .eq-btns .btn { min-height: 32px; padding: 0 8px; font-size: 10.5px; letter-spacing: 0.6px; }
-  .cp-eq .inv-head.eq .inv-meters { grid-column: 1 / -1; grid-row: 2; }
 }
 @media (max-height: 760px) {
   .cp-vic-banner { padding: 16px 20px 12px; }

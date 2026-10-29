@@ -59,10 +59,11 @@
 
 /* ---- menu principal ------------------------------------------------------------------------- */
 .scr-menu { justify-content: flex-start; align-items: stretch; padding-left: max(5vw, calc(24px + env(safe-area-inset-left))); }
-.scr-menu-col { position: relative; z-index: 2; display: flex; flex-direction: column; justify-content: center; gap: 30px; width: min(470px, 100%); }
+/* «safe center»: em ecrãs baixos (125 % de zoom) a coluna começa no topo e rola em vez de cortar o título */
+.scr-menu-col { position: relative; z-index: 2; display: flex; flex-direction: column; justify-content: safe center; gap: clamp(14px, 3.6vh, 30px); width: min(470px, 100%); max-height: 100%; overflow-y: auto; scrollbar-width: none; }
 .scr-logo { position: relative; padding-left: 4px; }
 .scr-logo-big {
-  font: 900 clamp(68px, 10vw, 128px)/0.86 var(--sans); letter-spacing: clamp(8px, 1.4vw, 18px); margin-left: -4px;
+  font: 900 clamp(44px, min(10vw, 14vh), 128px)/0.86 var(--sans); letter-spacing: clamp(6px, min(1.4vw, 2vh), 18px); margin-left: -4px; padding-top: 0.06em;
   background: linear-gradient(180deg, #fff1cf 0%, #ffc45a 42%, #e48c16 70%, #8f4c08 100%); -webkit-background-clip: text; background-clip: text; color: transparent;
   filter: drop-shadow(0 0 26px rgba(255, 166, 40, 0.28)) drop-shadow(0 3px 0 rgba(60, 26, 0, 0.9));
 }
@@ -300,7 +301,7 @@ table.scr-ktable { width: 100%; border-collapse: collapse; font-size: 13.5px; li
   .scr-menu-col { gap: 18px; }
   .scr-mi { min-height: 44px; }
   .scr-mi-label { font-size: 17px; }
-  .scr-logo-big { font-size: clamp(56px, 8vw, 96px); }
+  .scr-logo-big { font-size: clamp(44px, min(8vw, 12.5vh), 96px); }
 }
 @media (hover: none) {
   .scr-seg-b, .scr-tab, .scr-mi { min-height: 44px; }

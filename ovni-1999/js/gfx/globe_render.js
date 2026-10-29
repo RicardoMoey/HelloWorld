@@ -21,9 +21,10 @@
      radius(view) ; visible(view, lon, lat) ; radarCircles(G)
      rotateBy(view, dx, dy) ; zoomAt(view, zoom, px?, py?) ; rotateTo(view, lon, lat, ms?, zoom?) ; zoomTo(view, zoom, ms?, px?, py?)
      fling(view, vx, vy) ; stop(view) ; update(view, now?) → bool ; busy(view) → bool ; prewarm() ; invalidate() }
-   view = {lon, lat, zoom 0..5 (fracionário durante animações), w, h, dpr, cx?, cy?, time (ms), selection, hover,
+   view = {lon, lat, zoom 0..5 (fracionário durante animações), w, h, dpr, cx?, cy?, time (ms), selection, hover, palette?,
            highlights:[{kind,id}], mode:'normal'|'placeBase'|'target', cursor:{lon,lat}|null, placeValid?, targetFrom?,
-           country?, t? (segundos de jogo quando G é null), touch?, showRadar?, showGrid?, labels?} */
+           country?, t? (segundos de jogo quando G é null), touch?, showRadar?, showGrid?, labels?}
+   view.palette 'normal'|'cvd' (omitido: lê <html data-palette>): em 'cvd' o OVNI em voo e o terror ficam a magenta. */
 (function (OV) {
   'use strict';
 
@@ -1334,26 +1335,35 @@
     ctx.globalAlpha = (m.hidden ? 0.45 : 1) * 0.55 * on;
     ctx.drawImage(glowOf(PAL.ufo), m.x - gl, m.y - gl, gl * 2, gl * 2);
     ctx.globalAlpha = m.hidden ? 0.45 : 1;
+    // losango (como os alienígenas no Battlescape) com contorno claro: lê-se pela forma, não só pela cor
+    const R = r * 1.3;
+    const lozenge = (k) => {
+      ctx.beginPath();
+      ctx.moveTo(m.x, m.y - R * k);
+      ctx.lineTo(m.x + R * k, m.y);
+      ctx.lineTo(m.x, m.y + R * k);
+      ctx.lineTo(m.x - R * k, m.y);
+      ctx.closePath();
+    };
     if (m.hidden) {
       ctx.strokeStyle = css(PAL.ufo);
       ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.arc(m.x, m.y, r, 0, TAU);
+      lozenge(1);
       ctx.stroke();
     } else {
-      ctx.fillStyle = css(on > 0.5 ? 0xff5a4a : 0x9a1a14);
-      ctx.beginPath();
-      ctx.arc(m.x, m.y, r, 0, TAU);
+      lozenge(1.12);
+      ctx.fillStyle = 'rgba(0,0,0,0.75)';
       ctx.fill();
-      ctx.fillStyle = css(0xffd6cc, on > 0.5 ? 0.95 : 0.3);
-      ctx.beginPath();
-      ctx.arc(m.x - r * 0.25, m.y - r * 0.25, r * 0.38, 0, TAU);
+      lozenge(1);
+      ctx.fillStyle = css(on > 0.5 ? PAL.ufo : OV.Color.shade(PAL.ufo, 0.45));
       ctx.fill();
-      ctx.strokeStyle = 'rgba(30,0,0,0.8)';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.arc(m.x, m.y, r + 0.5, 0, TAU);
+      ctx.strokeStyle = css(0xffffff, on > 0.5 ? 0.9 : 0.55);
+      ctx.lineWidth = 1.3;
       ctx.stroke();
+      ctx.fillStyle = css(0xffffff, on > 0.5 ? 0.85 : 0.3);
+      ctx.beginPath();
+      ctx.arc(m.x, m.y, r * 0.3, 0, TAU);
+      ctx.fill();
     }
     ctx.restore();
   }
@@ -2005,8 +2015,15 @@
      ou a forçam a meio de um gesto). Parado, a base (fina) e a luz ficam em caches e cada fotograma é só uma cópia
      mais a camada dinâmica. A primeira imagem (ou depois de invalidate) é logo fina. */
   const SETTLE_MS = 260;
+  // paleta segura para daltonismo (Opções → Acessibilidade): OVNI em voo a magenta em vez de vermelho
+  function applyPalette(view) {
+    const cvd = view.palette === 'cvd' || (view.palette === undefined && typeof document !== 'undefined' && document.documentElement && document.documentElement.dataset.palette === 'cvd');
+    PAL.ufo = cvd ? 0xff4fd8 : 0xff3434;
+    PAL.terror = cvd ? 0xff4fd8 : 0xff2b2b;
+  }
   function draw(ctx, G, view) {
     const t0 = now();
+    applyPalette(view);
     update(view);
     const t = timeOf(view);
     const cam = camOf(view);

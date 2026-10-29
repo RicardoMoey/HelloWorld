@@ -758,9 +758,12 @@ async function bringIntoView(getPoint) {
     if (Math.abs(dy) > 90) keys.push(dy > 0 ? 'ArrowDown' : 'ArrowUp');
     if (!keys.length) return (await onCanvas(p)) ? p : null;
     const ms = Math.min(700, Math.max(90, (Math.max(Math.abs(dx), Math.abs(dy)) / 700) * 1000));
+    // ⇧ + setas desloca a câmara a direito (as setas sozinhas movem o cursor de teclado)
+    await page.keyboard.down('Shift');
     for (const kk of keys) await page.keyboard.down(kk);
     await sleep(ms);
     for (const kk of keys) await page.keyboard.up(kk);
+    await page.keyboard.up('Shift');
     await sleep(60);
   }
   const p = await getPoint();
@@ -1059,6 +1062,17 @@ async function battleFlow() {
   await briefing();
   tag = 'batalha';
   await shot('battle_start');
+  // primeira missão da campanha: conselhos (não bloqueiam o mapa); «Entendido» fecha
+  const firstBattle = await page.evaluate(() => { const st = OV.Game.G.stats; return !(st.missionsWon + st.missionsLost + st.missionsAborted); });
+  if (firstBattle) {
+    if (await until(() => { const s = OV.BattleUI.debug.state(); return !!(s && s.report && s.report.kind === 'tips'); }, 8000, 'conselhos da primeira missão')) {
+      const rows = await page.evaluate(() => OV.BattleUI.debug.state().report.rows);
+      note('conselhos: ' + rows.join(' / '));
+      await shot('battle_tips');
+      await press(page.locator('.bs-report-head .btn'));
+      await until(() => !OV.BattleUI.debug.state().report, 3000, 'fechar os conselhos');
+    }
+  }
   // opções na batalha (Esc): alienígenas mais rápidos
   if (!TOUCH) {
     await page.mouse.move(VW / 2, VH / 2);

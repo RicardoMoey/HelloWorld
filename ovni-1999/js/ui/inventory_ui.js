@@ -11,7 +11,9 @@
      opts = {onClose(), perform(action) → Promise<{ok}>, select(unitId)}
    OV.InventoryUI.medikit(B, unitId, itemId?, opts) → Promise           — só o painel do kit médico (menu «Usar»)
    OV.InventoryUI.close() ; isOpen() ; refresh() ; debug.state()
-   OV.InventoryUI.equipScreen(container, {squad, stores, onChange, night?, selectedId?}) → controlador
+   OV.InventoryUI.equipScreen(container, {squad, stores, onChange, night?, selectedId?, researched?}) → controlador
+     (researched: G.researched da campanha | null = tudo conhecido; omitido = OV.Game.G.researched)
+   OV.InventoryUI.model = {autoLoadout(soldier, stores, opts) → loadout, armedLo(loadout) → bool (arma que dispara)}
      squad = [{id, name, rank, stats{str,tu,hp…}, armour, portraitSeed, female, nat, loadout{R,L,belt[],pack[]}}]
      stores = {tipoDeItem: quantidade}. Trabalha sobre cópias (sem UT; o armazém é a reserva) e chama
      onChange({loadouts: {id: loadout}, stores}) a cada alteração; quem chama aplica-as ao jogo.
@@ -1591,11 +1593,23 @@
     return lo;
   }
 
+  // equipamento com uma arma de fogo que dispara: sem carregadores ou com carregador próprio na mochila/cinto
+  function armedLo(lo) {
+    for (const h of ['R', 'L']) {
+      const gd = lo && lo[h] ? defOf(lo[h]) : null;
+      if (!gd || gd.kind !== 'firearm') continue;
+      if (!(Array.isArray(gd.ammo) && gd.ammo.length)) return true;
+      if (['belt', 'pack'].some((sl) => (lo[sl] || []).some((t) => gd.ammo.indexOf(t) >= 0))) return true;
+    }
+    return false;
+  }
+
   function equipScreen(container, options) {
     const o = options || {};
     const squad = (o.squad || []).slice();
     // investigação da campanha (o motor recusa o resto): opção explícita ou a campanha aberta
-    const researched = Array.isArray(o.researched) ? o.researched : OV.Game && OV.Game.G && Array.isArray(OV.Game.G.researched) ? OV.Game.G.researched : null;
+    // researched: null explícito = tudo conhecido (Batalha Rápida); sem a opção, a campanha aberta (compatibilidade)
+    const researched = Array.isArray(o.researched) ? o.researched : 'researched' in o ? null : OV.Game && OV.Game.G && Array.isArray(OV.Game.G.researched) ? OV.Game.G.researched : null;
     const known = knownTo(researched);
     const E = {
       loadouts: {}, stores: {}, selId: o.selectedId !== undefined ? o.selectedId : squad.length ? squad[0].id : null, clip: null,
@@ -1711,7 +1725,11 @@
       } else if (kind === 'auto') {
         emptyInto(s.id);
         E.loadouts[s.id] = autoFor(s);
-        sfx('ui_confirm');
+        // sem arma que dispare (ou sem munição para ela): dizer onde se compra em vez de deixar o soldado desarmado
+        if (!armedLo(E.loadouts[s.id])) {
+          sfx('ui_deny');
+          OV.Dom.toast(isTouch() ? 'hud.equip.noWeapons.touch' : 'hud.equip.noWeapons', null, 'warn');
+        } else sfx('ui_confirm');
         emit();
       } else if (kind === 'clear') {
         emptyInto(s.id);
@@ -1745,7 +1763,7 @@
       const type = srcType(picker.sel || E.hoverSrc || '') || null;
       const s = soldier();
       if (!type) {
-        box.appendChild(el('div', { class: 'inv-hint' }, el('b', { text: T('hud.equip.title') }), el('span', { text: T('hud.equip.hint') })));
+        box.appendChild(el('div', { class: 'inv-hint' }, el('b', { text: T('hud.equip.title') }), el('span', { text: T(isTouch() ? 'hud.equip.hint.touch' : 'hud.equip.hint') })));
         return box;
       }
       box.appendChild(el('div', { class: 'inv-desc' }, iconCanvas(type, 56),
@@ -1961,7 +1979,7 @@
     isOpen: () => !!V,
     refresh() { if (V) render(); },
     equipScreen,
-    model: { autoLoadout },
+    model: { autoLoadout, armedLo },
     debug: {
       state() {
         if (!V) return { open: false };

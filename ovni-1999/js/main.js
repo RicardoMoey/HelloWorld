@@ -20,6 +20,8 @@
     sound: true, music: true, voice: false, volMaster: 0.8, volSfx: 0.9, volMusic: 0.5,
     speedXcom: 1, speedAlien: 2, confirmMove: 'auto', edgeScroll: false, wheel: 'level',
     instantGrenades: true, confirmEndTurn: true, hitPreview: true,
+    // 2.º clique antes de um explosivo que apanha soldados nossos: 'auto' (Recruta e Veterano) | 'always' | 'never'
+    confirmBlast: 'auto',
     // acessibilidade (contrato partilhado com a batalha): paleta 'normal'|'cvd', cursor de teclado no Battlescape,
     // reduzir movimento 'auto'|'on'|'off' ('auto' segue prefers-reduced-motion), escala do texto 1|1.15|1.3
     palette: 'normal', kbCursor: true, reduceMotion: 'auto', textScale: 1,
@@ -34,6 +36,7 @@
     if (SCALES.indexOf(+o.textScale) < 0) o.textScale = 1;
     o.textScale = +o.textScale;
     o.kbCursor = o.kbCursor !== false;
+    if (['auto', 'always', 'never'].indexOf(o.confirmBlast) < 0) o.confirmBlast = 'auto';
     return o;
   }
   // movimento reduzido efetivo (opção do jogo ou, em 'auto', a preferência do sistema)

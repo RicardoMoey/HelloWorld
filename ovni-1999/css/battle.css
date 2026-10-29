@@ -284,15 +284,10 @@ body.in-battle #toasts { top: calc(56px + env(safe-area-inset-top)); }
 .bs-report-row.good .bs-report-ic { color: var(--green); }
 .bs-report-txt { font: 600 calc(12.5px * var(--k))/1.35 var(--sans); color: #dbe6ef; }
 .bs-report-none { padding: 8px; font-size: 12px; }
+.bs-report.tips { border-top-color: var(--teal); }
+.bs-report.tips .bs-report-title { color: var(--teal); }
+.bs-report-row.tip .bs-report-ic { color: var(--teal); }
 
-/* etiqueta de toque longo (iPad: sem pairar não há dicas) */
-.bs-lp {
-  position: fixed; z-index: 85; max-width: 260px; padding: 7px 10px; pointer-events: none; font: 600 13px/1.4 var(--sans); color: var(--ink);
-  background: rgba(6, 12, 18, 0.97); border: 1px solid var(--amber); border-radius: 4px; box-shadow: var(--shadow);
-}
-.bs-lp b { color: var(--amber); }
-.bs-lp .key { font: 600 11px var(--mono); color: #8fa5b8; border: 1px solid #2c4258; border-radius: 3px; padding: 0 4px; }
-.bs-lp .muted { color: var(--muted); }
 .bs-summary td.num { text-align: right; font-family: var(--mono); }
 .bs-summary-score { margin: 12px 0 0; font: 800 15px var(--sans); color: var(--amber); text-align: right; letter-spacing: 1px; }
 

@@ -302,6 +302,20 @@
     try { phase = tg ? GM().dayPhase({ t: G.t + Math.round(r.eta.h * 3600) }, tg.lon, tg.lat) : null; } catch (e) { phase = null; }
     return { craftId: r.craftId, h: r.eta.h, phase };
   }
+  // noite num OVNI (aterrado ou despenhado) → {h: horas até ser dia, crashed} | null
+  function nightAt(G, ref) {
+    if (!ref || ref.kind !== 'ufo') return null;
+    const tg = C().targetOf(G, ref);
+    if (!tg) return null;
+    try {
+      if (GM().dayPhase(G, tg.lon, tg.lat) !== 'night') return null;
+      let h = 1;
+      while (h < 24 && GM().dayPhase({ t: G.t + h * 3600 }, tg.lon, tg.lat) !== 'day') h++;
+      return { h, crashed: !!(tg.obj && tg.obj.status === 'crashed') };
+    } catch (e) {
+      return null;
+    }
+  }
   // linha dos avisos de OVNI aterrado/despenhado: «Skyranger-1 chega em 2 h — lá será noite»
   function teamEtaLine(G, ref, leftS) {
     const e = teamEta(G, ref);
@@ -385,6 +399,14 @@
         out.ticks += r.ticks;
         const evs = G.events.splice(0);
         if (evs.length && handle) handle(evs);
+        // a interface pode parar o relógio entre blocos (ex.: amanheceu onde uma equipa espera pelo dia)
+        if (!r.stopped && o.halt && o.halt()) {
+          out.stopped = true;
+          out.reason = 'ui';
+          st.speed = 0;
+          st.acc = 0;
+          return out;
+        }
         if (r.stopped) {
           out.stopped = true;
           out.reason = r.reason;
@@ -508,7 +530,7 @@
     for (const s of ['alert', 'warn', 'good', 'info', 'terror']) k.push('geo.pop.kicker.' + s);
     for (const t of ['ufoLiftOff', 'ufoGone', 'ufoLost', 'ufoLanded', 'craftReturned', 'craftReady', 'transferArrived', 'soldierRecovered', 'crashSiteExpired', 'landedUfoGone']) k.push('geo.toast.' + t, 'geo.toast.' + t + '.many');
     k.push('geo.toast.craftRearmShort.ammo', 'geo.toast.craftRearmShort.fuel', 'geo.toast.interceptOrderInvalid', 'geo.toast.pactSigned', 'geo.toast.alienBaseBuilt', 'geo.toast.retaliation', 'geo.toast.generic');
-    for (const r of ['funds', 'materials', 'hangar', 'space']) k.push('geo.ev.productionStalled.' + r);
+    for (const r of ['funds', 'materials', 'hangar', 'space', 'storage']) k.push('geo.ev.productionStalled.' + r);
     for (const r of ['dogfight', 'mission', 'base']) k.push('geo.ev.craftLost.body.' + r);
     for (const r of ['patrol', 'agents', 'supply']) k.push('geo.ev.alienBaseFound.' + r);
     for (const r of ['ufoDestroyed', 'repelled', 'lost']) k.push('geo.ev.baseDefence.' + r);
@@ -532,7 +554,7 @@
     targetName, craftStatusKey, ufoRows, craftRows, baseRows, siteRows, alienBaseRows, cityRows, weaponsText, etaHours,
     launchState, craftsFor, targetsFor, reasonText, warnText, fundingRows, runClock, REACT, MERGE, classify, toastFor,
     prodName, itemName, researchName, textKeys, ufoVisible, WORLD_REASONS, WORLD_WARNS, MISSION_REASONS,
-    groundTarget, teamEta, teamEtaLine, idleStaff, nextSteps, suggestSpeed, dropBaseLosses, logTerror,
+    groundTarget, teamEta, teamEtaLine, nightAt, idleStaff, nextSteps, suggestSpeed, dropBaseLosses, logTerror,
   };
 
   // =================================================================================================================
@@ -1761,12 +1783,16 @@
           const fit = (c.soldiers || []).filter((id) => { const s = C().findSoldier(G, id); return s && !s.woundDays; }).length;
           if (ev.prompt === 'mission') {
             const unarmed = CU() ? CU().unarmedAboard(G, c.id).length : 0;
+            // noite no OVNI: os alienígenas veem no escuro — sugerir esperar pelo dia (a interface volta a perguntar)
+            const nt = nightAt(G, tref);
+            const lines = unarmed ? [Tn('geo.ev.arrived.unarmed', unarmed)] : [];
+            if (nt) lines.unshift(T(nt.crashed ? 'geo.ev.arrived.night.crash' : 'geo.ev.arrived.night', { t: fmtDur(nt.h) }));
+            const wait = nt ? { label: T('geo.a.waitDay'), key: 'W', esc: true, act: () => waitForDay(c.id, tref, nt) } : { label: T('geo.a.wait'), key: 'W', esc: true, act: () => {} };
             return {
-              tone: unarmed ? 'warn' : 'good', icon: 'craft', title: T('geo.ev.arrived.mission'), sound: 'radar_ping', focus: refOf('craft', c.id),
+              tone: unarmed || nt ? 'warn' : 'good', icon: 'craft', title: T(ev.dawn ? 'geo.ev.arrived.dawn' : 'geo.ev.arrived.mission'), sound: 'radar_ping', focus: refOf('craft', c.id),
               text: T('geo.ev.arrived.mission.body', { craft: craftName(G, c), target: targetName(G, tref), n: fit }),
-              lines: unarmed ? [Tn('geo.ev.arrived.unarmed', unarmed)] : [],
-              buttons: [{ label: T('geo.a.startMission'), key: 'Enter', cls: 'primary', def: true, act: () => launchMission(tref, c.id) },
-                { label: T('geo.a.wait'), key: 'W', esc: true, act: () => {} }, recall],
+              lines,
+              buttons: [{ label: T('geo.a.startMission'), key: 'Enter', cls: 'primary', def: true, act: () => launchMission(tref, c.id) }, wait, recall],
             };
           }
           if (ev.prompt === 'patrol') {
@@ -2182,6 +2208,28 @@
       sfx(clk.paused ? 'ui_deny' : 'ui_confirm');
       refreshTime();
     }
+    /* «Esperar pelo dia»: G.ui.waitDay = [{craftId, kind, id}]. Quando amanhece no alvo e a nave ainda lá está,
+       o relógio para e volta a janela «Equipa no local». Devolve true quando parou (opção halt do runClock). */
+    function waitForDay(craftId, ref, nt) {
+      const L = Array.isArray(G.ui.waitDay) ? G.ui.waitDay.filter((w) => w.craftId !== craftId) : [];
+      L.push({ craftId, kind: ref.kind, id: ref.id });
+      G.ui.waitDay = L;
+      OV.Dom.toast(T('geo.toast.waitDay', { t: fmtDur(nt.h) }), null, 'info');
+    }
+    function checkWaitDay() {
+      const L = G.ui.waitDay;
+      if (!Array.isArray(L) || !L.length) return false;
+      let fired = false;
+      G.ui.waitDay = L.filter((w) => {
+        const c = G.crafts[w.craftId], ref = { kind: w.kind, id: w.id };
+        if (!c || c.status !== 'patrol' || c.patrol || !c.dest || c.dest.kind !== w.kind || c.dest.id !== w.id || !C().targetOf(G, ref)) return false;
+        if (nightAt(G, ref)) return true;
+        enqueuePopup({ t: 'craftArrived', craftId: c.id, target: ref, prompt: 'mission', dawn: true });
+        fired = true;
+        return false;
+      });
+      return fired;
+    }
     function onStopped(reason) {
       if (reason === 'dogfight' && !S.queue.some((x) => x.type === 'dogfightStart') && !(fn('DogfightUI', 'isOpen') && OV.DogfightUI.isOpen())) {
         S.queue.unshift({ kind: 'scene', type: 'dogfightStart', open: () => openDogfights() });
@@ -2468,7 +2516,7 @@
       if (S.fallbackDf) thinkFallbackDf(dt);
       if (S.autosave && !G.dogfights.length && !S.fallbackDf) doAutosave();
       if (!blocked()) {
-        const r = runClock(G, clk, dt, handle);
+        const r = runClock(G, clk, dt, handle, { halt: checkWaitDay });
         if (r.ticks) S.timeDirty = true;
         if (r.stopped) onStopped(r.reason);
         if (r.stopped || r.ticks) ui.speed = clk.speed;

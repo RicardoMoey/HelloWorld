@@ -19,6 +19,8 @@
 
   const T = (k, p) => OV.T(k, p);
   const Tn = (k, n, p) => OV.Tn(k, n, p);
+  // chave no feminino quando existe (soldadas: «Morta em combate»…)
+  const gk = (key, s) => (s && s.female && OV.T.has(key + '.f') ? key + '.f' : key);
   const el = (...a) => OV.Dom.el(...a);
   const D = () => OV.Data;
   const C = () => OV.Campaign;
@@ -1198,11 +1200,14 @@
       const why = BS().canSellCraft(g, c.id);
       if (why) { deny(errText(why)); return; }
       const name = craftName(c);
+      const rentDue = BS().craftRentDue ? BS().craftRentDue(g, c.id) | 0 : 0;
       const ok = await OV.Dom.modal({
         title: T('base.crafts.sell'), cls: 'alert',
         body: el('div', { class: 'bsc-confirm' }, craftIcon(c.type, 64),
           el('div', null, el('p', { class: 'modal-text', text: T('base.crafts.sellConfirm', { craft: name, price: money(def.sell) }) }),
-            el('p', { class: 'bsc-note muted', text: T(def.rent > 0 ? 'base.crafts.sellNote.rent' : 'base.crafts.sellNote', { rent: money(def.rent) }) }))),
+            el('p', { class: 'bsc-note muted', text: T(def.rent > 0 ? 'base.crafts.sellNote.rent' : 'base.crafts.sellNote', { rent: money(def.rent) }) }),
+            // aluguer proporcional já corrido este mês: fica em base.rentDue e é cobrado no fecho do mês
+            rentDue > 0 ? el('p', { class: 'bsc-note warn', text: T('base.crafts.sellRentDue', { rent: money(rentDue) }) }) : null)),
         buttons: [{ label: T('common.cancel'), value: false }, { label: T('base.crafts.sellGo', { price: money(def.sell) }), value: true, kind: 'danger' }],
       });
       if (!ok || !S.root) return;
@@ -1244,7 +1249,7 @@
         const pool = C().equipPool(g, craftId);
         let ctl = null;
         ctl = OV.InventoryUI.equipScreen(bodyBox, {
-          squad: pool.squad, stores: pool.stores,
+          squad: pool.squad, stores: pool.stores, researched: g.researched,
           onChange: (state) => {
             const r = C().applyEquip(g, craftId, state);
             if (!r || !r.ok) {
@@ -1429,7 +1434,7 @@
           el('td', { class: 'mono', text: String(d.missions) }),
           el('td', { class: 'mono', text: String(d.kills) }),
           el('td', { class: 'mono', text: OV.U.fmtDate(d.diedT, false) }),
-          el('td', { text: T('base.mem.cause.' + (d.cause || 'kia')) })));
+          el('td', { text: T(gk('base.mem.cause.' + (d.cause || 'kia'), d)) })));
       }
       return el('div', { class: 'bsc-tblwrap' }, el('table', { class: 'tbl bsc-memtbl' },
         el('thead', null, el('tr', null, ...['rank', 'name', 'missions', 'kills', 'date', 'cause'].map((k) => el('th', { text: T('base.mem.col.' + k) })))),

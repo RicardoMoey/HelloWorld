@@ -28,6 +28,7 @@
     'bs.noCharges': 'Sem cargas',
     'bs.noWound': 'Não há feridas nessa parte do corpo',
     'bs.cantKneel': 'Esta unidade não se pode ajoelhar',
+    'bs.noRoute': 'Bomba sem rota até ao alvo',
     'bs.notYourTurn': 'Não é o turno desta unidade',
     'bs.panicking': 'Em pânico!',
     'bs.battleOver': 'A missão terminou',

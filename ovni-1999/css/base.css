@@ -137,3 +137,11 @@ input[type=checkbox] { accent-color: var(--amber); }
 #tooltip b { color: var(--amber); }
 
 @media (hover: none) { #tooltip { display: none !important; } }
+/* etiqueta de toque longo (iPad: sem pairar não há dicas; OV.Dom.tooltip) */
+.lp-tip {
+  position: fixed; z-index: 85; max-width: 260px; padding: 7px 10px; pointer-events: none; font: 600 13px/1.4 var(--sans); color: var(--ink);
+  background: rgba(6, 12, 18, 0.97); border: 1px solid var(--amber); border-radius: 4px; box-shadow: var(--shadow);
+}
+.lp-tip b { color: var(--amber); }
+.lp-tip .key { font: 600 11px var(--mono); color: #8fa5b8; border: 1px solid #2c4258; border-radius: 3px; padding: 0 4px; }
+.lp-tip .muted { color: var(--muted); }

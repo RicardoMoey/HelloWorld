@@ -1,5 +1,6 @@
 /* Utilitários DOM: criação de elementos, toasts, modais com Promise (foco preso e devolvido), tooltips, barras.
-   OV.Dom = { $, el, clear, toast, modal, anyModalOpen, tooltip, hideTooltip, bar, download, pickFile,
+   OV.Dom = { $, el, clear, toast, modal, anyModalOpen, tooltip (também toque longo no iPad), hideTooltip, hideLongPress, bar,
+              download, pickFile,
               trapFocus(caixa, {keep, returnTo}) → release(restore?) ; trapOpen() ; focusKey(nó) ; refocus(chave, dentro?) ;
               focusables(caixa) } */
 (function (OV) {
@@ -188,10 +189,59 @@
     });
     node.addEventListener('mouseleave', hideTooltip);
     node.addEventListener('pointerdown', hideTooltip);
+    longPress(node, () => (typeof content === 'function' ? content() : content));
   }
   function hideTooltip() {
     const t = $('tooltip');
     if (t) t.classList.add('hidden');
+  }
+  /* toque: sem pairar não há dicas — um toque longo (≥ 450 ms) num nó com dica mostra a etiqueta junto dele (nome e
+     tecla) durante 2,6 s e cancela o clique que viria a seguir. Todas as interfaces o têm através de tooltip(). */
+  let lpBubble = null, lpHideT = 0;
+  function hideLongPress() {
+    clearTimeout(lpHideT);
+    if (lpBubble) lpBubble.remove();
+    lpBubble = null;
+  }
+  function showLongPress(node, html) {
+    hideLongPress();
+    if (!html || !node.isConnected) return;
+    const b = el('div', { class: 'lp-tip bs-lp', role: 'tooltip', html });
+    document.body.appendChild(b);
+    const r = node.getBoundingClientRect(), bw = b.offsetWidth, bh = b.offsetHeight;
+    const x = Math.max(8, Math.min(window.innerWidth - bw - 8, r.left + r.width / 2 - bw / 2));
+    const y = r.top - bh - 10 >= 8 ? r.top - bh - 10 : Math.min(window.innerHeight - bh - 8, r.bottom + 10);
+    b.style.left = x + 'px';
+    b.style.top = y + 'px';
+    lpBubble = b;
+    lpHideT = setTimeout(hideLongPress, 2600);
+    if (OV.audio && OV.audio.play) OV.audio.play('ui_click', { vol: 0.4 });
+  }
+  function longPress(node, html) {
+    if (node.dataset.lp) return;
+    node.dataset.lp = '1';
+    let timer = 0, fired = false, x0 = 0, y0 = 0;
+    node.addEventListener('pointerdown', (e) => {
+      if (e.pointerType !== 'touch') return;
+      fired = false;
+      x0 = e.clientX;
+      y0 = e.clientY;
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        fired = true;
+        showLongPress(node, html());
+      }, 450);
+    });
+    const stop = () => clearTimeout(timer);
+    node.addEventListener('pointerup', stop);
+    node.addEventListener('pointercancel', stop);
+    node.addEventListener('pointermove', (e) => { if (Math.hypot(e.clientX - x0, e.clientY - y0) > 10) stop(); });
+    node.addEventListener('click', (e) => {
+      if (!fired) return;
+      fired = false;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+    }, true);
   }
 
   // barra horizontal com valor (UT, saúde…): bar(valor, máximo, 'tu'|'hp'|'en'|'mo', extra)
@@ -228,5 +278,5 @@
     });
   }
 
-  OV.Dom = { $, el, clear, toast, modal, anyModalOpen, tooltip, hideTooltip, bar, download, pickFile, trapFocus, trapOpen, focusKey, refocus, focusables };
+  OV.Dom = { $, el, clear, toast, modal, anyModalOpen, tooltip, hideTooltip, hideLongPress, bar, download, pickFile, trapFocus, trapOpen, focusKey, refocus, focusables };
 })(globalThis.OV || (globalThis.OV = {}));

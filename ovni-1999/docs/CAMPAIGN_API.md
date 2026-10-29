@@ -805,7 +805,8 @@ scrambles the base's ready armed crafts (§3.1 step 3), then calls `baseDefence`
 
 ### 5.10 `OV.Save` (save.js; the only sim file that touches `localStorage`, guarded by `typeof localStorage`)
 ```
-SCHEMA = 1 ; SLOTS = ['auto','autoTurn','1','2','3'] ; KEY(slot) = 'ovni1999.save.' + slot
+SCHEMA = 1 ; SLOTS = ['auto','auto2','preMission','autoTurn','1','2','3'] ; KEY(slot) = 'ovni1999.save.' + slot
+                                (auto2 = previous autosave, preMission = state before the last mission; written by the UI)
 toJSON(G, B?, meta?) → obj      throws Error('save.err.busy') if G.dogfights.length; B via OV.Battle.serialize
 fromJSON(obj) → {G, B, meta}    validates game/schema, runs MIGRATIONS, deep validation of G (below),
                                 Campaign.rebuildDerived(G), G.events = [], B via OV.Battle.deserialize;

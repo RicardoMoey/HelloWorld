@@ -21,6 +21,8 @@
   const VERSION = '0.9.0';
   const T = (k, p) => OV.T(k, p);
   const Tn = (k, n, p) => OV.Tn(k, n, p);
+  // chave no feminino quando existe (soldadas: «Morta em combate»…)
+  const gk = (key, s) => (s && s.female && OV.T.has(key + '.f') ? key + '.f' : key);
   const el = (...a) => OV.Dom.el(...a);
   const D = () => OV.Data;
   const tune = (k, d) => (OV.TUNE && OV.TUNE[k] !== undefined ? OV.TUNE[k] : d);
@@ -633,6 +635,7 @@
     const s = slotOf(e);
     if (e.label) return e.label;
     if (s === 'auto' || s === 'autoTurn') return T('scr.load.auto');
+    if (OV.T.has('cp.sl.slot.' + s)) return T('cp.sl.slot.' + s);
     return T('scr.load.slot', { n: s });
   }
   function loadFailed() {
@@ -1323,7 +1326,7 @@
           el('footer', { class: 'scr-foot' },
             el('span', { class: 'scr-hint', text: T('scr.qe.hint') }),
             el('div', { class: 'scr-foot-btns' }, doneBtn))));
-        ctrl = OV.InventoryUI.equipScreen(host, { squad: squad(), stores: Object.assign({}, mission.craftItems || {}), onChange, night: !!p.night });
+        ctrl = OV.InventoryUI.equipScreen(host, { squad: squad(), stores: Object.assign({}, mission.craftItems || {}), onChange, night: !!p.night, researched: null });
       },
       exit() { if (ctrl) ctrl.destroy(); ctrl = null; },
       focus: () => doneBtn,
@@ -1469,7 +1472,7 @@
               return el('div', { class: 'scr-mem' }, portraitEl(w, 48, 'mem'),
                 el('div', null,
                   el('div', { class: 'scr-mem-name' }, el('span', { class: 'scr-rank r' + (w.rank | 0), text: rank ? T(rank.abbrKey) : '' }), el('b', { text: w.name })),
-                  el('div', { class: 'scr-muted', text: T(f.kia ? 'scr.db.kia' : 'scr.db.mia') + (w.kills ? ' · ' + Tn('bs.debrief.soldier.kills', w.kills) : '') })));
+                  el('div', { class: 'scr-muted', text: T(gk(f.kia ? 'scr.db.kia' : 'scr.db.mia', w)) + (w.kills ? ' · ' + Tn('bs.debrief.soldier.kills', w.kills) : '') })));
             })) : el('p', { class: 'scr-good-note', text: T('scr.db.noLosses') }));
 
         // feridos
@@ -1619,6 +1622,7 @@
                 optRow(T('scr.opt.wheel'), sseg('wheel', ['level', 'zoom'].map((v) => ({ v, label: T('scr.opt.wheel.' + v) }))))),
               panelSection(T('scr.opt.sec.game'),
                 optRow(T('scr.opt.instantGrenades'), toggleBtn(getK('instantGrenades'), setK('instantGrenades'), T('scr.opt.instantGrenades')), T('scr.opt.instantGrenades.hint')),
+                optRow(T('scr.opt.confirmBlast'), sseg('confirmBlast', ['auto', 'always', 'never'].map((v) => ({ v, label: T('scr.opt.confirmBlast.' + v) }))), T('scr.opt.confirmBlast.hint')),
                 optRow(T('scr.opt.confirmEndTurn'), toggleBtn(getK('confirmEndTurn'), setK('confirmEndTurn'), T('scr.opt.confirmEndTurn'))),
                 optRow(T('scr.opt.hitPreview'), toggleBtn(getK('hitPreview'), setK('hitPreview'), T('scr.opt.hitPreview')))),
               panelSection(T(ACC + 'title'),
@@ -1652,6 +1656,12 @@
     return el('div', { class: 'scr-card' }, el('h3', { text: T(titleKey) }), el('p', { html: T(bodyKey) }));
   }
 
+  // linhas numeradas de uma tabela do «Como Jogar» (prefixo.1 … prefixo.n seguidas)
+  function rowsOf(prefix) {
+    let n = 0;
+    while (OV.T.has(prefix + '.' + (n + 1))) n++;
+    return n;
+  }
   OV.SceneDefs.howto = function (params) {
     const tabs = ['controls', 'battle', 'geo'];
     let cur = (params && tabs.indexOf(params.tab) >= 0) ? params.tab : 'controls';
@@ -1662,14 +1672,14 @@
         controls: [
           isTouch() ? el('div', { class: 'scr-two' },
             el('div', null,
-              panelSection(T('scr.howto.touch.title'), table('scr.howto.touch', 3, 'scr.howto.col.gesture')),
-              panelSection(T('scr.howto.ptr.title'), table('scr.howto.ptr', 10, 'scr.howto.col.gesture'))),
-            panelSection(T('scr.howto.key.title'), table('scr.howto.key', 17, 'scr.howto.col.key', true)))
+              panelSection(T('scr.howto.touch.title'), table('scr.howto.touch', rowsOf('scr.howto.touch'), 'scr.howto.col.gesture')),
+              panelSection(T('scr.howto.ptr.title'), table('scr.howto.ptr', rowsOf('scr.howto.ptr'), 'scr.howto.col.gesture'))),
+            panelSection(T('scr.howto.key.title'), table('scr.howto.key', rowsOf('scr.howto.key'), 'scr.howto.col.key', true)))
             : el('div', { class: 'scr-two' },
-              panelSection(T('scr.howto.ptr.title'), table('scr.howto.ptr', 10, 'scr.howto.col.gesture')),
+              panelSection(T('scr.howto.ptr.title'), table('scr.howto.ptr', rowsOf('scr.howto.ptr'), 'scr.howto.col.gesture')),
               el('div', null,
-                panelSection(T('scr.howto.key.title'), table('scr.howto.key', 17, 'scr.howto.col.key', true)),
-                panelSection(T('scr.howto.touch.title'), table('scr.howto.touch', 3, 'scr.howto.col.gesture')))),
+                panelSection(T('scr.howto.key.title'), table('scr.howto.key', rowsOf('scr.howto.key'), 'scr.howto.col.key', true)),
+                panelSection(T('scr.howto.touch.title'), table('scr.howto.touch', rowsOf('scr.howto.touch'), 'scr.howto.col.gesture')))),
         ],
         battle: [
           el('div', { class: 'scr-cards' },
@@ -1683,7 +1693,7 @@
         geo: [
           el('div', { class: 'scr-two' },
             el('div', null, el('div', { class: 'scr-cards one' }, card('scr.howto.geo.title', 'scr.howto.geo.body'), card('scr.howto.base.title', 'scr.howto.base.body'))),
-            panelSection(T('scr.howto.key.title'), table('scr.howto.geo', 9, 'scr.howto.col.gesture'))),
+            panelSection(T('scr.howto.key.title'), table('scr.howto.geo', rowsOf('scr.howto.geo'), 'scr.howto.col.gesture'))),
         ],
       };
     }

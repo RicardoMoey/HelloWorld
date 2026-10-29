@@ -1,5 +1,5 @@
 /* Battlescape: cena, câmara, seleção, pré-visualizações e HUD (DESIGN.md §15.1–15.3, §17).
-   OV.SceneDefs.battlescape(params) com params = {B, onExit(result), onPlayerTurn?(B)}; result = {outcome, debrief, B}.
+   OV.SceneDefs.battlescape(params) com params = {B, onExit(result), onPlayerTurn?(B), tips?} (tips: conselhos da 1.ª missão); result = {outcome, debrief, B}.
    Quem chama onExit decide a cena seguinte; sem onExit abre 'debrief' (se existir) ou um resumo em modal.
    onPlayerTurn(B) corre no início de cada turno do jogador (ponto quiescente: gravação automática da campanha).
    A interface nunca altera B diretamente: ações por OV.Act.validate/perform, turnos por OV.Battle.* (a reserva
@@ -17,7 +17,7 @@
      handName(type) → texto curto}, debug: {tileToScreen(x,y,z), unitScreen(id), selectAndMove(id,x,y,z) → Promise,
      state(), hover(x,y), perf() → {fps, avg, p95, chunks, sprites}|null (só com ?debug=1, que também mostra a leitura
      no topo do ecrã), showAll(on) (só a vista), centre(x,y,z) (câmara), log() → [entrada], kb(x,y,z) (cursor de
-     teclado), noteEvent(ev), report('turn'|'log')}} */
+     teclado), noteEvent(ev), report('turn'|'log'), grenades() → n (aviso de granadas alienígenas, Recruta)}} */
 (function (OV) {
   'use strict';
 
@@ -95,56 +95,10 @@
     const t0 = typeof title === 'function' ? title() : title;
     node.setAttribute('aria-label', t0 + (key ? ' (' + key + ')' : ''));
     const html = () => tipHtml(typeof title === 'function' ? title() : title, key, typeof extra === 'function' ? extra() : extra);
-    OV.Dom.tooltip(node, html);
-    longPress(node, html);
+    OV.Dom.tooltip(node, html); // no toque, o toque longo mostra a mesma etiqueta (OV.Dom)
     return node;
   }
-  /* toque: sem pairar não há dicas — um toque longo (≥ 450 ms) mostra a etiqueta junto ao botão e cancela o
-     clique que viria a seguir */
-  let lpBubble = null, lpHideT = 0;
-  function hideLongPress() {
-    clearTimeout(lpHideT);
-    if (lpBubble) lpBubble.remove();
-    lpBubble = null;
-  }
-  function longPress(node, html) {
-    let timer = 0, fired = false, x0 = 0, y0 = 0;
-    node.addEventListener('pointerdown', (e) => {
-      if (e.pointerType !== 'touch') return;
-      fired = false;
-      x0 = e.clientX;
-      y0 = e.clientY;
-      clearTimeout(timer);
-      timer = setTimeout(() => {
-        fired = true;
-        showLongPress(node, html());
-      }, 450);
-    });
-    const stop = () => clearTimeout(timer);
-    node.addEventListener('pointerup', stop);
-    node.addEventListener('pointercancel', stop);
-    node.addEventListener('pointermove', (e) => { if (Math.hypot(e.clientX - x0, e.clientY - y0) > 10) stop(); });
-    node.addEventListener('click', (e) => {
-      if (!fired) return;
-      fired = false;
-      e.preventDefault();
-      e.stopImmediatePropagation();
-    }, true);
-    node.addEventListener('contextmenu', (e) => e.preventDefault());
-  }
-  function showLongPress(node, html) {
-    hideLongPress();
-    const b = el('div', { class: 'bs-lp', role: 'tooltip', html });
-    document.body.appendChild(b);
-    const r = node.getBoundingClientRect(), bw = b.offsetWidth, bh = b.offsetHeight;
-    const x = Math.max(8, Math.min(window.innerWidth - bw - 8, r.left + r.width / 2 - bw / 2));
-    const y = r.top - bh - 10 >= 8 ? r.top - bh - 10 : Math.min(window.innerHeight - bh - 8, r.bottom + 10);
-    b.style.left = x + 'px';
-    b.style.top = y + 'px';
-    lpBubble = b;
-    lpHideT = setTimeout(hideLongPress, 2600);
-    sfx('ui_click', { vol: 0.4 });
-  }
+  const hideLongPress = () => OV.Dom.hideLongPress && OV.Dom.hideLongPress();
 
   // ---- estado da cena ativa ---------------------------------------------------------------------------------
   let S = null;
@@ -373,7 +327,8 @@
     const stand = u.kneel ? tune('TU_STAND', 8) : 0;
     const budget = Math.max(0, (u.tu | 0) - stand);
     const r = OV.Path.reachable(S.B, u, budget, u.energy | 0);
-    const res = OV.Act.reserveTU(S.B, u, { mode: reserveMode() });
+    // standing: andar levanta o soldado, por isso a reserva de ajoelhar conta como no walkPreview
+    const res = OV.Act.reserveTU(S.B, u, { mode: reserveMode(), standing: true });
     const live = res > 0 && res <= (u.tu | 0) ? res : 0;
     S.view.reach = { cost: r.cost, budgetOk: Math.max(0, budget - live), budgetReserve: budget, count: r.list.length };
   }
@@ -672,8 +627,20 @@
     const origin = OV.LOS.originVoxel(S.B, u, aim);
     const tr = OV.LOS.traceShot(S.B, origin, aim, u.id, 0);
     T0.line = [origin, tr.kind === 'none' ? aim : tr.voxel];
+    // bomba guiada: a rota (Path.flyRoute) contorna obstáculos — desenhá-la em vez da linha reta tapada
+    const guided = !!(OV.Data.items[it.type] && OV.Data.items[it.type].guided);
+    const route = guided && v.ok && Array.isArray(v.route) && v.route.length > 1 ? v.route : null;
+    if (route) {
+      T0.line = route.map((ti, k) => {
+        if (k === 0) return origin;
+        if (k === route.length - 1) return aim;
+        const [x, y, z] = xyzOf(ti);
+        return [x * 16 + 8, y * 16 + 8, z * 24 + 12];
+      });
+      T0.route = true;
+    }
     // aliado (ou civil) visível no caminho do tiro: é sempre o aviso principal
-    const fr = tr.kind === 'unit' && (!tgtUnit || tr.unitId !== tgtUnit.id) ? unitOf(tr.unitId) : null;
+    const fr = !route && tr.kind === 'unit' && (!tgtUnit || tr.unitId !== tgtUnit.id) ? unitOf(tr.unitId) : null;
     const friend = fr && fr.side !== 'alien' && seen(fr) ? fr : null;
     if (friend) {
       T0.sub = T('bs.friendlyRisk');
@@ -711,7 +678,12 @@
         T0.label = T(S.force && !tgtUnit ? 'hud.target.blastForce' : tgtUnit ? 'hud.target.blast' : 'hud.target.blastTile', { r: T0.blast.r, tu: v.tu });
         T0.hitPct = null;
       }
-      if (T0.blast && T0.blast.risk && !T0.sub) {
+      if (route) {
+        T0.hitPct = hitChance(u, it, S.aim.mode, tgtUnit || toI, 'g' + toI);
+        T0.label = T('hud.target.guided', { n: route.length - 1, pct: T0.hitPct, tu: v.tu });
+        if (T0.blast && !T0.blast.smoke && !T0.sub) T0.sub = T('hud.target.guided.blast', { r: T0.blast.r });
+      }
+      if (T0.blast && T0.blast.risk && (!T0.sub || route)) {
         T0.sub = Tn('hud.throw.risk', T0.blast.risk, { n: T0.blast.risk });
         T0.subCol = 'out';
       }
@@ -1210,8 +1182,41 @@
     const u = squad().filter(selectable).find(hasTU);
     if (u) select(u.id, { centre: true, quiet: true });
     // o que aconteceu aos nossos durante o turno alienígena (os avisos passam depressa demais)
-    const hurt = S.log.slice(mark).filter((e) => e.side !== 'xcom' && e.own);
+    // e as granadas alienígenas ativadas à vista (Recruta): a mesma janela, com «Mostrar» a centrar em cada uma
+    const hurt = S.log.slice(mark).filter((e) => e.side !== 'xcom' && e.own).concat(warnGrenades());
     if (hurt.length) openReport('turn', hurt);
+  }
+  /* Recruta: granadas alienígenas ativadas no chão à vista (rebentam no fim deste turno) ficam com o raio marcado
+     e um aviso, para o principiante ter tempo de afastar os soldados */
+  function grenadeDangers() {
+    const out = [], vt = S.B._ && S.B._.visTiles;
+    for (const it of S.B.items) {
+      if (!(it.fuse >= 0) || typeof it.at !== 'number' || it.at < 0 || !S.alienNades.has(it.id)) continue;
+      if (vt ? !vt[it.at] : !(S.B.map.disc[it.at] & 1)) continue;
+      const b = blastPreview(null, it, it.at);
+      if (b && !b.smoke) out.push({ x: b.x, y: b.y, z: b.z, r: b.r, risk: b.risk, itemId: it.id, i: it.at });
+    }
+    return out;
+  }
+  // → linhas para o relatório do turno (vazio fora de Recruta ou sem granadas à vista)
+  function warnGrenades() {
+    if (!S || S.ended || ((S.B.mission && S.B.mission.difficulty) | 0) !== 0) {
+      if (S) S.view.dangers = null;
+      return [];
+    }
+    const list = grenadeDangers();
+    S.view.dangers = list.length ? list : null;
+    return list.map((g) => ({ key: g.risk ? 'hud.alienGrenade' : 'hud.alienGrenade.clear', params: null, kind: 'bad', ic: '✱', at: g.i, from: -1, own: true }));
+  }
+  // as marcas somem quando a granada rebenta ou é apanhada
+  function pruneDangers() {
+    const D0 = S.view.dangers;
+    if (!D0) return;
+    const keep = D0.filter((g) => {
+      const it = itemOf(g.itemId);
+      return it && it.fuse >= 0 && it.at === g.i;
+    });
+    if (keep.length !== D0.length) S.view.dangers = keep.length ? keep : null;
   }
 
   // ---- relatório do turno alienígena e registo de mensagens --------------------------------------------------
@@ -1248,18 +1253,23 @@
       const a = find(killerId !== undefined && killerId !== null ? killerId : (C.last[u.id] || {}).attackerId);
       return a && C.seenAt[a.id] !== undefined ? C.seenAt[a.id] : -1;
     };
+    // atacante que ninguém viu (id) ou -1: no início do turno seguinte o clarão pode tê-lo revelado
+    const hidOf = (u, killerId) => {
+      const a = find(killerId !== undefined && killerId !== null ? killerId : (C.last[u.id] || {}).attackerId);
+      return a && !mine(a) && C.seenAt[a.id] === undefined && !seenNow(a) ? a.id : -1;
+    };
     const tileOf = (u) => (typeof ev.pos === 'number' && ev.pos >= 0 ? ev.pos : typeof ev.i === 'number' ? ev.i : u && u.x >= 0 ? (u.z * B.map.h + u.y) * B.map.w + u.x : -1);
     if (ev.t === 'damage') {
       const u = find(ev.unitId);
       if (!u) return null;
       C.last[u.id] = { dmgType: ev.dmgType, cause: ev.cause, attackerId: ev.attackerId };
       if (!mine(u) || !(ev.amount > 0) || u.hp <= 0 || ev.cause === 'wounds' || ev.cause === 'burn' || ev.cause === 'fire' || ev.cause === 'smoke') return null;
-      return { key: gk(ev.wounds > 0 ? 'hud.log.hitWound' : 'hud.log.hit', u), params: { name: nm(u), n: ev.amount, how: how(u) }, kind: 'warn', own: true, at: tileOf(u), from: fromOf(u) };
+      return { key: gk(ev.wounds > 0 ? 'hud.log.hitWound' : 'hud.log.hit', u), params: { name: nm(u), n: ev.amount, how: how(u) }, kind: 'warn', own: true, at: tileOf(u), from: fromOf(u), hid: hidOf(u) };
     }
     if (ev.t === 'death') {
       const u = find(ev.unitId);
       if (!u) return null;
-      if (mine(u)) return { key: gk('hud.log.kia', u), params: { name: nm(u), how: how(u, ev.killerId) }, kind: 'bad', own: true, at: tileOf(u), from: fromOf(u, ev.killerId) };
+      if (mine(u)) return { key: gk('hud.log.kia', u), params: { name: nm(u), how: how(u, ev.killerId) }, kind: 'bad', own: true, at: tileOf(u), from: fromOf(u, ev.killerId), hid: hidOf(u, ev.killerId) };
       const k = find(ev.killerId);
       if (u.origSide === 'alien' && k && mine(k)) return { key: 'hud.log.alienKilled', params: { name: nm(u), by: nm(k) }, kind: 'good', own: false, at: tileOf(u), from: -1 };
       if (u.origSide === 'civ' && ev.vis) return { key: 'hud.log.civKilled', params: { name: nm(u) }, kind: 'warn', own: false, at: tileOf(u), from: -1 };
@@ -1268,7 +1278,7 @@
     if (ev.t === 'stun') {
       const u = find(ev.unitId);
       if (!u) return null;
-      if (mine(u)) return { key: 'hud.log.stunned', params: { name: nm(u), how: how(u, ev.attackerId) }, kind: 'bad', own: true, at: tileOf(u), from: fromOf(u, ev.attackerId) };
+      if (mine(u)) return { key: 'hud.log.stunned', params: { name: nm(u), how: how(u, ev.attackerId) }, kind: 'bad', own: true, at: tileOf(u), from: fromOf(u, ev.attackerId), hid: hidOf(u, ev.attackerId) };
       if (u.origSide === 'alien' && ev.vis) return { key: 'hud.log.alienStunned', params: { name: nm(u) }, kind: 'good', own: false, at: tileOf(u), from: -1 };
       return null;
     }
@@ -1292,6 +1302,10 @@
   }
   function noteEvent(ev) {
     if (!S) return;
+    if (ev.t === 'throw') {
+      const a = unitOf(ev.unitId);
+      if (a && a.side === 'alien') S.alienNades.add(ev.itemId);
+    }
     const e = logEntry(S.B, ev, S.logCtx);
     if (!e) return;
     e.turn = S.B.turn;
@@ -1317,15 +1331,17 @@
     OV.Dom.clear(R);
     S.report = { kind };
     const rows = kind === 'log' ? S.log.slice(-80).reverse() : list;
+    R.classList.toggle('tips', kind === 'tips');
     const head = el('div', { class: 'bs-report-head' },
-      el('span', { class: 'bs-report-title', text: T(kind === 'log' ? 'hud.log.title' : 'hud.report.title') }),
+      el('span', { class: 'bs-report-title', text: T(kind === 'log' ? 'hud.log.title' : kind === 'tips' ? 'hud.tips.title' : 'hud.report.title') }),
       kind === 'turn' ? el('span', { class: 'bs-report-sum', text: reportSummary(rows) }) : null);
-    const close = el('button', { class: 'btn small', type: 'button' }, T('hud.report.close'), el('span', { class: 'key', text: 'Esc' }));
+    const closeLabel = T(kind === 'tips' ? 'hud.tips.ok' : 'hud.report.close');
+    const close = el('button', { class: 'btn small', type: 'button' }, closeLabel, el('span', { class: 'key', text: 'Esc' }));
     close.addEventListener('click', () => {
       sfx('ui_click');
       closeReport();
     });
-    tip(close, T('hud.report.close'), 'Esc');
+    tip(close, closeLabel, 'Esc');
     head.appendChild(close);
     const listEl = el('div', { class: 'bs-report-list', 'data-scroll': '1', role: 'log' });
     let lastTurn = null;
@@ -1334,12 +1350,15 @@
         lastTurn = e.turn + ':' + e.side;
         listEl.appendChild(el('div', { class: 'bs-report-turn', text: T('hud.log.turn', { n: e.turn, side: T('bs.side.' + e.side) }) }));
       }
+      // atacante não visto que agora está à vista (o clarão do disparo revelou-o): dizê-lo e mostrar onde está
+      const rev = kind === 'turn' ? revealed(e) : null;
       const row = el('div', { class: 'bs-report-row ' + e.kind },
-        el('span', { class: 'bs-report-ic', 'aria-hidden': 'true', text: e.kind === 'bad' ? '✖' : e.kind === 'good' ? '✔' : '!' }),
-        el('span', { class: 'bs-report-txt', text: T(e.key, e.params) }));
-      const where = e.from >= 0 ? e.from : e.at;
+        el('span', { class: 'bs-report-ic', 'aria-hidden': 'true', text: e.ic || (e.kind === 'bad' ? '✖' : e.kind === 'good' ? '✔' : '!') }),
+        el('span', { class: 'bs-report-txt', text: T(e.key, e.params) + (rev ? T(rev.flash ? 'hud.report.revealed' : 'hud.report.nowSeen') : '') }));
+      const from = rev ? rev.i : e.from;
+      const where = from >= 0 ? from : e.at;
       if (where >= 0) {
-        const b = el('button', { class: 'btn small', type: 'button', text: T(e.from >= 0 ? 'hud.report.showFrom' : 'hud.report.show') });
+        const b = el('button', { class: 'btn small', type: 'button', text: T(from >= 0 ? 'hud.report.showFrom' : 'hud.report.show') });
         b.addEventListener('click', () => {
           const [x, y, z] = xyzOf(where);
           if (z !== S.view.viewZ) setViewZ(z);
@@ -1352,7 +1371,7 @@
           }
           sfx('ui_click');
         });
-        tip(b, T(e.from >= 0 ? 'hud.report.showFrom.tip' : 'hud.report.show.tip'));
+        tip(b, T(rev ? 'hud.report.showRevealed.tip' : from >= 0 ? 'hud.report.showFrom.tip' : 'hud.report.show.tip'));
         row.appendChild(b);
       }
       listEl.appendChild(row);
@@ -1361,6 +1380,21 @@
     R.append(head, listEl);
     R.classList.remove('hidden');
     sfx(kind === 'turn' ? 'ui_deny' : 'ui_click', { vol: 0.7 });
+  }
+  // {i: tile do atacante, flash: o tile dele tem um clarão} se o atacante escondido da entrada está agora à vista
+  function revealed(e) {
+    if (!(e.hid >= 0)) return null;
+    const a = OV.BUnits.findUnit(S.B, e.hid);
+    if (!a || !a.onMap || !LIVE[a.status] || a.side === 'xcom' || !OV.LOS.isVisibleTo(S.B, 'xcom', a)) return null;
+    const i = idxOf(a.x, a.y, a.z);
+    return { i, flash: (S.B.flashes || []).some((f) => f.i === i) };
+  }
+  // primeira missão: três conselhos (não bloqueia o mapa; Esc ou «Fechar» fecha)
+  function tipRows() {
+    return ['spread', 'kneel', 'keepTU'].map((k, n) => ({ key: 'hud.tips.' + k + (isTouch() && OV.T.has('hud.tips.' + k + '.touch') ? '.touch' : ''), params: null, kind: 'tip', ic: String(n + 1), at: -1, from: -1 }));
+  }
+  function openTips() {
+    openReport('tips', tipRows());
   }
   function reportSummary(rows) {
     // por soldado: quem morreu não conta também como ferido
@@ -2646,6 +2680,7 @@
       refreshHover();
     }
     if (v.blips && v.blips.length && now - v.blips[0].t0 > 4000) v.blips = null;
+    pruneDangers();
     updateReach();
     S.hudT = (S.hudT || 0) + dt;
     if (S.hudT > 100 || S.hudDirty) {
@@ -2717,7 +2752,7 @@
         lastFire: null, miniOn: false, mood: null, hudDirty: true, mapDirty: true, force: false, spaceDown: false, spaceDragged: false,
         clickFast: false, perf: OV.Game && OV.Game.debug ? { draw: [], at: [], shown: 0, last: null } : null,
         kcur: { x: 0, y: 0, armed: false, anchor: null, hold: null }, arrowT: {}, alt: false, lastInput: 'ptr', mouse0: null, aimLabel: '',
-        log: [], logCtx: { last: {}, seenAt: {} }, report: null,
+        log: [], logCtx: { last: {}, seenAt: {} }, report: null, alienNades: new Set(),
       };
       S.pctx = {
         view: S.view, anim, side: 'xcom', followId: () => (S ? S.selId : null),
@@ -2763,6 +2798,7 @@
             ensureSelection();
             updateMusic();
             playerTurnHook();
+            if (p.tips) openTips();
           }
         });
       } else if (B.phase === 'over') finishBattle();
@@ -2852,7 +2888,8 @@
         pathSteps: S.view.path ? S.view.path.steps.length : 0, pathLabel: S.view.path ? S.view.path.label : null,
         pathStates: S.view.path ? S.view.path.steps.map((s) => s.state) : [],
         reachCount: S.view.reach ? S.view.reach.count : 0,
-        target: S.view.target ? { label: S.view.target.label, hitPct: S.view.target.hitPct, blocked: S.view.target.blocked, sub: S.view.target.sub, blastR: S.view.target.blast ? S.view.target.blast.r : 0 } : null,
+        dangers: S.view.dangers ? S.view.dangers.map((g) => ({ x: g.x, y: g.y, z: g.z, r: g.r })) : [],
+        target: S.view.target ? { label: S.view.target.label, hitPct: S.view.target.hitPct, blocked: S.view.target.blocked, sub: S.view.target.sub, blastR: S.view.target.blast ? S.view.target.blast.r : 0, route: S.view.target.route ? S.view.target.line.length - 1 : 0 } : null,
         throwInfo: S.view.throwInfo ? { label: S.view.throwInfo.label, ok: S.view.throwInfo.ok, sub: S.view.throwInfo.sub || null, blastR: S.view.throwInfo.blast ? S.view.throwInfo.blast.r : 0 } : null,
         menu: S.menu ? { hand: S.menu.hand, page: S.menu.page, entries: (S.menu.entries || []).map((e) => ({ label: e.label, cost: e.cost, acc: e.acc, enabled: e.enabled })) } : null,
         turn: S.B.turn, side: S.B.side, phase: S.B.phase, result: S.B.result || null, reserve: S.B.reserve, reserveKneel: !!S.B.reserveKneel,
@@ -2906,6 +2943,17 @@
       if (!S) return;
       if (kind === 'turn') openReport('turn', S.log.filter((e) => e.own));
       else openReport('log');
+    },
+    // QA: abre os conselhos da primeira missão
+    tips() {
+      if (S) openTips();
+    },
+    // QA: volta a correr o aviso de granadas do início do turno → número de círculos
+    grenades() {
+      if (!S) return 0;
+      const rows = warnGrenades();
+      if (rows.length) openReport('turn', rows);
+      return rows.length;
     },
   };
 

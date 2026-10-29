@@ -58,7 +58,7 @@ module.exports = function (OV, t) {
     const keys = [];
     for (const tab of TABS) keys.push('base.tab.' + tab, 'base.tabtip.' + tab);
     for (const c of ['personnel', 'labs', 'workshops', 'storage', 'aliens', 'crafts']) keys.push('base.cap.' + c, 'base.captip.' + c);
-    for (const r of ['funds', 'materials', 'hangar', 'space']) keys.push('base.prod.stalled.' + r, 'base.prod.stalledHelp.' + r, 'base.prod.stalledToast.' + r, 'ev.productionStalled.' + r);
+    for (const r of ['funds', 'materials', 'hangar', 'space', 'storage']) keys.push('base.prod.stalled.' + r, 'base.prod.stalledHelp.' + r, 'base.prod.stalledToast.' + r, 'ev.productionStalled.' + r);
     for (const s of ['ready', 'out', 'patrol', 'returning', 'repair', 'rearm', 'refuel']) keys.push('craft.status.' + s);
     for (const s of ['repair', 'rearm', 'refuel']) keys.push('base.crafts.service.' + s);
     for (const k of ['soldier', 'scientist', 'engineer']) keys.push('base.kind.' + k + '.one', 'base.kind.' + k + '.other', 'base.personnel.' + k + 's');

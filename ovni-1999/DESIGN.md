@@ -1163,7 +1163,7 @@ Left: selected soldier card — rank badge, name, TU/Energy/Health(+stun overlay
 Paper-doll list layout: Hands (2 big slots), Belt (4-unit bar), Backpack (9-unit bar), Ground list (scroll). Drag-and-drop (pointer events) or click-item-then-click-slot (trackpad friendly); TU cost previewed on hover/drop target («−8 UT»), red when unaffordable; weight vs strength meter; reload by dropping a clip on a weapon; medikit opens a body-part panel (head/torso/arms/legs with wound counts) with Curar/Estimulante/Analgésico.
 
 ### 15.5 Geoscape & Basescape input
-Drag/two-finger scroll rotate globe; pinch zoom; click select (UFO/site/base/craft) ⇒ info card; double-click/Option-click centre; keys 1–6 speeds, P or Space pause/resume (toggles 5 s ↔ last speed... pause = stop sim, ours), I intercept, B bases, U Ufopaedia, F funding, Esc options. Basescape: click grid cells; keyboard tabs 1–9 for panel tabs.
+Drag/two-finger scroll rotate globe; pinch zoom; click select (UFO/site/base/craft) ⇒ info card; double-click/Option-click centre; keys 1–6 speeds, P or Space pause/resume (toggles 5 s ↔ last speed... pause = stop sim, ours), I intercept, B bases, U Ufopaedia, F funding, S save, C centre on selection, H centre on base, R radar ranges, T / ⇧T next / previous UFO, site or craft (Tab moves through the side-panel buttons), arrows rotate, +/− zoom, Esc options (or closes the open popup). In destination and base-placement modes the arrows turn the globe under a centre crosshair; Space (placement) or Enter/Space (destination) picks the point. Basescape: click grid cells; keyboard tabs 1–9 for panel tabs.
 
 ### 15.6 Touch tolerance
 Tap = click, long-press (450 ms) = secondary, two fingers pan/pinch; hover-dependent previews appear on first tap (two-step confirm forced ON for touch); `(hover:none)` suppresses tooltips; minimum target 32 px.
@@ -1189,7 +1189,7 @@ Tap = click, long-press (450 ms) = secondary, two fingers pan/pinch; hover-depen
 ---
 
 ## 18. Save game
-- Storage: `localStorage` keys `ovni1999.settings`, `ovni1999.save.auto`, `ovni1999.save.autoTurn`, `ovni1999.save.1..3`, each a JSON string; all access in try/catch; quota error ⇒ toast «Espaço insuficiente — exporte o jogo» and offer export. «Exportar» downloads `ovni1999-<date>.json` (Blob + `<a download>`); «Importar» reads a file (`<input type=file>`), validates `game` and `schema`, runs migrations.
+- Storage: `localStorage` keys `ovni1999.settings`, `ovni1999.save.auto`, `ovni1999.save.auto2` (previous autosave), `ovni1999.save.preMission` (before the last mission), `ovni1999.save.autoTurn`, `ovni1999.save.1..3`, each a JSON string; all access in try/catch; quota error ⇒ toast «Espaço insuficiente — exporte o jogo» and offer export. «Exportar» downloads `ovni1999-<date>.json` (Blob + `<a download>`); «Importar» reads a file (`<input type=file>`), validates `game` and `schema`, runs migrations.
 - Shape:
 ```js
 { game:'ovni-1999', schema:1, savedAt:'2026-10-29T12:00:00Z', label:'Mar 1999 — Base Lusitânia', build:'<stamp>',
