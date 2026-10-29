@@ -139,6 +139,13 @@ try {
   // ================================= A) inventário =================================
   await openBattle('battle=medium_scout&seed=7&month=1&night=1');
   await page.evaluate(() => { OV.Game.settings.confirmMove = 'always'; });
+  // soldado com espingarda na mão direita (o sargento da batalha rápida pode levar o lança-foguetes)
+  const rk = await page.evaluate(() => {
+    const B = OV.Game.B;
+    const sq = B.units.filter((u) => u.side === 'xcom' || u.origSide === 'xcom');
+    return sq.findIndex((u) => { const it = OV.BUnits.findItem(B, u.items.R); return it && it.type === 'rifle'; });
+  });
+  if (rk > 0) await click('.bs-squad .bs-sq:nth-child(' + (rk + 1) + ')');
   const sel = await page.evaluate(() => OV.BattleUI.debug.state().selectedId);
   await page.keyboard.press('i');
   await page.waitForTimeout(250);

@@ -1295,11 +1295,13 @@
     ];
     for (const k of kinds) {
       const p = medPreview(u, kit, t, k.kind, part);
+      // impossível por um motivo (não por UT): o motivo vai por baixo do título, a coluna do custo fica com «—»
+      const why = !p.ok && p.reason && p.label === p.reason;
       const b = el('button', { class: 'medk-b ' + k.kind + (p.ok ? (p.warn ? ' warn' : '') : ' off'), type: 'button', dataset: { act: 'med-' + k.kind, nav: '1' } },
         el('span', { class: 'key', text: k.key }),
-        el('span', { class: 'medk-b-txt' }, el('b', { text: T('bs.action.' + k.kind) }), el('small', { text: k.fx })),
+        el('span', { class: 'medk-b-txt' }, el('b', { text: T('bs.action.' + k.kind) }), el('small', { class: why ? 'bad' : '', text: why ? p.reason : k.fx })),
         el('span', { class: 'medk-b-ch', text: T('hud.medk.charges', { n: ch[k.kind] | 0 }) }),
-        el('span', { class: 'cost' + (p.ok ? '' : ' bad'), text: p.label || '' }));
+        el('span', { class: 'cost' + (p.ok ? '' : ' bad'), text: why ? '—' : p.label || '' }));
       if (p.reason) OV.Dom.tooltip(b, '<b>' + T('bs.action.' + k.kind) + '</b><br><span class="muted">' + p.reason + '</span>');
       b.addEventListener('click', () => doMed(k.kind));
       treat.appendChild(b);
@@ -1494,6 +1496,14 @@
     ['gear', (d) => d.kind === 'medikit' || d.kind === 'scanner' || d.kind === 'flare' || d.kind === 'psiamp'],
   ];
   const emptyLo = () => ({ R: null, L: null, belt: [], pack: [] });
+  // botões do equipamento: [comando, chave de texto, tecla]
+  const EQ_CMDS = [['copy', 'hud.equip.copy', 'C'], ['paste', 'hud.equip.paste', 'V'], ['auto', 'hud.equip.auto', 'A'], ['clear', 'hud.equip.clear', 'X']];
+  function reduceMotion() {
+    const v = ((OV.Game && OV.Game.settings) || {}).reduceMotion || 'auto';
+    if (v === 'on' || v === true) return true;
+    if (v === 'off' || v === false) return false;
+    return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  }
   const cloneLo = (lo) => ({ R: (lo && lo.R) || null, L: (lo && lo.L) || null, belt: ((lo && lo.belt) || []).slice(), pack: ((lo && lo.pack) || []).slice() });
   const equipable = (type) => {
     const d = defOf(type);
@@ -1507,16 +1517,93 @@
     return out;
   }
   const loWeight = (lo) => loTypes(lo).reduce((s, t) => s + weightOf(t, null), 0);
+  // o motor recusa usar o que não foi investigado (OV.Act: notResearched); researched = lista de G (null = tudo)
+  const knownTo = (researched) => (type) => {
+    const d = defOf(type);
+    return !Array.isArray(researched) || !d || !d.research || researched.indexOf(d.research) >= 0;
+  };
+  // preferência de armas: as pesadas (≥ 16 de peso) só para os mais fortes da equipa
+  const GUN_PREF = ['plasma_rifle', 'heavy_plasma', 'laser_rifle', 'rifle', 'plasma_pistol', 'laser_pistol', 'pistol',
+    'heavy_laser', 'auto_cannon', 'heavy_cannon', 'rocket_launcher', 'blaster_launcher', 'small_launcher'];
+  /* Auto-equipar um soldado (puro; tira do armazém `stores`, que muda). o = {night, researched, squad}.
+     Só armas investigadas e com munição no armazém, cujo peso com um carregador caiba na Força; munição no cinto
+     ou, se não couber (foguetes), na mochila — o motor carrega a arma no início da missão; granadas e sinalizador
+     só se o peso continuar dentro da Força; kit médico para o soldado com mais saúde. → loadout */
+  function autoLoadout(s, stores, o) {
+    const opt = o || {};
+    const known = knownTo(opt.researched);
+    const str = (s.stats && s.stats.str) | 0;
+    const lo = emptyLo();
+    let w = 0;
+    const have = (t) => (stores[t] | 0) > 0 && known(t);
+    const take = (t) => {
+      if (!have(t)) return false;
+      stores[t]--;
+      return true;
+    };
+    const place = (t) => {
+      for (const slot of ['belt', 'pack']) {
+        if (D().fitsSlot(t, slot, lo[slot]) && take(t)) {
+          lo[slot].push(t);
+          w += weightOf(t, null);
+          return true;
+        }
+      }
+      return false;
+    };
+    const squad = opt.squad || [s];
+    const strs = squad.map((x) => (x.stats && x.stats.str) | 0).sort((a, b) => b - a);
+    const strong = strs.length < 3 || str >= strs[Math.max(0, Math.ceil(strs.length / 3) - 1)];
+    const clipsFor = (gd) => (Array.isArray(gd.ammo) ? gd.ammo.filter(have) : []);
+    const firearms = Object.keys(stores).filter((t) => have(t) && defOf(t) && defOf(t).kind === 'firearm' && equipable(t));
+    const order = GUN_PREF.filter((t) => firearms.indexOf(t) >= 0).concat(firearms.filter((t) => GUN_PREF.indexOf(t) < 0));
+    const usable = (t) => {
+      const gd = defOf(t);
+      const needs = Array.isArray(gd.ammo) && gd.ammo.length;
+      const clips = clipsFor(gd);
+      if (needs && !clips.length) return false;
+      return (gd.weight | 0) + (needs ? weightOf(clips[0], null) : 0) <= str;
+    };
+    let gun = order.find((t) => usable(t) && (strong || (defOf(t).weight | 0) < 16)) || null;
+    // ninguém aguenta nada com munição: a arma mais leve que dispare
+    if (!gun) gun = order.filter((t) => { const gd = defOf(t); return !(Array.isArray(gd.ammo) && gd.ammo.length) || clipsFor(gd).length; })
+      .sort((a, b) => (defOf(a).weight | 0) - (defOf(b).weight | 0))[0] || null;
+    if (gun && take(gun)) {
+      lo.R = gun;
+      w += weightOf(gun, null);
+      const gd = defOf(gun);
+      for (let n = 0; n < 2; n++) {
+        const c = clipsFor(gd)[0];
+        if (!c || (n > 0 && w + weightOf(c, null) > str)) break;
+        if (!place(c)) break;
+      }
+    }
+    for (let n = 0; n < 2; n++) {
+      const g = ['grenade', 'alien_grenade'].find(have);
+      if (!g || w + weightOf(g, null) > str || !place(g)) break;
+    }
+    if (opt.night && have('electro_flare') && w + weightOf('electro_flare', null) <= str) place('electro_flare');
+    const best = squad.slice().sort((a, b) => ((b.stats && b.stats.hp) | 0) - ((a.stats && a.stats.hp) | 0))[0];
+    if (best && best.id === s.id && have('medikit') && w + weightOf('medikit', null) <= str && D().fitsSlot('medikit', 'pack', lo.pack) && take('medikit')) {
+      lo.pack.push('medikit');
+      w += weightOf('medikit', null);
+    }
+    return lo;
+  }
 
   function equipScreen(container, options) {
     const o = options || {};
     const squad = (o.squad || []).slice();
+    // investigação da campanha (o motor recusa o resto): opção explícita ou a campanha aberta
+    const researched = Array.isArray(o.researched) ? o.researched : OV.Game && OV.Game.G && Array.isArray(OV.Game.G.researched) ? OV.Game.G.researched : null;
+    const known = knownTo(researched);
     const E = {
       loadouts: {}, stores: {}, selId: o.selectedId !== undefined ? o.selectedId : squad.length ? squad[0].id : null, clip: null,
       hoverSrc: null, kbd: false, focusEl: null, focusKey: null,
     };
     for (const s of squad) E.loadouts[s.id] = cloneLo(s.loadout);
     for (const k of Object.keys(o.stores || {})) if ((o.stores[k] | 0) > 0) E.stores[k] = o.stores[k] | 0;
+    // raiz = contentor de consultas (@container eq): o arranjo segue a largura disponível, não a do ecrã
     const root = el('div', { class: 'inv-equip' });
     container.appendChild(root);
     const soldier = () => squad.find((s) => s.id === E.selId) || null;
@@ -1591,30 +1678,7 @@
     });
 
     function autoFor(s) {
-      const l = emptyLo();
-      const night = !!o.night;
-      const pick = (types) => types.find((t) => E.stores[t] > 0) || null;
-      let gun = pick(['rifle', 'laser_rifle', 'plasma_rifle', 'heavy_plasma', 'pistol', 'laser_pistol', 'plasma_pistol']);
-      if (!gun) gun = Object.keys(E.stores).find((t) => E.stores[t] > 0 && defOf(t) && defOf(t).kind === 'firearm' && equipable(t)) || null;
-      if (gun && take(gun)) l.R = gun;
-      const gd = gun ? defOf(gun) : null;
-      if (gd && Array.isArray(gd.ammo) && gd.ammo.length) {
-        for (let n = 0; n < 2; n++) {
-          const c = pick(gd.ammo);
-          if (c && D().fitsSlot(c, 'belt', l.belt) && take(c)) l.belt.push(c);
-        }
-      }
-      for (let n = 0; n < 2; n++) {
-        const g = pick(['grenade', 'alien_grenade']);
-        if (!g) break;
-        const slot = D().fitsSlot(g, 'belt', l.belt) ? 'belt' : D().fitsSlot(g, 'pack', l.pack) ? 'pack' : null;
-        if (slot && take(g)) l[slot].push(g);
-      }
-      if (night && E.stores.electro_flare > 0 && D().fitsSlot('electro_flare', 'pack', l.pack) && take('electro_flare')) l.pack.push('electro_flare');
-      // kit médico para o soldado com mais saúde
-      const best = squad.slice().sort((a, b) => ((b.stats && b.stats.hp) | 0) - ((a.stats && a.stats.hp) | 0))[0];
-      if (best && best.id === s.id && E.stores.medikit > 0 && D().fitsSlot('medikit', 'pack', l.pack) && take('medikit')) l.pack.push('medikit');
-      return l;
+      return autoLoadout(s, E.stores, { night: !!o.night, researched, squad });
     }
     function emptyInto(id) {
       for (const t of loTypes(E.loadouts[id])) give(t);
@@ -1657,8 +1721,19 @@
       draw();
     }
     function eqTile(src, type, o2) {
-      return tileEl({ src, type, name: T(defOf(type).nameKey), count: o2.count }, o2);
+      const t = tileEl({ src, type, name: T(defOf(type).nameKey), count: o2.count }, o2);
+      // por investigar: o motor recusa usá-lo em combate
+      if (!known(type)) {
+        t.classList.add('unk');
+        t.appendChild(el('span', { class: 'inv-unk', text: T(o2.cls === 'row' ? 'hud.equip.unknown' : 'hud.equip.unknown.short') }));
+      }
+      return t;
     }
+    const eqStatLines = (type, s) => {
+      const lines = statLines(type, { str: s && s.stats ? s.stats.str : 0 });
+      if (!known(type)) lines.unshift(T('hud.equip.unknown.tip'));
+      return lines;
+    };
     function drawInfo() {
       const box = root.querySelector('.inv-info');
       if (!box) return;
@@ -1675,7 +1750,7 @@
       }
       box.appendChild(el('div', { class: 'inv-desc' }, iconCanvas(type, 56),
         el('div', { class: 'inv-desc-txt' }, el('div', { class: 'inv-desc-name', text: T(defOf(type).nameKey) }),
-          el('ul', null, statLines(type, { str: s && s.stats ? s.stats.str : 0 }).map((l) => el('li', { text: l }))))));
+          el('ul', null, eqStatLines(type, s).map((l) => el('li', { text: l }))))));
       if (picker.sel) box.appendChild(el('div', { class: 'inv-acts' }, el('div', { class: 'inv-target-hint', text: T('hud.inv.pickTarget', { item: T(defOf(type).nameKey) }) })));
       return box;
     }
@@ -1686,6 +1761,10 @@
       const scroll = root.querySelector('.eq-stores-list');
       const top = scroll ? scroll.scrollTop : 0;
       OV.Dom.clear(root);
+      E.focusEl = null;
+      const grid = el('div', { class: 'eq-grid' });
+      root.appendChild(grid);
+      root.classList.toggle('rm', reduceMotion());
       // equipa
       const list = el('div', { class: 'eq-squad' });
       for (const x of squad) {
@@ -1710,10 +1789,11 @@
             el('div', { class: 'inv-sub', text: [rankName({ rank: s.rank, type: 'soldier' }), s.armour ? T('armour.' + s.armour) : ''].filter(Boolean).join(' · ') })),
           el('div', { class: 'inv-meters' }, meter('wt', T('hud.inv.weightLbl'), w, Math.max(str, w), { text: T('hud.inv.weight', { w, str }), bad: w > str, mark: str, note: w > str ? T('hud.equip.overweight') : T('hud.inv.weightOk') })));
         const btns = el('div', { class: 'eq-btns' });
-        for (const [k, lbl] of [['copy', 'hud.equip.copy'], ['paste', 'hud.equip.paste'], ['auto', 'hud.equip.auto'], ['clear', 'hud.equip.clear']]) {
-          const b = el('button', { class: 'btn small', type: 'button', text: T(lbl), dataset: { act: k } });
+        for (const [k, lbl, key] of EQ_CMDS) {
+          const b = el('button', { class: 'btn small', type: 'button', text: T(lbl), dataset: { act: k, nav: '1' }, 'aria-label': T(lbl) + ' (' + key + ')' });
           if (k === 'paste' && !E.clip) b.disabled = true;
           b.addEventListener('click', () => cmd(k));
+          OV.Dom.tooltip(b, () => '<b>' + T(lbl) + '</b> <span class="key">' + key + '</span><br><span class="muted">' + T(lbl + '.tip') + '</span>');
           btns.appendChild(b);
         }
         head.appendChild(btns);
@@ -1721,7 +1801,10 @@
         const hand = (h) => {
           const box = el('div', { class: 'inv-hand' + (l[h] ? '' : ' empty'), dataset: { drop: 'slot:' + h } }, el('div', { class: 'inv-cap' }, el('span', { text: T('inv.' + h) })));
           if (l[h]) box.appendChild(eqTile('lo:' + h + ':0', l[h], { icon: 96, nameOn: true, big: true, cls: 'big' }));
-          else box.appendChild(el('div', { class: 'inv-empty', text: T('hud.hand.empty') }));
+          else {
+            box.dataset.nav = '1';
+            box.appendChild(el('div', { class: 'inv-empty', text: T('hud.hand.empty') }));
+          }
           return box;
         };
         const fig = el('div', { class: 'inv-fig' }, figureCanvas(null, { sprite: 'soldier', items: {}, armourId: s.armour, portraitSeed: s.portraitSeed, female: s.female, rank: s.rank, side: 'xcom' }, 150));
@@ -1735,7 +1818,11 @@
             used += sizeOf(t);
             cells.appendChild(eqTile('lo:' + slot + ':' + k, t, { icon: 46, cls: 'cell' }));
           });
-          for (let k = used; k < cap; k++) cells.appendChild(el('div', { class: 'inv-slotcell' }));
+          for (let k = used; k < cap; k++) {
+            const c = el('div', { class: 'inv-slotcell' });
+            if (k === used) c.dataset.nav = '1';
+            cells.appendChild(c);
+          }
           doll.appendChild(el('div', { class: 'inv-strip ' + slot, dataset: { drop: 'slot:' + slot } },
             el('div', { class: 'inv-cap' }, el('span', { text: T('inv.' + slot) }), el('span', { class: 'inv-use' + (used >= cap ? ' full' : ''), text: T('hud.inv.units', { used, cap }) })),
             cells));
@@ -1743,7 +1830,7 @@
       }
       // armazém
       const stores = el('div', { class: 'inv-ground eq-stores', dataset: { drop: 'slot:stores' } },
-        el('div', { class: 'inv-cap' }, el('span', { text: T('hud.equip.stores') })));
+        el('div', { class: 'inv-cap', dataset: { nav: '1' } }, el('span', { text: T('hud.equip.stores') })));
       const sl = el('div', { class: 'inv-ground-list eq-stores-list' });
       let any = false;
       for (const [g, test] of EQ_GROUPS) {
@@ -1759,18 +1846,95 @@
       }
       if (!any) sl.appendChild(el('div', { class: 'inv-ground-empty', text: T('hud.equip.storesEmpty') }));
       stores.appendChild(sl);
-      root.append(list, el('div', { class: 'eq-main' }, el('div', { class: 'inv-body' }, doll, stores), infoFor()));
+      grid.append(list, el('div', { class: 'eq-main' }, el('div', { class: 'inv-body' }, doll, stores), infoFor()));
       const sc = root.querySelector('.eq-stores-list');
       if (sc) sc.scrollTop = top;
+      if (E.kbd) restoreFocus(E, root);
       for (const n of root.querySelectorAll('[data-src]')) {
         const type = srcType(n.dataset.src);
         if (!type) continue;
-        OV.Dom.tooltip(n, () => (picker.sel ? '' : tipHtml(T(defOf(type).nameKey), statLines(type, { str: s && s.stats ? s.stats.str : 0 }))));
+        OV.Dom.tooltip(n, () => (picker.sel ? '' : tipHtml(T(defOf(type).nameKey), eqStatLines(type, s))));
         n.addEventListener('mouseenter', () => { E.hoverSrc = n.dataset.src; drawInfo(); });
         n.addEventListener('mouseleave', () => { if (E.hoverSrc === n.dataset.src) { E.hoverSrc = null; drawInfo(); } });
       }
       picker.decorate();
     }
+    /* teclado (foco virtual como no inventário de batalha): setas movem o foco entre objetos, compartimentos e
+       armazém; Enter/Espaço apanha e pousa; ⌫ devolve ao armazém; Tab / 1–0 muda de soldado; C V A X = Copiar,
+       Colar, Auto-equipar, Esvaziar; Esc larga o objeto escolhido. Ouve em captura para chegar antes do ecrã que
+       o contém (base, briefing); Enter só é tomado com a navegação por teclado ativa. */
+    function selectSol(id) {
+      E.selId = id;
+      picker.select(null, true);
+      sfx('ui_select');
+      draw();
+    }
+    function onKeyDown(e) {
+      if (!root.isConnected || (OV.Dom.anyModalOpen && OV.Dom.anyModalOpen()) || e.metaKey || e.ctrlKey || e.altKey) return;
+      const tag = (e.target && e.target.tagName) || '';
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      const key = e.key, lk = key.length === 1 ? key.toLowerCase() : key;
+      const eat = () => {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+      };
+      const dirs = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down' };
+      if (dirs[key]) {
+        eat();
+        E.kbd = true;
+        const n = navMove(root, E.focusEl, dirs[key]);
+        setFocus(E, n);
+        if (picker.sel && n) picker.setHotNode(n);
+        if (n && n.dataset.src && !picker.sel) {
+          E.hoverSrc = n.dataset.src;
+          drawInfo();
+        }
+        return;
+      }
+      if ((key === 'Enter' || key === ' ') && E.kbd && E.focusEl && root.contains(E.focusEl)) {
+        eat();
+        if (e.repeat) return;
+        if (E.focusEl.tagName === 'BUTTON') E.focusEl.click();
+        else picker.activate(E.focusEl);
+        return;
+      }
+      if (key === 'Escape' && picker.sel) {
+        eat();
+        picker.select(null, true);
+        sfx('ui_click', { vol: 0.5 });
+        return;
+      }
+      if (e.repeat) return;
+      if (key === 'Tab' && squad.length) {
+        eat();
+        const k = squad.findIndex((x) => x.id === E.selId);
+        selectSol(squad[(k + (e.shiftKey ? squad.length - 1 : 1) + squad.length) % squad.length].id);
+        return;
+      }
+      if (/^[0-9]$/.test(key) && !e.shiftKey) {
+        eat();
+        const x = squad[key === '0' ? 9 : +key - 1];
+        if (x) selectSol(x.id);
+        return;
+      }
+      if ((key === 'Backspace' || key === 'Delete') && E.focusEl && E.focusEl.dataset.src && E.focusEl.dataset.src.startsWith('lo:')) {
+        eat();
+        eqCommit(E.focusEl.dataset.src, 'slot:stores');
+        return;
+      }
+      const c = EQ_CMDS.find((x) => x[2].toLowerCase() === lk);
+      if (c) {
+        eat();
+        cmd(c[0]);
+      }
+    }
+    window.addEventListener('keydown', onKeyDown, true);
+    root.addEventListener('pointermove', (e) => {
+      if (E.kbd && e.pointerType !== 'touch' && Math.abs(e.movementX) + Math.abs(e.movementY) > 2) {
+        E.kbd = false;
+        if (E.focusEl) E.focusEl.classList.remove('kfocus');
+      }
+    });
     draw();
     return {
       root,
@@ -1778,6 +1942,7 @@
       select(id) { if (squad.some((x) => x.id === id)) { E.selId = id; picker.select(null, true); draw(); } },
       refresh: draw,
       destroy() {
+        window.removeEventListener('keydown', onKeyDown, true);
         picker.destroy();
         if (root.parentNode) root.parentNode.removeChild(root);
       },
@@ -1796,6 +1961,7 @@
     isOpen: () => !!V,
     refresh() { if (V) render(); },
     equipScreen,
+    model: { autoLoadout },
     debug: {
       state() {
         if (!V) return { open: false };

@@ -4,9 +4,20 @@
    onPlayerTurn(B) corre no início de cada turno do jogador (ponto quiescente: gravação automática da campanha).
    A interface nunca altera B diretamente: ações por OV.Act.validate/perform, turnos por OV.Battle.* (a reserva
    de UT é a preferência do jogador guardada em B.reserve / B.reserveKneel), animação por OV.Presenter.
-   OV.BattleUI = {scene (cena ativa | null), open(B, opts), openInventory(unitId), debug: {tileToScreen(x,y,z),
-     unitScreen(id), selectAndMove(id,x,y,z) → Promise, state(), hover(x,y), perf() → {fps, avg, p95, chunks, sprites}|null
-     (só com ?debug=1, que também mostra a leitura no topo do ecrã), showAll(on) (só a vista), centre(x,y,z) (câmara)}} */
+   Cursor de teclado (settings.kbCursor, por omissão ligado): setas movem um cursor de tiles (segurar repete; a
+   câmara segue-o), ⇧+setas ou W A S D deslocam a câmara, Enter/Espaço confirmam movimento, tiro ou lançamento
+   com a mesma pré-visualização do rato (Ctrl+Enter tiro forçado, ⌥+Enter abre a porta, T roda para o cursor),
+   Tab e 1–0 saltam para os alienígenas à vista ao apontar ou lançar. O rato esconde o cursor.
+   Explosivos com aliados no raio pedem 2.ª confirmação (settings.confirmBlast 'auto' = Recruta/Veterano).
+   Acessibilidade: settings.palette 'cvd' (cores seguras para daltonismo; as formas estão sempre ligadas),
+   settings.reduceMotion ('auto' segue prefers-reduced-motion), settings.textScale (etiquetas do mapa; o HUD usa
+   --ui-scale). Relatório «Durante o turno alienígena» no início de cada turno e registo de mensagens (N).
+   OV.BattleUI = {scene (cena ativa | null), open(B, opts), openInventory(unitId), refresh(), model: {kbStep(m, x, y,
+     dir, anchor) → {x, y, anchor}, logEntry(B, ev, ctx) → entrada|null, blastConfirm(settings, difficulty) → bool,
+     handName(type) → texto curto}, debug: {tileToScreen(x,y,z), unitScreen(id), selectAndMove(id,x,y,z) → Promise,
+     state(), hover(x,y), perf() → {fps, avg, p95, chunks, sprites}|null (só com ?debug=1, que também mostra a leitura
+     no topo do ecrã), showAll(on) (só a vista), centre(x,y,z) (câmara), log() → [entrada], kb(x,y,z) (cursor de
+     teclado), noteEvent(ev), report('turn'|'log')}} */
 (function (OV) {
   'use strict';
 
@@ -22,6 +33,29 @@
   const tune = (k, d) => (OV.TUNE && OV.TUNE[k] !== undefined ? OV.TUNE[k] : d);
   const settings = () => (OV.Game && OV.Game.settings) || {};
   const realNow = () => performance.now();
+  const kbOn = () => settings().kbCursor !== false;
+  const KB_HOLD = 230, KB_RATE = 95; // cursor de teclado: atraso e intervalo da repetição ao segurar uma seta (ms)
+  function reduceMotion() {
+    const v = settings().reduceMotion || 'auto';
+    if (v === 'on' || v === true) return true;
+    if (v === 'off' || v === false) return false;
+    return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  }
+  // chave no feminino quando existe (soldadas: «ferida», «morta», «paralisada»…)
+  const gk = (key, u) => (u && u.female && OV.T.has(key + '.f') ? key + '.f' : key);
+  // 2.ª confirmação de explosivos com aliados no raio: 'auto' liga em Recruta e Veterano
+  function blastConfirm(st, difficulty) {
+    const v = (st && st.confirmBlast) || 'auto';
+    if (v === 'always' || v === 'on' || v === true) return true;
+    if (v === 'never' || v === 'off' || v === false) return false;
+    return (difficulty | 0) <= 1;
+  }
+  // nome curto para a ranhura da mão (o nome completo fica na dica)
+  function handName(type) {
+    const d = OV.Data.items[type];
+    if (OV.T.has('hud.short.' + type)) return T('hud.short.' + type);
+    return d ? T(d.nameKey) : String(type);
+  }
   const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 
   // ---- ícones (SVG 24×24, traço) ---------------------------------------------------------------------------
@@ -45,6 +79,7 @@
     rSnap: '<path d="M10 20.5V9.5L12 4l2 5.5v11z"/>',
     rAimed: '<circle cx="12" cy="12" r="6"/><path d="M12 3v5.5M12 15.5V21M3 12h5.5M15.5 12H21"/>',
     rAuto: '<path d="M4 20.5V11l2-4.5L8 11v9.5zM10 20.5V11l2-4.5 2 4.5v9.5zM16 20.5V11l2-4.5 2 4.5v9.5z"/>',
+    log: '<path d="M6 3.5h9l3.5 3.5v13.5H6z"/><path d="M14.5 3.5V7.5h4M9 11h6.5M9 14.5h6.5M9 18h4"/>',
     medikit: '<rect x="4" y="7" width="16" height="13" rx="2"/><path d="M9 7V5h6v2M12 10.5v6M9 13.5h6"/>',
   };
   function icon(n) {
@@ -59,8 +94,56 @@
   function tip(node, title, key, extra) {
     const t0 = typeof title === 'function' ? title() : title;
     node.setAttribute('aria-label', t0 + (key ? ' (' + key + ')' : ''));
-    OV.Dom.tooltip(node, () => tipHtml(typeof title === 'function' ? title() : title, key, typeof extra === 'function' ? extra() : extra));
+    const html = () => tipHtml(typeof title === 'function' ? title() : title, key, typeof extra === 'function' ? extra() : extra);
+    OV.Dom.tooltip(node, html);
+    longPress(node, html);
     return node;
+  }
+  /* toque: sem pairar não há dicas — um toque longo (≥ 450 ms) mostra a etiqueta junto ao botão e cancela o
+     clique que viria a seguir */
+  let lpBubble = null, lpHideT = 0;
+  function hideLongPress() {
+    clearTimeout(lpHideT);
+    if (lpBubble) lpBubble.remove();
+    lpBubble = null;
+  }
+  function longPress(node, html) {
+    let timer = 0, fired = false, x0 = 0, y0 = 0;
+    node.addEventListener('pointerdown', (e) => {
+      if (e.pointerType !== 'touch') return;
+      fired = false;
+      x0 = e.clientX;
+      y0 = e.clientY;
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        fired = true;
+        showLongPress(node, html());
+      }, 450);
+    });
+    const stop = () => clearTimeout(timer);
+    node.addEventListener('pointerup', stop);
+    node.addEventListener('pointercancel', stop);
+    node.addEventListener('pointermove', (e) => { if (Math.hypot(e.clientX - x0, e.clientY - y0) > 10) stop(); });
+    node.addEventListener('click', (e) => {
+      if (!fired) return;
+      fired = false;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+    }, true);
+    node.addEventListener('contextmenu', (e) => e.preventDefault());
+  }
+  function showLongPress(node, html) {
+    hideLongPress();
+    const b = el('div', { class: 'bs-lp', role: 'tooltip', html });
+    document.body.appendChild(b);
+    const r = node.getBoundingClientRect(), bw = b.offsetWidth, bh = b.offsetHeight;
+    const x = Math.max(8, Math.min(window.innerWidth - bw - 8, r.left + r.width / 2 - bw / 2));
+    const y = r.top - bh - 10 >= 8 ? r.top - bh - 10 : Math.min(window.innerHeight - bh - 8, r.bottom + 10);
+    b.style.left = x + 'px';
+    b.style.top = y + 'px';
+    lpBubble = b;
+    lpHideT = setTimeout(hideLongPress, 2600);
+    sfx('ui_click', { vol: 0.4 });
   }
 
   // ---- estado da cena ativa ---------------------------------------------------------------------------------
@@ -83,6 +166,8 @@
   const handItem = (u, h) => (u ? itemOf(u.items[h]) : null);
   const seen = (u) => !!u && (u.side === 'xcom' || (OV.LOS && OV.LOS.isVisibleTo(S.B, 'xcom', u)));
   const isTouch = () => OV.Input && OV.Input.lastPointerType === 'touch';
+  // modo de confirmação: toque, teclado (cursor) ou rato
+  const confirmVia = () => (S && S.kcur && S.kcur.armed ? 'key' : isTouch() ? 'tap' : 'click');
   const isMac = () => !!(OV.Input && OV.Input.isMac);
   // tiro forçado: ⌘ no Mac (lá Ctrl+clique é o clique secundário), Ctrl nos outros sistemas
   const forceMods = (m) => !!(m && (m.meta || (!isMac() && m.ctrl)));
@@ -222,6 +307,13 @@
       closeMenu();
     }
     S.lock = -1;
+    if (changed && isTouch()) S.mouse = null;
+    // cursor de teclado acompanha o soldado escolhido (Tab)
+    if (changed && S.kcur.armed) {
+      S.kcur.x = u.x;
+      S.kcur.y = u.y;
+      S.kcur.anchor = null;
+    }
     setViewZ(u.z);
     if (o.centre) centreUnit(u);
     if (changed && !o.quiet) sfx('ui_select');
@@ -286,6 +378,171 @@
     S.view.reach = { cost: r.cost, budgetOk: Math.max(0, budget - live), budgetReserve: budget, count: r.list.length };
   }
 
+  // ---- cursor de teclado -------------------------------------------------------------------------------------
+  /* passo do cursor na direção do ecrã ('up'|'down'|'left'|'right'). Cada passo vai para um vizinho ortogonal
+     (meia casa na diagonal do ecrã) e alterna entre os dois candidatos à volta de uma coluna/linha de ecrã de
+     referência (anchor = {d: x−y, s: x+y, flip}), por isso segurar ↑ sobe a direito e todas as casas são
+     alcançáveis. m = {w, h}. Pura (testada em Node). */
+  function kbStep(m, x, y, dir, anchor) {
+    const a = anchor ? { d: anchor.d, s: anchor.s, flip: !!anchor.flip } : { d: x - y, s: x + y, flip: false };
+    const vert = dir === 'up' || dir === 'down';
+    let opts;
+    if (dir === 'up') opts = [[x - 1, y], [x, y - 1]];
+    else if (dir === 'down') opts = [[x, y + 1], [x + 1, y]];
+    else if (dir === 'left') opts = [[x - 1, y], [x, y + 1]];
+    else opts = [[x, y - 1], [x + 1, y]];
+    // opts[0] baixa a referência (d ou s), opts[1] sobe-a
+    const ref = vert ? x - y : x + y, want = vert ? a.d : a.s;
+    let order;
+    if (ref > want) order = [0, 1];
+    else if (ref < want) order = [1, 0];
+    else {
+      order = a.flip ? [1, 0] : [0, 1];
+      a.flip = !a.flip;
+    }
+    const inMap = (q) => q[0] >= 0 && q[1] >= 0 && q[0] < m.w && q[1] < m.h;
+    const pick = inMap(opts[order[0]]) ? opts[order[0]] : inMap(opts[order[1]]) ? opts[order[1]] : null;
+    if (!pick) return { x, y, anchor: a };
+    if (vert) a.s = pick[0] + pick[1];
+    else a.d = pick[0] - pick[1];
+    return { x: pick[0], y: pick[1], anchor: a };
+  }
+  function kbArm(at) {
+    const K = S.kcur;
+    if (K.armed) return;
+    let p = at;
+    if (!p) {
+      const u = sel();
+      const sp = u ? OV.Iso.tileCenter(u.x, u.y, S.view.viewZ, S.view.cam) : null;
+      if (u && sp && sp.x > 0 && sp.y > 0 && sp.x < S.view.w && sp.y < S.view.h) p = { x: u.x, y: u.y };
+      else {
+        const t = OV.Iso.screenToTileF(S.view.w / 2, S.view.h / 2, S.view.viewZ, S.view.cam);
+        p = { x: Math.max(0, Math.min(S.B.map.w - 1, Math.floor(t.x))), y: Math.max(0, Math.min(S.B.map.h - 1, Math.floor(t.y))) };
+      }
+    }
+    K.x = p.x;
+    K.y = p.y;
+    K.anchor = null;
+    K.armed = true;
+    S.mouse = null;
+  }
+  function kbDisarm() {
+    if (!S.kcur.armed) return false;
+    S.kcur.armed = false;
+    S.kcur.hold = null;
+    S.view.kcur = null;
+    S.hoverKey = '';
+    refreshHover();
+    return true;
+  }
+  function kbPlace(x, y, z) {
+    kbArm({ x, y });
+    S.kcur.x = x;
+    S.kcur.y = y;
+    S.kcur.anchor = null;
+    if (z !== undefined && z !== S.view.viewZ) setViewZ(z);
+    kbFollow();
+    S.hoverKey = '';
+    refreshHover();
+  }
+  function kbMove(dir) {
+    const fresh = !S.kcur.armed;
+    kbArm();
+    S.kcur.auto = false;
+    if (!fresh) {
+      const r = kbStep(S.B.map, S.kcur.x, S.kcur.y, dir, S.kcur.anchor);
+      S.kcur.x = r.x;
+      S.kcur.y = r.y;
+      S.kcur.anchor = r.anchor;
+    }
+    kbFollow();
+    S.hoverKey = '';
+    refreshHover();
+  }
+  // a câmara segue o cursor quando ele sai da zona útil do ecrã (fora do HUD)
+  function kbFollow() {
+    const K = S.kcur, v = S.view;
+    const p = OV.Iso.tileCenter(K.x, K.y, v.viewZ, v.cam);
+    const sf = v.safe || { t: 0, b: 0 };
+    const mx = Math.min(160, v.w * 0.14), my = 50;
+    if (p.x < mx || p.x > v.w - mx || p.y < sf.t + my || p.y > v.h - sf.b - my) centreOn(K.x, K.y, v.viewZ, reduceMotion() ? 0 : 170);
+  }
+  // alienígenas à vista por distância ao soldado (Tab no modo de alvo/lançamento)
+  function aliensByDistance() {
+    const u = sel();
+    const list = visibleAliens().filter((a) => a.z <= S.B.map.d - 1);
+    if (u) list.sort((a, b) => (a.x - u.x) ** 2 + (a.y - u.y) ** 2 + (a.z - u.z) ** 2 * 4 - ((b.x - u.x) ** 2 + (b.y - u.y) ** 2 + (b.z - u.z) ** 2 * 4));
+    return list;
+  }
+  function kbJumpAlien(a) {
+    if (!a) {
+      toast('hud.kb.noAliens', null, 'info');
+      return;
+    }
+    kbPlace(a.x, a.y, a.z);
+    sfx('ui_click', { vol: 0.6 });
+  }
+  function kbCycleAlien(dir) {
+    const list = aliensByDistance();
+    if (!list.length) return kbJumpAlien(null);
+    const K = S.kcur;
+    let k = K.armed ? list.findIndex((a) => OV.BUnits.unitTiles(a, S.B.map).indexOf(idxOf(K.x, K.y, S.view.viewZ)) >= 0) : -1;
+    k = k < 0 ? (dir > 0 ? 0 : list.length - 1) : (k + dir + list.length) % list.length;
+    kbJumpAlien(list[k]);
+  }
+  // ao entrar em modo de alvo/lançamento pelo teclado: cursor no alienígena mais próximo (ou fica onde estava)
+  function kbAutoAim() {
+    if (!kbOn() || S.lastInput !== 'kb') return;
+    const K = S.kcur;
+    // quem usou o rato há pouco aponta com o rato: o cursor só aparece sozinho a quem joga só com o teclado
+    if (!K.armed && realNow() - (S.lastPtrT || 0) < 3000) return;
+    const fresh = !K.armed;
+    const list = aliensByDistance();
+    if (K.armed && list.some((a) => OV.BUnits.unitTiles(a, S.B.map).indexOf(idxOf(K.x, K.y, S.view.viewZ)) >= 0)) return;
+    if (list.length) kbPlace(list[0].x, list[0].y, list[0].z);
+    else kbArm();
+    // posto automaticamente: cancelar a pontaria esconde-o outra vez (Enter volta a terminar o turno)
+    K.auto = fresh;
+  }
+  // unidade visível num tile (inclui as 2×2)
+  function unitOnTile(i) {
+    for (const u of S.B.units) {
+      if (!u.onMap || !LIVE[u.status] || u.x < 0) continue;
+      if ((u.size || 1) === 1 ? tileOfUnit(u) !== i : OV.BUnits.unitTiles(u, S.B.map).indexOf(i) < 0) continue;
+      if (seen(u)) return u;
+    }
+    return null;
+  }
+  function kbPick() {
+    const K = S.kcur, z = S.view.viewZ;
+    const i = idxOf(K.x, K.y, z);
+    const u = unitOnTile(i);
+    return { x: K.x, y: K.y, z, unitId: u ? u.id : null };
+  }
+  // Enter / Espaço com o cursor armado
+  function kbConfirm(m) {
+    const p = kbPick();
+    const mods = { shift: !!(m && m.shift), alt: !!(m && m.alt), ctrl: false, meta: false };
+    if (S.mode === 'target') clickTarget(p, mods, 'kb', !!(m && (m.ctrl || m.meta)));
+    else if (S.mode === 'throw') clickThrow(p, 'kb');
+    else {
+      const u = p.unitId !== null ? unitOf(p.unitId) : null;
+      if (u && u.side === 'xcom') {
+        if (u.id !== S.selId) select(u.id);
+      } else if (u && u.side !== 'xcom') toast('hud.hint.aim.kb', null, 'info');
+      else clickMove(p, mods, 'kb');
+    }
+    S.hoverKey = '';
+    refreshHover();
+  }
+  // o cursor está numa casa onde Enter faz alguma coisa (senão Enter termina o turno)
+  function kbActive() {
+    if (!kbOn() || !S.kcur.armed) return false;
+    if (S.mode !== 'move') return true;
+    const u = sel();
+    return !u || idxOf(S.kcur.x, S.kcur.y, S.view.viewZ) !== tileOfUnit(u) || S.lock >= 0;
+  }
+
   // ---- foco do cursor / pré-visualizações -----------------------------------------------------------------
   function pickAt(px, py) {
     const p = OV.BattleRender.pick(S.view, px, py, S.B);
@@ -295,12 +552,14 @@
   }
   function refreshHover() {
     if (!S) return;
-    if (!S.mouse || S.playing || S.ended) {
+    const kb = S.kcur.armed && kbOn();
+    S.view.kcur = kb && !S.playing && !S.ended ? { x: S.kcur.x, y: S.kcur.y, z: S.view.viewZ } : null;
+    if ((!S.mouse && !kb) || S.playing || S.ended) {
       clearPreview();
       return;
     }
-    const p = pickAt(S.mouse.x, S.mouse.y);
-    const key = (p ? p.x + ',' + p.y + ',' + p.z + ',' + p.unitId : '-') + '|' + S.mode + '|' + S.ver + '|' + S.lock + '|' + S.view.viewZ + '|' + (S.force ? 1 : 0) + '|' + S.view.cam.zoom.toFixed(2);
+    const p = kb ? kbPick() : pickAt(S.mouse.x, S.mouse.y);
+    const key = (p ? p.x + ',' + p.y + ',' + p.z + ',' + p.unitId : '-') + '|' + S.mode + '|' + S.ver + '|' + S.lock + '|' + S.tapLock + '|' + S.view.viewZ + '|' + (S.force ? 1 : 0) + '|' + (S.alt ? 1 : 0) + '|' + (kb ? 'k' : 'm') + '|' + S.view.cam.zoom.toFixed(2);
     if (key === S.hoverKey) return;
     S.hoverKey = key;
     S.pick = p;
@@ -333,6 +592,14 @@
       return;
     }
     const i = idxOf(p.x, p.y, p.z);
+    // ⌥ premido: abrir a porta sem entrar (custo da porta, sem caminho)
+    const door = doorAt(u, p);
+    if (S.alt && door) {
+      S.view.cursor = door.ok ? 'move' : 'none';
+      const label = door.ok ? T('hud.door.open', { tu: door.tu }) : door.reason === 'noTU' ? T('hud.target.noTU', { tu: door.tu, have: u.tu | 0 }) : door.reason === 'tooFar' ? T('hud.door.far') : T('bs.' + door.reason);
+      S.view.path = { steps: [{ i: door.i, tu: null, state: door.ok ? 'ok' : 'out' }], label, lock: false, noLine: true, door: true };
+      return;
+    }
     if (i === tileOfUnit(u)) return;
     const wp = OV.Act.walkPreview(S.B, u, i, { reserveMode: reserveMode() });
     if (!wp || !wp.tiles.length) {
@@ -346,9 +613,12 @@
     const many = S.view.cam.zoom >= 1;
     const steps = wp.tiles.map((t, k) => ({ i: t, tu: many && k < wp.tiles.length - 1 ? wp.tus[k] : null, state: STATES[wp.marks[k]] || 'ok' }));
     const out = wp.marks.some((m) => m === 2);
-    let label = out ? T('hud.path.out', { tu: wp.tu, max: u.tu | 0 }) : T('hud.path', { tu: wp.tu, max: u.tu | 0, energy: Math.max(0, (u.energy | 0) - wp.energy) });
-    if (S.lock === i) label = (isTouch() ? T('hud.confirmMove.tap') : T('hud.confirmMove')) + ' · ' + label;
-    S.view.path = { steps, label, lock: S.lock === i };
+    // custo e o que sobra (as duas partes dizem o mesmo: UT gastas → UT que ficam)
+    let label = out ? T('hud.path.out', { tu: wp.tu, have: u.tu | 0 }) : T('hud.path', { tu: wp.tu, left: Math.max(0, (u.tu | 0) - wp.tu), energy: Math.max(0, (u.energy | 0) - wp.energy) });
+    if (S.lock === i) label = T(confirmVia() === 'tap' ? 'hud.confirmMove.tap' : confirmVia() === 'key' ? 'hud.confirmMove.key' : 'hud.confirmMove') + ' · ' + label;
+    // porta no destino: dizer que ⌥ + clique a abre sem entrar
+    const sub = door && !out ? T(confirmVia() === 'key' ? 'hud.door.hint.key' : isMac() ? 'hud.door.hint.mac' : 'hud.door.hint', { tu: door.tu }) : null;
+    S.view.path = { steps, label, sub, lock: S.lock === i };
   }
 
   // probabilidade de acerto em cache (RNG próprio da interface: nunca as streams da simulação)
@@ -407,7 +677,7 @@
     const friend = fr && fr.side !== 'alien' && seen(fr) ? fr : null;
     if (friend) {
       T0.sub = T('bs.friendlyRisk');
-      T0.subCol = 0xff4a3a;
+      T0.subCol = 'out';
     }
     // o menu mostra o custo do tiro; aqui pode somar-se o rodar até ao alvo — dizê-lo evita a surpresa
     const baseTU = OV.BUnits.actionTU(S.B, u, it.id, S.aim.mode) | 0;
@@ -434,12 +704,24 @@
       else T0.label = T('bs.' + v.reason);
       if (blocked && !friend) T0.sub = T(isMac() ? 'hud.hint.forceFire.mac' : 'hud.hint.forceFire');
     }
-    // munição explosiva: área prevista e aviso se houver aliados no raio
+    // munição explosiva: área prevista, o rótulo fala da explosão (não do acerto direto) e aviso de aliados no raio
     if (v.ok && S.aim.mode !== 'melee') {
       T0.blast = blastPreview(u, it, toI);
-      if (T0.blast && T0.blast.risk && !T0.sub) T0.sub = Tn('hud.throw.risk', T0.blast.risk, { n: T0.blast.risk });
+      if (T0.blast && !T0.blast.smoke) {
+        T0.label = T(S.force && !tgtUnit ? 'hud.target.blastForce' : tgtUnit ? 'hud.target.blast' : 'hud.target.blastTile', { r: T0.blast.r, tu: v.tu });
+        T0.hitPct = null;
+      }
+      if (T0.blast && T0.blast.risk && !T0.sub) {
+        T0.sub = Tn('hud.throw.risk', T0.blast.risk, { n: T0.blast.risk });
+        T0.subCol = 'out';
+      }
     }
-    if (isTouch() && S.tapLock === toI && !T0.blocked) T0.sub = T('hud.confirmFire');
+    if (S.tapLock === toI && !T0.blocked) {
+      const risk = T0.blast && T0.blast.risk && blastConfirm(settings(), S.B.mission && S.B.mission.difficulty) ? T0.blast.risk : 0;
+      T0.sub = risk ? Tn('hud.confirmBlast.' + confirmVia(), risk, { n: risk }) : T('hud.confirmFire');
+      T0.subCol = risk ? 'out' : null;
+      T0.lock = true;
+    }
     S.view.target = T0;
   }
 
@@ -475,10 +757,15 @@
       label = T('hud.throw', { tu });
     }
     if (plan) S.view.throwArc = OV.Act.traceArc(S.B, u, plan.origin, plan.target, plan.curve).arc;
-    if (ok && isTouch() && S.tapLock === i) label = T('hud.confirmFire') + ' · ' + label;
     const toI = plan ? plan.goal : i;
     const blast = blastPreview(u, it, toI);
-    S.view.throwInfo = { toI, ok, label, range, from: { x: u.x, y: u.y, z: u.z }, blast, sub: blast && blast.risk ? Tn('hud.throw.risk', blast.risk, { n: blast.risk }) : null };
+    let sub = blast && blast.risk ? Tn('hud.throw.risk', blast.risk, { n: blast.risk }) : null;
+    if (ok && S.tapLock === i) {
+      const risk = blast && blast.risk && blastConfirm(settings(), S.B.mission && S.B.mission.difficulty) ? blast.risk : 0;
+      if (risk) sub = Tn('hud.confirmBlast.' + confirmVia(), risk, { n: risk });
+      else label = T('hud.confirmFire') + ' · ' + label;
+    }
+    S.view.throwInfo = { toI, ok, label, range, from: { x: u.x, y: u.y, z: u.z }, blast, sub, lock: ok && S.tapLock === i };
   }
   // há chão no nível de cima (teto da nave, de um OVNI, de um edifício): nenhum arco sai daqui nem lá entra
   function underRoof(u) {
@@ -523,12 +810,29 @@
     S.tapLock = -1;
     S.view.cursor = 'move';
     S.view.throwRange = null;
-    setHint('');
+    if (isTouch()) S.mouse = null;
+    if (S.kcur.armed && S.kcur.auto) {
+      S.kcur.armed = false;
+      S.kcur.auto = false;
+      S.view.kcur = null;
+    }
+    setHint(kbHint());
     S.hoverKey = '';
     refreshHover();
     S.hudDirty = true;
     if (was && !silent) sfx('ui_click');
     return was;
+  }
+  // dica permanente enquanto o cursor de teclado está à vista (modo de movimento)
+  function kbHint() {
+    return S.kcur.armed && kbOn() && S.mode === 'move' ? T('hud.hint.kb') : '';
+  }
+  // dica do modo atual para o meio de entrada em uso (teclado, toque ou rato)
+  function modeHint() {
+    const via = S.kcur.armed && kbOn() ? '.kb' : isTouch() ? '.touch' : '';
+    if (S.mode === 'target') return T('hud.hint.target' + via, { mode: S.aimLabel || '' });
+    if (S.mode === 'throw') return T('hud.hint.throw' + via);
+    return kbHint();
   }
   function enterTarget(hand, mode, psiKind) {
     const u = sel();
@@ -543,7 +847,9 @@
     S.view.cursor = 'target';
     S.view.throwRange = null;
     const label = mode === 'psi' ? T(psiKind === 'control' ? 'hud.menu.psiControl' : 'hud.menu.psiPanic') : T('mode.' + mode);
-    setHint(T('hud.hint.target', { mode: label }));
+    S.aimLabel = label;
+    kbAutoAim();
+    setHint(modeHint());
     S.hoverKey = '';
     refreshHover();
     S.hudDirty = true;
@@ -561,7 +867,8 @@
     S.view.cursor = 'throw';
     const it = itemOf(plan.itemId);
     S.view.throwRange = { x: u.x, y: u.y, z: u.z, r: OV.Data.throwRange(u.stats.str | 0, itemWeight(it)) };
-    setHint(T('hud.hint.throw'));
+    kbAutoAim();
+    setHint(modeHint());
     S.hoverKey = '';
     refreshHover();
     S.hudDirty = true;
@@ -595,12 +902,15 @@
       finishBattle();
       return;
     }
+    // toque: a pré-visualização só vive entre o 1.º e o 2.º toque (nada de caminhos «fantasma» no último toque)
+    if (isTouch()) S.mouse = null;
     ensureSelection();
     invalidate();
     updateMusic();
   }
   async function act(a) {
     if (!S || S.playing || S.ended) return { ok: false };
+    closeReport();
     const v = OV.Act.validate(S.B, a);
     if (!v.ok) {
       deny(v.reason);
@@ -638,7 +948,7 @@
     if (confirm && S.lock !== i) {
       S.lock = i;
       S.hoverKey = '';
-      if (!S.mouse) S.mouse = { x: 0, y: 0 };
+      if (!S.mouse && !S.kcur.armed) S.mouse = { x: 0, y: 0 };
       refreshHover();
       sfx('ui_click');
       return;
@@ -648,13 +958,16 @@
   }
   function needConfirm(pointerType) {
     const m = settings().confirmMove || 'auto';
+    // teclado: o caminho já está à vista antes do Enter — só com «Sempre»
+    if (pointerType === 'kb') return m === 'always' || m === 'on' || m === true;
     if (pointerType === 'touch' || isTouch()) return true;
     // o ecrã de opções grava 'always'/'never' (aceitam-se também 'on'/'off' e booleanos antigos)
     if (m === 'always' || m === 'on' || m === true) return true;
     if (m === 'never' || m === 'off' || m === false) return false;
     return !!(OV.Input && OV.Input.usedTrackpad);
   }
-  function tryDoor(u, p) {
+  // porta no tile apontado (ou nas arestas este/sul, que pertencem aos vizinhos): {ok, tu, reason, i, a} | null
+  function doorAt(u, p) {
     const m = S.B.map;
     const cands = [{ i: idxOf(p.x, p.y, p.z) }];
     if (p.x + 1 < m.w) cands.push({ i: idxOf(p.x + 1, p.y, p.z), part: 1 });
@@ -663,37 +976,52 @@
     for (const c of cands) {
       const a = { type: 'door', unitId: u.id, i: c.i, part: c.part };
       const v = OV.Act.validate(S.B, a);
-      if (v.ok) {
-        act(a);
-        return;
-      }
-      if (!first && v.reason !== 'noDoor') first = v.reason;
+      if (v.ok) return { ok: true, tu: v.tu | 0, reason: null, i: c.i, a };
+      if (!first && v.reason !== 'noDoor' && v.reason !== 'invalid') first = { ok: false, tu: v.tu | 0, reason: v.reason, i: c.i, a };
     }
-    deny(first || 'noDoor');
+    return first;
   }
-  function clickTarget(p, mods, pointerType) {
+  function tryDoor(u, p) {
+    const d = doorAt(u, p);
+    if (d && d.ok) {
+      act(d.a);
+      return;
+    }
+    deny(d ? d.reason : 'noDoor');
+  }
+  // aliados (e o próprio atirador) no raio de uma explosão que exige 2.ª confirmação
+  function blastRisk(u, it, i) {
+    if (!it || !blastConfirm(settings(), S.B.mission && S.B.mission.difficulty)) return 0;
+    const b = blastPreview(u, it, i);
+    return b && !b.smoke ? b.risk | 0 : 0;
+  }
+  function clickTarget(p, mods, pointerType, kbForce) {
     const u = sel();
     if (!u || !S.aim) return;
     const tu = p.unitId !== null && p.unitId !== undefined ? unitOf(p.unitId) : null;
     const tgt = tu && tu !== u ? tu : null;
     const i = tgt ? tileOfUnit(tgt) : idxOf(p.x, p.y, p.z);
-    if ((pointerType === 'touch' || isTouch()) && S.tapLock !== i) {
-      S.tapLock = i;
-      S.hoverKey = '';
-      refreshHover();
-      sfx('ui_click');
-      return;
-    }
-    S.tapLock = -1;
+    const force = kbForce === undefined ? forceMods(mods) : !!kbForce;
     let a;
     if (S.aim.kind === 'psi') a = { type: 'psi', unitId: u.id, targetId: tgt ? tgt.id : -1, kind: S.aim.psiKind };
     else if (S.aim.mode === 'melee') a = { type: 'melee', unitId: u.id, hand: S.aim.hand, targetId: tgt ? tgt.id : -1 };
-    else a = { type: 'shoot', unitId: u.id, hand: S.aim.hand, mode: S.aim.mode, target: tgt ? { unitId: tgt.id } : { i }, force: forceMods(mods) };
+    else a = { type: 'shoot', unitId: u.id, hand: S.aim.hand, mode: S.aim.mode, target: tgt ? { unitId: tgt.id } : { i }, force };
     const v = OV.Act.validate(S.B, a);
     if (!v.ok) {
+      S.tapLock = -1;
       deny(v.reason);
       return;
     }
+    // toque: 1.º toque mostra, 2.º dispara; explosivo com aliados no raio: 2.º clique/Enter no mesmo alvo
+    const risky = a.type === 'shoot' && blastRisk(u, itemOf(S.aim.itemId), i) > 0;
+    if ((pointerType === 'touch' || isTouch() || risky) && S.tapLock !== i) {
+      S.tapLock = i;
+      S.hoverKey = '';
+      refreshHover();
+      sfx(risky ? 'ui_deny' : 'ui_click');
+      return;
+    }
+    S.tapLock = -1;
     S.lastFire = { unitId: u.id, action: a };
     cancelMode(true);
     act(a);
@@ -708,13 +1036,15 @@
       if (info) toast(info.label, null, 'warn');
       return;
     }
-    if ((pointerType === 'touch' || isTouch()) && S.tapLock !== i) {
+    const risky = !!(info.blast && !info.blast.smoke && info.blast.risk && blastConfirm(settings(), S.B.mission && S.B.mission.difficulty));
+    if ((pointerType === 'touch' || isTouch() || risky) && S.tapLock !== i) {
       S.tapLock = i;
       S.hoverKey = '';
       refreshHover();
-      sfx('ui_click');
+      sfx(risky ? 'ui_deny' : 'ui_click');
       return;
     }
+    S.tapLock = -1;
     const plan = S.throwPlan;
     const steps = [];
     if (plan.inv) steps.push({ type: 'inv', unitId: u.id, itemId: plan.itemId, to: plan.inv });
@@ -869,13 +1199,178 @@
     }
     cancelMode(true);
     closeMenu();
+    closeReport();
     sfx('ui_confirm');
     S.lastFire = null;
+    const mark = S.log.length;
     await playGen(OV.Battle.endPlayerTurn(S.B));
     if (!S || S.ended) return;
+    if (isTouch()) S.mouse = null;
     playerTurnHook();
     const u = squad().filter(selectable).find(hasTU);
     if (u) select(u.id, { centre: true, quiet: true });
+    // o que aconteceu aos nossos durante o turno alienígena (os avisos passam depressa demais)
+    const hurt = S.log.slice(mark).filter((e) => e.side !== 'xcom' && e.own);
+    if (hurt.length) openReport('turn', hurt);
+  }
+
+  // ---- relatório do turno alienígena e registo de mensagens --------------------------------------------------
+  /* entrada do registo a partir de um evento (pura: lê B, nunca o altera). ctx = {last: {}, seenAt: {}} guarda
+     entre eventos o último dano de cada unidade e onde se viu cada atacante. Devolve {key, params, kind, own, at,
+     from} (texto por OV.T) ou null. */
+  function logEntry(B, ev, ctx) {
+    const C = ctx || { last: {}, seenAt: {} };
+    const find = (id) => (id === null || id === undefined ? null : OV.BUnits.findUnit(B, id));
+    const nm = (u) => (u ? u.name || (u.nameKey ? T(u.nameKey) : T('hud.unit.alien')) : '');
+    const mine = (u) => !!u && u.origSide === 'xcom';
+    const seenNow = (u) => !!u && (u.side === 'xcom' || (OV.LOS && OV.LOS.isVisibleTo && OV.LOS.isVisibleTo(B, 'xcom', u)));
+    const atkId = ev.shooterId !== undefined ? ev.shooterId : ev.attackerId !== undefined ? ev.attackerId : ev.t === 'throw' ? ev.unitId : null;
+    if ((ev.t === 'shot' || ev.t === 'throw' || ev.t === 'melee' || ev.t === 'psi') && atkId !== null && atkId !== undefined) {
+      const a = find(atkId);
+      if (a && a.side !== 'xcom' && ev.vis && seenNow(a)) C.seenAt[a.id] = typeof ev.pos === 'number' ? ev.pos : (a.z * B.map.h + a.y) * B.map.w + a.x;
+    }
+    const how = (u, killerId) => {
+      const L = C.last[u.id] || {};
+      const a = find(killerId !== undefined && killerId !== null ? killerId : L.attackerId);
+      const who = !a ? null : mine(a) ? nm(a) : C.seenAt[a.id] !== undefined || seenNow(a) ? nm(a) : T('hud.log.unseen');
+      const area = L.dmgType === 'HE' || L.dmgType === 'IN' || (L.dmgType === 'STUN' && L.cause !== 'melee');
+      let k = 'other';
+      if (L.cause === 'fire' || L.cause === 'burn') k = 'fire';
+      else if (L.cause === 'wounds') k = 'wounds';
+      else if (L.cause === 'smoke') k = 'smoke';
+      else if (L.cause === 'melee') k = 'melee';
+      else if (area || L.cause === 'grenade' || L.cause === 'unitDeath' || L.cause === 'tile' || L.cause === 'powerSource') k = who ? 'explosion' : 'blast';
+      else if (L.cause === 'shot') k = 'shot';
+      if (!who && (k === 'shot' || k === 'melee' || k === 'other')) return T('hud.log.how.' + k, { who: T('hud.log.unseen') });
+      return T('hud.log.how.' + k, { who: who || '' });
+    };
+    const fromOf = (u, killerId) => {
+      const a = find(killerId !== undefined && killerId !== null ? killerId : (C.last[u.id] || {}).attackerId);
+      return a && C.seenAt[a.id] !== undefined ? C.seenAt[a.id] : -1;
+    };
+    const tileOf = (u) => (typeof ev.pos === 'number' && ev.pos >= 0 ? ev.pos : typeof ev.i === 'number' ? ev.i : u && u.x >= 0 ? (u.z * B.map.h + u.y) * B.map.w + u.x : -1);
+    if (ev.t === 'damage') {
+      const u = find(ev.unitId);
+      if (!u) return null;
+      C.last[u.id] = { dmgType: ev.dmgType, cause: ev.cause, attackerId: ev.attackerId };
+      if (!mine(u) || !(ev.amount > 0) || u.hp <= 0 || ev.cause === 'wounds' || ev.cause === 'burn' || ev.cause === 'fire' || ev.cause === 'smoke') return null;
+      return { key: gk(ev.wounds > 0 ? 'hud.log.hitWound' : 'hud.log.hit', u), params: { name: nm(u), n: ev.amount, how: how(u) }, kind: 'warn', own: true, at: tileOf(u), from: fromOf(u) };
+    }
+    if (ev.t === 'death') {
+      const u = find(ev.unitId);
+      if (!u) return null;
+      if (mine(u)) return { key: gk('hud.log.kia', u), params: { name: nm(u), how: how(u, ev.killerId) }, kind: 'bad', own: true, at: tileOf(u), from: fromOf(u, ev.killerId) };
+      const k = find(ev.killerId);
+      if (u.origSide === 'alien' && k && mine(k)) return { key: 'hud.log.alienKilled', params: { name: nm(u), by: nm(k) }, kind: 'good', own: false, at: tileOf(u), from: -1 };
+      if (u.origSide === 'civ' && ev.vis) return { key: 'hud.log.civKilled', params: { name: nm(u) }, kind: 'warn', own: false, at: tileOf(u), from: -1 };
+      return null;
+    }
+    if (ev.t === 'stun') {
+      const u = find(ev.unitId);
+      if (!u) return null;
+      if (mine(u)) return { key: 'hud.log.stunned', params: { name: nm(u), how: how(u, ev.attackerId) }, kind: 'bad', own: true, at: tileOf(u), from: fromOf(u, ev.attackerId) };
+      if (u.origSide === 'alien' && ev.vis) return { key: 'hud.log.alienStunned', params: { name: nm(u) }, kind: 'good', own: false, at: tileOf(u), from: -1 };
+      return null;
+    }
+    if (ev.t === 'morale' && ev.kind !== 'change') {
+      const u = find(ev.unitId);
+      if (!mine(u)) return null;
+      const key = { berserk: 'bs.morale.berserk', freeze: 'bs.morale.freeze', flee: 'bs.morale.flee' }[ev.kind] || 'bs.morale.panic';
+      return { key: gk(key, u), params: { name: nm(u) }, kind: 'warn', own: true, at: tileOf(u), from: -1 };
+    }
+    if (ev.t === 'psi' && ev.kind === 'control' && ev.success) {
+      const u = find(ev.targetId);
+      if (!mine(u)) return null;
+      return { key: gk('bs.psi.control', u), params: { name: nm(u) }, kind: 'bad', own: true, at: tileOf(u), from: fromOf(u, ev.attackerId) };
+    }
+    if (ev.t === 'zombify') {
+      const u = find(ev.unitId);
+      if (!mine(u)) return null;
+      return { key: 'bs.ev.zombify', params: { name: nm(u) }, kind: 'bad', own: true, at: tileOf(u), from: -1 };
+    }
+    return null;
+  }
+  function noteEvent(ev) {
+    if (!S) return;
+    const e = logEntry(S.B, ev, S.logCtx);
+    if (!e) return;
+    e.turn = S.B.turn;
+    e.side = S.B.side;
+    S.log.push(e);
+    if (S.log.length > 400) S.log.splice(0, S.log.length - 400);
+  }
+  function closeReport() {
+    if (!S || !S.hud || !S.report) return false;
+    S.report = null;
+    S.hud.report.classList.add('hidden');
+    OV.Dom.clear(S.hud.report);
+    return true;
+  }
+  // kind 'turn' (início do turno: só o que aconteceu aos nossos) ou 'log' (registo inteiro, mais recente primeiro)
+  function openReport(kind, list) {
+    if (!S || !S.hud) return;
+    if (S.report && S.report.kind === kind && kind === 'log') {
+      closeReport();
+      return;
+    }
+    const R = S.hud.report;
+    OV.Dom.clear(R);
+    S.report = { kind };
+    const rows = kind === 'log' ? S.log.slice(-80).reverse() : list;
+    const head = el('div', { class: 'bs-report-head' },
+      el('span', { class: 'bs-report-title', text: T(kind === 'log' ? 'hud.log.title' : 'hud.report.title') }),
+      kind === 'turn' ? el('span', { class: 'bs-report-sum', text: reportSummary(rows) }) : null);
+    const close = el('button', { class: 'btn small', type: 'button' }, T('hud.report.close'), el('span', { class: 'key', text: 'Esc' }));
+    close.addEventListener('click', () => {
+      sfx('ui_click');
+      closeReport();
+    });
+    tip(close, T('hud.report.close'), 'Esc');
+    head.appendChild(close);
+    const listEl = el('div', { class: 'bs-report-list', 'data-scroll': '1', role: 'log' });
+    let lastTurn = null;
+    for (const e of rows) {
+      if (kind === 'log' && (e.turn + ':' + e.side) !== lastTurn) {
+        lastTurn = e.turn + ':' + e.side;
+        listEl.appendChild(el('div', { class: 'bs-report-turn', text: T('hud.log.turn', { n: e.turn, side: T('bs.side.' + e.side) }) }));
+      }
+      const row = el('div', { class: 'bs-report-row ' + e.kind },
+        el('span', { class: 'bs-report-ic', 'aria-hidden': 'true', text: e.kind === 'bad' ? '✖' : e.kind === 'good' ? '✔' : '!' }),
+        el('span', { class: 'bs-report-txt', text: T(e.key, e.params) }));
+      const where = e.from >= 0 ? e.from : e.at;
+      if (where >= 0) {
+        const b = el('button', { class: 'btn small', type: 'button', text: T(e.from >= 0 ? 'hud.report.showFrom' : 'hud.report.show') });
+        b.addEventListener('click', () => {
+          const [x, y, z] = xyzOf(where);
+          if (z !== S.view.viewZ) setViewZ(z);
+          centreOn(x, y, z, reduceMotion() ? 0 : 260);
+          if (S.kcur.armed) {
+            S.kcur.x = x;
+            S.kcur.y = y;
+            S.hoverKey = '';
+            refreshHover();
+          }
+          sfx('ui_click');
+        });
+        tip(b, T(e.from >= 0 ? 'hud.report.showFrom.tip' : 'hud.report.show.tip'));
+        row.appendChild(b);
+      }
+      listEl.appendChild(row);
+    }
+    if (!rows.length) listEl.appendChild(el('div', { class: 'bs-report-none muted', text: T('hud.log.empty') }));
+    R.append(head, listEl);
+    R.classList.remove('hidden');
+    sfx(kind === 'turn' ? 'ui_deny' : 'ui_click', { vol: 0.7 });
+  }
+  function reportSummary(rows) {
+    // por soldado: quem morreu não conta também como ferido
+    const deadN = new Set(rows.filter((e) => /^hud\.log\.kia/.test(e.key)).map((e) => e.params.name));
+    const hurtN = new Set(rows.filter((e) => (/^hud\.log\.hit/.test(e.key) || /^hud\.log\.stunned/.test(e.key)) && !deadN.has(e.params.name)).map((e) => e.params.name));
+    const dead = deadN.size, hurt = hurtN.size;
+    const parts = [];
+    if (dead) parts.push(Tn('hud.report.dead', dead));
+    if (hurt) parts.push(Tn('hud.report.hurt', hurt));
+    return parts.join(' · ');
   }
 
   // início de um turno do jogador sem gerador ativo: avisa quem abriu a cena (gravação automática da campanha)
@@ -889,9 +1384,11 @@
     const craft = new Set(S.B.craftTiles || []);
     const n = squad().filter((u) => selectable(u) && OV.BUnits.unitTiles(u, S.B.map).some((i) => craft.has(i))).length;
     const body = el('div', null, el('p', { class: 'modal-text', text: T('bs.abort.confirm') }), el('p', { class: 'modal-text muted', text: Tn('hud.abort.onCraft', n) }));
+    // ninguém a bordo: a nave fica no terreno e perde-se (o relatório desconta-a)
+    if (!n) body.appendChild(el('p', { class: 'modal-text bs-abort-lose', text: T('hud.abort.loseCraft') }));
     const ok = await OV.Dom.modal({
       title: T('hud.abort.title'), body, cls: 'alert',
-      buttons: [{ label: T('common.cancel'), value: false }, { label: T('bs.abort'), value: true, kind: 'danger' }],
+      buttons: [{ label: T('common.cancel'), value: false }, { label: T(n ? 'bs.abort' : 'hud.abort.loseCraftBtn'), value: true, kind: 'danger' }],
     });
     if (!ok || !S || S.ended) return;
     OV.Battle.abort(S.B);
@@ -1037,7 +1534,16 @@
     H.right.append(H.mini, H.aliens);
 
     // banners
-    H.hidden = el('div', { class: 'bs-hidden', role: 'status' }, el('span', { class: 'bs-hidden-dot' }), el('span', { text: T('hud.banner.hidden') }));
+    H.hiddenHurry = el('small', { class: 'bs-hidden-hurry' });
+    H.hidden = el('div', { class: 'bs-hidden', role: 'status' }, el('span', { class: 'bs-hidden-dot' }), el('span', { text: T('hud.banner.hidden') }), H.hiddenHurry);
+    H.report = el('div', { class: 'bs-report panel hidden', role: 'dialog', 'aria-label': T('hud.report.title') });
+    H.bLog = el('button', { class: 'bs-btn bs-logbtn', type: 'button', html: icon('log') });
+    H.bLog.addEventListener('click', (e) => {
+      e.preventDefault();
+      if (!S || S.ended) return;
+      openReport('log');
+    });
+    tip(H.bLog, T('hud.log.title'), 'N', T('hud.log.tip'));
     H.banner = el('div', { class: 'bs-banner' });
     H.hint = el('div', { class: 'bs-hint' });
 
@@ -1107,7 +1613,7 @@
 
     // leitura de desempenho (só com ?debug=1): fps e tempo de desenho
     H.perf = OV.Game && OV.Game.debug ? el('div', { class: 'bs-perf', 'aria-hidden': 'true' }) : null;
-    root.append(H.top, H.squad, H.right, H.hidden, H.banner, H.hint, H.bottom, H.menu);
+    root.append(H.top, H.squad, H.right, H.hidden, H.banner, H.hint, H.report, H.bottom, H.menu);
     if (H.perf) root.appendChild(H.perf);
     host.appendChild(root);
     S.hud = H;
@@ -1132,6 +1638,7 @@
   function showHidden(on) {
     if (!S || !S.hud) return;
     clearTimeout(S.hiddenTimer);
+    if (on) S.hud.hiddenHurry.textContent = T(isTouch() ? 'hud.banner.hurry.touch' : 'hud.banner.hurry');
     if (on) S.hud.hidden.classList.add('on');
     else S.hiddenTimer = setTimeout(() => S && S.hud && S.hud.hidden.classList.remove('on'), 350);
   }
@@ -1218,7 +1725,7 @@
       if (title) tip(c, title);
       chips.appendChild(c);
     };
-    if (u.kneel) chip('kneel', T('bs.status.kneel'));
+    if (u.kneel) chip('kneel', T(gk('bs.status.kneel', u)));
     const w = woundsOf(u);
     if (w > 0) chip('bleed', T('bs.status.bleeding', { n: w }), T('hud.wounds', { n: w }));
     if (u.status === 'panic') chip('panic', T('bs.status.panic'));
@@ -1250,7 +1757,9 @@
       return;
     }
     b.appendChild(iconCanvas(it.type, 46));
-    b.appendChild(el('span', { class: 'bs-hand-name', text: T(d.nameKey) }));
+    b.appendChild(el('span', { class: 'bs-hand-name', text: handName(it.type) }));
+    b.setAttribute('aria-label', T('hud.hand.' + h) + ': ' + T(d.nameKey) + ' (' + (h === 'L' ? 'Q' : 'E') + ')');
+    if (!researchedOk(u, it.type)) b.appendChild(el('span', { class: 'bs-hand-lock', text: '?', title: T('bs.notResearched') }));
     if (d.kind === 'firearm' && Array.isArray(d.ammo) && d.ammo.length) {
       b.appendChild(el('span', { class: 'bs-hand-ammo' + (it.ammo ? '' : ' empty'), text: it.ammo ? ammo : T('hud.ammo.empty') }));
     }
@@ -1285,7 +1794,7 @@
         row.addEventListener('dblclick', () => S && centreUnit(u));
         tip(row, uname(u), null, (rankName(u) ? rankName(u) + ' · ' : '') + T('hud.bar.tu') + ' ' + (u.tu | 0) + ' · ' + T('hud.bar.hp') + ' ' + (u.hp | 0) + ' — ' + T('hud.tip.squad'));
       } else {
-        const st = u.status === 'dead' ? T('bs.ev.kia', { name: uname(u) }) : u.mia ? T('bs.status.mia') : T('bs.status.stunned');
+        const st = u.status === 'dead' ? T(gk('bs.ev.kia', u), { name: uname(u) }) : u.mia ? T(gk('bs.status.mia', u)) : T('bs.status.stunned');
         tip(row, uname(u), null, st);
       }
       H.squad.appendChild(row);
@@ -1301,7 +1810,9 @@
     OV.Dom.clear(H.aliens);
     list.forEach((u, k) => {
       const n = k + 1;
-      const b = el('button', { class: 'bs-alien', type: 'button', text: String(n) });
+      const b = el('button', { class: 'bs-alien', type: 'button' },
+        el('span', { class: 'bs-alien-ic', 'aria-hidden': 'true', html: '<svg viewBox="0 0 24 24"><path d="M12 2.5c-5 0-8 3.6-8 8 0 4.6 4.3 9.6 8 11 3.7-1.4 8-6.4 8-11 0-4.4-3-8-8-8z" fill="currentColor"/><path d="M6.6 10.2c1.9-.2 3.7.8 4.2 2.6-1.9.4-3.7-.6-4.2-2.6zM17.4 10.2c-1.9-.2-3.7.8-4.2 2.6 1.9.4 3.7-.6 4.2-2.6z" fill="#120406"/></svg>' }),
+        el('span', { class: 'bs-alien-n', text: String(n) }));
       b.addEventListener('click', () => S && centreAlien(k));
       tip(b, T('hud.tip.alien', { n, name: uname(u) }), n <= 10 ? String(n % 10) : null, T('hud.tip.alienKeys', { n: n % 10 }));
       H.aliens.appendChild(b);
@@ -1311,17 +1822,22 @@
   function renderTop() {
     const H = S.hud;
     const B = S.B;
-    const sig = [B.turn, B.side, B.mission.kind, B.mission.night].join('|');
+    const sig = [B.turn, B.side, B.mission.kind, B.mission.night, B.mission.shade, S.log.length ? 1 : 0].join('|');
     if (S.sig.top === sig) return;
     S.sig.top = sig;
     OV.Dom.clear(H.top);
+    // luz: noite (visão curta), meia-luz (crepúsculo, base alienígena, Marte: visão normal) ou dia
+    const shade = B.mission.shade | 0;
+    const phase = B.mission.night ? 'night' : shade > 0 ? (B.mission.kind === 'alienBase' || B.mission.kind === 'cydonia' ? 'dim' : 'dusk') : 'day';
+    const pars = { nv: tune('NIGHT_VIEW', 9), d: tune('VIEW_DIST', 20) };
     H.top.append(
       el('span', { class: 'bs-top-title', text: T('bs.mission.' + B.mission.kind) }),
       el('span', { class: 'bs-top-sep' }),
       el('span', { class: 'bs-top-turn', text: T('hud.turn', { n: B.turn }) }),
       el('span', { class: 'bs-top-side ' + B.side, text: T('bs.side.' + B.side) }),
-      tip(el('span', { class: 'bs-top-time ' + (B.mission.night ? 'night' : 'day'), text: T(B.mission.night ? 'hud.night' : 'hud.day') }),
-        T(B.mission.night ? 'hud.night' : 'hud.day'), null, T(B.mission.night ? 'hud.tip.night' : 'hud.tip.day', { nv: tune('NIGHT_VIEW', 9), d: tune('VIEW_DIST', 20) })));
+      tip(el('span', { class: 'bs-top-time ' + (phase === 'night' ? 'night' : phase === 'day' ? 'day' : 'dusk'), text: T('hud.' + phase) }),
+        T('hud.' + phase), null, T('hud.tip.' + phase, pars)),
+      H.bLog);
   }
 
   function renderTools(u) {
@@ -1350,9 +1866,34 @@
     renderAliens();
     renderTools(u);
     S.hud.root.classList.toggle('alien-turn', S.B.side !== 'xcom');
+    applyA11y();
+  }
+  // acessibilidade: paleta segura para daltonismo, movimento reduzido e escala das etiquetas do mapa
+  function applyA11y() {
+    const st = settings();
+    const cvd = st.palette === 'cvd', rm = reduceMotion();
+    const sig = (cvd ? 1 : 0) + '|' + (rm ? 1 : 0) + '|' + (+st.textScale || 1);
+    if (S.sig.a11y === sig) return;
+    S.sig.a11y = sig;
+    S.hud.root.classList.toggle('cvd', cvd);
+    S.hud.root.classList.toggle('rm', rm);
+    document.body.classList.toggle('bs-cvd', cvd);
+    document.body.classList.toggle('bs-rm', rm);
+    S.view.palette = cvd ? 'cvd' : 'normal';
+    S.view.reduceMotion = rm;
+    S.view.textScale = Math.max(1, Math.min(1.5, +st.textScale || 1));
+    if (OV.FX) OV.FX.reduceMotion = rm;
+    OV.Presenter.reduceMotion = rm;
   }
 
   // ---- menu de ações -----------------------------------------------------------------------------------------
+  // o motor recusa armas alienígenas por investigar (mesma regra que OV.Act: só lê B)
+  function researchedOk(u, type) {
+    const list = S.B.researched || (S.B.mission && S.B.mission.researched);
+    if (!u || u.origSide !== 'xcom' || !Array.isArray(list)) return true;
+    const d = OV.Data.items[type];
+    return !d || !d.research || list.indexOf(d.research) >= 0;
+  }
   function closeMenu() {
     if (!S || !S.hud || !S.menu) return;
     S.menu = null;
@@ -1368,14 +1909,15 @@
     if (d.kind === 'firearm' || d.kind === 'melee') {
       const needsAmmo = Array.isArray(d.ammo) && d.ammo.length;
       const loaded = !needsAmmo || (it.ammo && it.ammo.rounds > 0);
+      const known = researchedOk(u, it.type);
       for (const m of OV.Data.weaponModes(it.type)) {
         const tu = tuOf(m.mode);
         if (tu === null) continue;
         const acc = OV.Combat.accuracy(S.B, u, it.id, m.mode);
-        const enabled = (m.mode === 'melee' || loaded) && tu <= (u.tu | 0);
+        const enabled = known && (m.mode === 'melee' || loaded) && tu <= (u.tu | 0);
         add({
           label: T('mode.' + m.mode) + (m.mode === 'auto' && m.shots > 1 ? ' ×' + m.shots : ''), cost: tu, acc,
-          enabled, why: !loaded && m.mode !== 'melee' ? T('bs.noAmmo') : tu > (u.tu | 0) ? T('bs.noTU') : '',
+          enabled, why: !known ? T('bs.notResearched') : !loaded && m.mode !== 'melee' ? T('bs.noAmmo') : tu > (u.tu | 0) ? T('bs.noTU') : '',
           run: () => enterTarget(hand, m.mode),
         });
       }
@@ -1604,18 +2146,30 @@
       }
     }
     // unidades
-    const dot = (u, colr, r) => {
+    // soldados = círculos, alienígenas = losangos (a forma distingue-os sem depender da cor)
+    const cvd = settings().palette === 'cvd';
+    const dot = (u, colr, r, diamond) => {
       const s = (u.size || 1) - 1;
       const X = px(u.x + s / 2, u.y + s / 2), Y = py(u.x + s / 2, u.y + s / 2) + k / 2;
       g.fillStyle = colr;
       g.beginPath();
-      g.arc(X, Y, r, 0, Math.PI * 2);
+      if (diamond) {
+        const q = r + 1;
+        g.moveTo(X, Y - q);
+        g.lineTo(X + q, Y);
+        g.lineTo(X, Y + q);
+        g.lineTo(X - q, Y);
+        g.closePath();
+      } else g.arc(X, Y, r, 0, Math.PI * 2);
       g.fill();
+      g.lineWidth = 1;
+      g.strokeStyle = 'rgba(0,0,0,0.8)';
+      g.stroke();
     };
     for (const u of B.units) {
       if (!u.onMap || !LIVE[u.status] || u.x < 0) continue;
-      if (u.side === 'xcom') dot(u, u.id === S.selId ? '#ffc23a' : '#5fe08a', u.id === S.selId ? k + 1 : k);
-      else if (seen(u)) dot(u, u.side === 'alien' ? '#ff4f43' : '#ffd23a', k);
+      if (u.side === 'xcom') dot(u, u.id === S.selId ? (cvd ? '#ffffff' : '#ffc23a') : cvd ? '#4aa8ff' : '#5fe08a', u.id === S.selId ? k + 1 : k, false);
+      else if (seen(u)) dot(u, u.side === 'alien' ? (cvd ? '#ff4fd8' : '#ff4f43') : cvd ? '#ffb060' : '#ffd23a', k, u.side === 'alien');
     }
     // retângulo da vista atual
     const v = S.view;
@@ -1647,10 +2201,30 @@
     if (!S) return false;
     const k = ev.kind;
     if (k === 'hover') {
+      // o rato manda: o cursor de teclado desaparece (só com movimento a sério, não com o tremor do trackpad)
+      if (S.kcur.armed && S.mouse0 && Math.hypot(ev.x - S.mouse0.x, ev.y - S.mouse0.y) < 4) return true;
+      S.mouse0 = { x: ev.x, y: ev.y };
+      S.lastInput = 'ptr';
+      S.lastPtrT = realNow();
+      if (S.kcur.armed) {
+        S.kcur.armed = false;
+        S.view.kcur = null;
+        if (S.mode === 'move') setHint('');
+      }
       S.mouse = { x: ev.x, y: ev.y };
       S.force = forceMods(ev.mods);
+      S.alt = !!(ev.mods && ev.mods.alt);
       refreshHover();
       return true;
+    }
+    if (k === 'down' || k === 'click' || k === 'secondary' || k === 'dragstart') {
+      S.lastInput = 'ptr';
+      S.lastPtrT = realNow();
+      if (S.kcur.armed) {
+        S.kcur.armed = false;
+        S.view.kcur = null;
+        if (S.mode === 'move') setHint('');
+      }
     }
     if (k === 'leave') {
       S.mouse = null;
@@ -1716,7 +2290,13 @@
         S.spaceIdle = false;
         return true;
       }
-      if (forceKey(ev.key)) {
+      if (/^Arrow/.test(ev.code || '')) delete S.arrowT[ev.code];
+      if (ev.key === 'Alt' && S.alt) {
+        S.alt = false;
+        S.hoverKey = '';
+        refreshHover();
+      }
+      if (forceKey(ev.key) || (ev.key === 'Control' && S.force)) {
         S.force = false;
         S.hoverKey = '';
         refreshHover();
@@ -1741,6 +2321,10 @@
         return true;
       }
       if (ev.pointerType === 'touch' || !S.mouse) S.mouse = { x: ev.x, y: ev.y };
+      if (ev.mods) S.alt = !!ev.mods.alt;
+      // pré-visualização atualizada para o ponto do clique (no toque não houve pairar antes)
+      S.hoverKey = '';
+      refreshHover();
       const p = pickAt(ev.x, ev.y);
       if (!p) return true;
       if (S.mode === 'target') clickTarget(p, ev.mods, ev.pointerType);
@@ -1791,20 +2375,39 @@
   function onKey(ev) {
     const key = ev.key, code = ev.code || '', m = ev.mods || {};
     const lk = key.length === 1 ? key.toLowerCase() : key;
+    const kb = kbOn();
     if (key === 'Meta' || key === 'Control') {
-      if (forceKey(key)) {
+      // tiro forçado: ⌘ no Mac, Ctrl nos outros; com o cursor de teclado a apontar, Ctrl também (Ctrl+Enter)
+      if (forceKey(key) || (key === 'Control' && S.kcur.armed && S.mode === 'target')) {
         S.force = true;
         S.hoverKey = '';
         refreshHover();
       }
       return false;
     }
+    if (key === 'Alt') {
+      if (!S.alt) {
+        S.alt = true;
+        S.hoverKey = '';
+        refreshHover();
+      }
+      return true;
+    }
     if (S.ended) return false;
+    S.lastInput = 'kb';
+    const arrow = /^Arrow(Left|Right|Up|Down)$/.exec(code);
+    if (arrow && !ev.repeat) S.arrowT[code] = realNow();
     if (key === ' ') {
       if (!ev.repeat) {
         S.spaceDown = true;
         S.spaceDragged = false;
         S.spaceIdle = !S.playing;
+        // cursor de teclado numa casa útil: Espaço confirma (como Enter) em vez de «Feito»
+        if (!S.playing && !S.menu && kbActive()) {
+          S.spaceIdle = false;
+          kbConfirm(m);
+          return true;
+        }
       }
       if (S.playing) {
         S.spaceIdle = false;
@@ -1813,9 +2416,11 @@
       return true;
     }
     // repetição automática: só panorâmica, ciclo de soldados, nível e zoom se repetem; ações (K, F, R, G, L, Enter,
-    // ⌫, dígitos do menu…) contam uma vez por toque — segurar K não pode gastar UT a ajoelhar e levantar
+    // ⌫, dígitos do menu…) contam uma vez por toque — segurar K não pode gastar UT a ajoelhar e levantar.
+    // As setas do cursor repetem pelo próprio ritmo (think), não pelo do sistema.
     if (ev.repeat && !isPanKey(code, m) && key !== 'Tab' && !(m.shift && (key === 'ArrowUp' || key === 'ArrowDown'))
       && !/^(PageUp|PageDown|\.|,|<|>|\+|=|-|_)$/.test(key)) return true;
+    if (ev.repeat && arrow && kb && !m.shift) return true;
     if (S.playing) {
       if (key === 'Escape' || key === 'Enter') {
         OV.Presenter.hurry();
@@ -1849,20 +2454,39 @@
       }
     }
     if (key === 'Escape') {
-      if (S.mode !== 'move' || S.lock >= 0) cancelMode();
+      if (S.mode !== 'move' || S.lock >= 0 || S.tapLock >= 0) cancelMode();
       else if (S.menu) closeMenu();
-      else openOptions();
+      else if (closeReport()) sfx('ui_click');
+      else if (kbDisarm()) {
+        setHint('');
+        sfx('ui_click', { vol: 0.5 });
+      } else openOptions();
       return true;
     }
+    const aiming = S.mode === 'target' || S.mode === 'throw';
     if (key === 'Tab') {
-      cycle(m.shift ? -1 : 1);
+      if (aiming && kb) kbCycleAlien(m.shift ? -1 : 1);
+      else cycle(m.shift ? -1 : 1);
       return true;
     }
-    if (key === 'Enter' || key === 'Backspace') {
+    if (key === 'Enter') {
+      if (kbActive()) kbConfirm(m);
+      else endTurn();
+      return true;
+    }
+    if (key === 'Backspace') {
       endTurn();
       return true;
     }
-    if (m.shift && (key === 'ArrowUp' || key === 'ArrowDown')) {
+    // setas: cursor de tiles (⇧ + setas desloca a câmara); sem cursor de teclado, as setas deslocam a câmara
+    if (arrow && kb && !m.shift && !m.alt && !m.meta && !m.ctrl) {
+      const dir = arrow[1].toLowerCase();
+      kbMove(dir);
+      S.kcur.hold = { code, dir, next: realNow() + KB_HOLD };
+      setHint(modeHint());
+      return true;
+    }
+    if (!kb && m.shift && (key === 'ArrowUp' || key === 'ArrowDown')) {
       setViewZ(S.view.viewZ + (key === 'ArrowUp' ? 1 : -1));
       return true;
     }
@@ -1895,7 +2519,10 @@
         else if (n === 5) toggleReserveKneel();
         return true;
       }
-      centreAlien(n === 0 ? 9 : n - 1);
+      const a = visibleAliens()[n === 0 ? 9 : n - 1];
+      // a apontar (ou com o cursor já à vista): o cursor salta para o alienígena n; senão só centra
+      if (a && kb && (aiming || S.kcur.armed)) kbJumpAlien(a);
+      else centreAlien(n === 0 ? 9 : n - 1);
       return true;
     }
     if (m.meta || m.ctrl) return false;
@@ -1912,13 +2539,40 @@
       case 'h': centreUnit(sel()); return true;
       case 'm': toggleMini(); return true;
       case 'j': toggleReserveKneel(); return true;
+      case 'n': openReport('log'); return true;
+      case 't': kbTurn(); return true;
+      case '?': openKeys(); return true;
       default: break;
     }
     return isPanKey(code, m);
   }
+  // T: rodar o soldado para o cursor de teclado (como o clique secundário)
+  function kbTurn() {
+    const u = sel();
+    if (!u || !S.kcur.armed) {
+      toast('hud.kb.turnHint', null, 'info');
+      return;
+    }
+    const a = { type: 'turn', unitId: u.id, toI: idxOf(S.kcur.x, S.kcur.y, S.view.viewZ) };
+    const v = OV.Act.validate(S.B, a);
+    if (v.ok) act(a);
+    else if (v.reason !== 'invalid') deny(v.reason);
+  }
+  // ? : folha de teclas do Battlescape
+  function openKeys() {
+    const rows = [];
+    for (let k = 1; OV.T.has('hud.keys.' + k); k++) {
+      const [a, b] = T('hud.keys.' + k).split('|');
+      rows.push(el('tr', null, el('td', null, el('kbd', { class: 'key', text: a })), el('td', { text: b || '' })));
+    }
+    OV.Dom.modal({ title: T('hud.keys.title'), body: el('table', { class: 'tbl bs-keys' }, el('tbody', null, rows)), wide: true, buttons: [{ label: T('hud.opt.resume'), value: true, kind: 'primary' }] });
+  }
   function isPanKey(code, m) {
     if (m && (m.meta || m.ctrl || m.alt)) return false;
-    return /^(Arrow(Left|Right|Up|Down)|Key[WASD])$/.test(code) && !(m && m.shift && /ArrowUp|ArrowDown/.test(code));
+    if (/^Key[WASD]$/.test(code)) return true;
+    if (!/^Arrow(Left|Right|Up|Down)$/.test(code)) return false;
+    // com o cursor de teclado, só ⇧ + setas desloca a câmara; sem ele, ⇧↑/⇧↓ mudam de nível
+    return kbOn() ? !!(m && m.shift) : !(m && m.shift && /ArrowUp|ArrowDown/.test(code));
   }
 
   // ---- ciclo --------------------------------------------------------------------------------------------------
@@ -1936,11 +2590,23 @@
     let kx = 0, ky = 0;
     const shift = K.has('ShiftLeft') || K.has('ShiftRight');
     const modal = OV.Dom.anyModalOpen();
-    if (!modal && !K.has('MetaLeft') && !K.has('MetaRight')) {
-      if (K.has('ArrowLeft') || K.has('KeyA')) kx -= 1;
-      if (K.has('ArrowRight') || K.has('KeyD')) kx += 1;
-      if (!shift && (K.has('ArrowUp') || K.has('KeyW'))) ky -= 1;
-      if (!shift && (K.has('ArrowDown') || K.has('KeyS'))) ky += 1;
+    const kb = kbOn();
+    if (!modal && !K.has('MetaLeft') && !K.has('MetaRight') && !K.has('AltLeft') && !K.has('AltRight')) {
+      // W A S D deslocam sempre; setas só com ⇧ (com o cursor de teclado) ou sempre (sem ele, ⇧↑⇧↓ = nível)
+      const arrows = kb ? shift : true;
+      if ((arrows && K.has('ArrowLeft')) || (!shift && K.has('KeyA'))) kx -= 1;
+      if ((arrows && K.has('ArrowRight')) || (!shift && K.has('KeyD'))) kx += 1;
+      if ((arrows && (kb || !shift) && K.has('ArrowUp')) || (!shift && K.has('KeyW'))) ky -= 1;
+      if ((arrows && (kb || !shift) && K.has('ArrowDown')) || (!shift && K.has('KeyS'))) ky += 1;
+    }
+    // cursor de teclado: segurar uma seta repete o passo ao ritmo próprio (a câmara segue o cursor)
+    const hold = S.kcur.hold;
+    if (hold) {
+      if (!K.has(hold.code) || modal || shift || !kb || S.playing) S.kcur.hold = null;
+      else if (now >= hold.next) {
+        hold.next = now + KB_RATE;
+        kbMove(hold.dir);
+      }
     }
     // margens do ecrã (opção)
     if (settings().edgeScroll && S.mouse && !S.dragging && !modal) {
@@ -2050,6 +2716,8 @@
         mouse: null, pick: null, hoverKey: '', reachKey: '', ver: 0, hitCache: new Map(), uiRng: OV.RNG.create(0x51ed7a11),
         lastFire: null, miniOn: false, mood: null, hudDirty: true, mapDirty: true, force: false, spaceDown: false, spaceDragged: false,
         clickFast: false, perf: OV.Game && OV.Game.debug ? { draw: [], at: [], shown: 0, last: null } : null,
+        kcur: { x: 0, y: 0, armed: false, anchor: null, hold: null }, arrowT: {}, alt: false, lastInput: 'ptr', mouse0: null, aimLabel: '',
+        log: [], logCtx: { last: {}, seenAt: {} }, report: null,
       };
       S.pctx = {
         view: S.view, anim, side: 'xcom', followId: () => (S ? S.selId : null),
@@ -2063,6 +2731,7 @@
             if (ev.t === 'spotted' || ev.t === 'death' || ev.t === 'turnStart') updateMusic();
           },
           viewZ: (z) => S && setViewZ(z),
+          log: (ev) => noteEvent(ev),
           blips: (list) => {
             if (!S) return;
             const t0 = realNow();
@@ -2108,8 +2777,12 @@
         S = null;
       }
       OV.Dom.hideTooltip();
-      if (OV.FX) OV.FX.clear();
-      document.body.classList.remove('in-battle');
+      hideLongPress();
+      if (OV.FX) {
+        OV.FX.clear();
+        OV.FX.reduceMotion = false;
+      }
+      document.body.classList.remove('in-battle', 'bs-cvd', 'bs-rm');
     };
     sc.pause = function () {
       if (S && S.hud) S.hud.root.classList.add('paused');
@@ -2140,6 +2813,9 @@
       S.spaceDown = false;
       S.spaceIdle = false;
       S.force = false;
+      S.alt = false;
+      S.kcur.hold = null;
+      S.arrowT = {};
       if (OV.Input) OV.Input.keysDown.clear();
     };
     return sc;
@@ -2183,7 +2859,14 @@
         unit: u ? { id: u.id, x: u.x, y: u.y, z: u.z, tu: u.tu, energy: u.energy, kneel: !!u.kneel, dir: u.dir, hp: u.hp } : null,
         visibleAliens: visibleAliens().map((a) => ({ id: a.id, x: a.x, y: a.y, z: a.z })),
         miniOn: !!S.miniOn,
+        kcur: S.kcur.armed ? { x: S.kcur.x, y: S.kcur.y, z: S.view.viewZ } : null, tapLock: S.tapLock,
+        pathSub: S.view.path ? S.view.path.sub || null : null, hint: S.hud ? S.hud.hint.textContent : '',
+        report: S.report ? { kind: S.report.kind, rows: Array.from(S.hud.report.querySelectorAll('.bs-report-txt')).map((n) => n.textContent) } : null,
       };
+    },
+    // registo de mensagens (entradas com o texto já traduzido)
+    log() {
+      return S ? S.log.map((e) => ({ turn: e.turn, side: e.side, kind: e.kind, own: e.own, text: T(e.key, e.params), at: e.at, from: e.from })) : [];
     },
     // última leitura de desempenho (?debug=1): {fps, avg, p95, chunks, sprites} | null
     perf() {
@@ -2201,9 +2884,28 @@
     },
     hover(x, y) {
       if (!S) return;
+      // como o rato a sério: esconde o cursor de teclado
+      S.kcur.armed = false;
+      S.lastInput = 'ptr';
+      S.lastPtrT = realNow();
       S.mouse = { x, y };
       S.hoverKey = '';
       refreshHover();
+    },
+    // QA: cursor de teclado armado num tile (como se lá tivesse chegado com as setas)
+    kb(x, y, z) {
+      if (!S) return;
+      S.lastInput = 'kb';
+      kbPlace(x, y, z === undefined ? S.view.viewZ : z);
+    },
+    // QA: um evento entra no registo como se viesse do apresentador; report('turn'|'log') abre o painel
+    noteEvent(ev) {
+      noteEvent(ev);
+    },
+    report(kind) {
+      if (!S) return;
+      if (kind === 'turn') openReport('turn', S.log.filter((e) => e.own));
+      else openReport('log');
     },
   };
 
@@ -2214,6 +2916,7 @@
     },
     openInventory,
     refresh() { if (S) invalidate(); },
+    model: { kbStep, logEntry, blastConfirm, handName },
     debug,
   };
 })(globalThis.OV || (globalThis.OV = {}));

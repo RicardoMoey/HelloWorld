@@ -7,6 +7,7 @@
      smoke, fire, sparks, impact, blood, psi, spotted, damage.
    OV.FX.projectile(kind, from, toOrPath, tilesPerSec?) → Promise (resolvida à chegada; laser = instantâneo)
    OV.FX.update(dtMs) ; draw(ctx, cam, viewZ) ; drawDecals(ctx, cam, z) ; shake(intensity) ; offset() → {x, y}
+   OV.FX.reduceMotion (bool, posto pela interface): sem tremor de ecrã (movimento reduzido)
    OV.FX.clear() ; active() → bool ; inFlight() → projéteis por chegar ; flame(ctx, X, Y, S, t, seed, k) / smokeTile(ctx, X, Y, S, t, seed, density)
    (fogo e fumo dos tiles, chamados pelo renderizador em px do dispositivo, escala S). */
 (function (OV) {
@@ -291,6 +292,7 @@
   }
 
   function shake(intensity) {
+    if (OV.FX && OV.FX.reduceMotion) return;
     S.trauma = Math.min(1, S.trauma + Math.max(0, +intensity || 0));
   }
 
@@ -651,6 +653,7 @@
   }
 
   OV.FX = {
+    reduceMotion: false,
     spawn, projectile, update, draw, drawDecals, shake, clear, flame, smokeTile, tileVoxel,
     offset: () => ({ x: S.off.x, y: S.off.y }),
     active: () => S.parts.length > 0 || S.trauma > 0 || S.pending.length > 0,

@@ -220,7 +220,7 @@ try {
   await page.keyboard.press('KeyE');
   await page.waitForTimeout(120);
   const menu = await page.evaluate(() => [...document.querySelectorAll('.bs-mi-acc')].map((n) => ({ t: n.textContent, title: n.getAttribute('title') })).filter((x) => x.t));
-  log(menu.length && menu.every((m) => /^Prec\. \d+ %$/.test(m.t) && m.title), 'menu: coluna de precisão rotulada com dica ' + JSON.stringify(menu[0]));
+  log(menu.length && menu.every((m) => /^Pontaria \d+ %$/.test(m.t) && m.title), 'menu: coluna de pontaria rotulada com dica ' + JSON.stringify(menu[0]));
   await shot('menu');
   await page.keyboard.press('Digit1');
   await page.waitForTimeout(120);

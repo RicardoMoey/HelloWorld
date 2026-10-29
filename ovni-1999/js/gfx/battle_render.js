@@ -10,6 +10,12 @@
      path.lock = destino bloqueado à espera de confirmação (pulsa); path.noLine = só o destino (inalcançável);
      target.blockI = tile do obstáculo que tapa o tiro (losango vermelho); safe = {t,r,b,l} px CSS ocupados pelo HUD
      (as etiquetas ficam dentro do resto do ecrã). clampCam(view, B) usa view.viewZ (0 por omissão).
+     view.kcur = {x,y,z} cursor de teclado (contorno branco/preto bem visível); view.palette 'normal'|'cvd';
+     view.reduceMotion (sem pulsações); view.textScale (etiquetas); path.sub = segunda etiqueta (dica da porta).
+     Formas independentes da cor: passos que guardam a reserva = pontos cheios, que a comem = pontos ocos ligados a
+     tracejado (com uma barra onde a reserva acaba), inalcançáveis = ✕; contorno do alcance cheio (mantém a
+     reserva) e tracejado (come a reserva); inimigo à vista = losango com cantos + seta por cima da cabeça
+     (soldados = elipse); unidades visíveis tapadas por paredes/objetos à frente aparecem em transparência.
    Ordem (§16): para z = 0..viewZ — chão pré-cozido em regiões de 512×256 px de mundo alinhadas ao ecrã (luz, névoa e
    escurecimento por nível já compostos por tile; recozidas só quando a assinatura chão/sombra muda, no máximo
    2 por fotograma) + decalques + área alcançável + cursor (metade de trás); varrimento diagonal s = x+y:
@@ -50,8 +56,14 @@
   const COL = {
     ok: 0x4ade6a, reserve: 0xffd23a, out: 0xff4a3a, move: 0xffd23a, target: 0xff4a3a, throw: 0xff9a30, none: 0xc8d2dc,
     // barras por cima do soldado com as mesmas cores do cartão (css/base.css --tu, --hp, --stun)
-    select: 0xffc23a, tu: 0x58c8ff, hp: 0x5fe08a, stun: 0x9aa4ae,
+    select: 0xffc23a, tu: 0x58c8ff, hp: 0x5fe08a, stun: 0x9aa4ae, own: 0x58c8ff,
   };
+  // paleta segura para daltonismo (view.palette 'cvd'): azul / laranja / magenta / branco em vez de verde / amarelo /
+  // vermelho; as formas (pontos cheios/ocos, tracejado, ✕, losango inimigo) estão sempre ligadas
+  const COL_CVD = Object.assign({}, COL, {
+    ok: 0x4aa8ff, reserve: 0xff9a30, out: 0xff4fd8, move: 0xffffff, target: 0xff4fd8, throw: 0xffb060, select: 0xffffff, own: 0x4aa8ff,
+  });
+  let PAL = COL;
   const RANK_COL = [0x9aa4ae, 0x5ac85a, 0xd8c040, 0x5ab4ff, 0xff9a40, 0xe04ae0, 0xff4a4a];
 
   let makeCanvas = function (w, h) {
@@ -430,7 +442,7 @@
     ctx.closePath();
   }
   function cursorBack(ctx, F, X, Y, mode) {
-    const S = F.S, col = COL[mode] || COL.move;
+    const S = F.S, col = PAL[mode] || PAL.move;
     diamond(ctx, X, Y, S, 1);
     ctx.fillStyle = css(col, mode === 'target' ? 0.16 : 0.12);
     ctx.fill();
@@ -446,7 +458,7 @@
     ctx.stroke();
   }
   function cursorFront(ctx, F, X, Y, mode) {
-    const S = F.S, col = COL[mode] || COL.move;
+    const S = F.S, col = PAL[mode] || PAL.move;
     ctx.lineWidth = Math.max(1, 2 * F.dpr);
     ctx.strokeStyle = css(0x000000, 0.45);
     ctx.beginPath();
@@ -472,7 +484,7 @@
   }
   // medida de uma etiqueta (px do dispositivo)
   function pillSize(ctx, F, text) {
-    const fs = Math.round(12 * F.dpr);
+    const fs = Math.round(12 * F.dpr * (F.ts || 1));
     ctx.font = '600 ' + fs + 'px -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif';
     return { w: ctx.measureText(text).width + 12 * F.dpr, h: fs + 8 * F.dpr, fs };
   }
@@ -514,7 +526,7 @@
     ctx.fillText(text, X, Y + 0.5 * F.dpr);
   }
   function smallText(ctx, F, X, Y, text, col) {
-    const fs = Math.round(10.5 * F.dpr);
+    const fs = Math.round(10.5 * F.dpr * (F.ts || 1));
     ctx.font = '700 ' + fs + 'px -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -554,20 +566,23 @@
         }
       }
     }
-    for (const [list, col] of [[segs.outer, COL.reserve], [segs.inner, COL.ok]]) {
+    // contorno cheio = alcance que guarda a reserva; tracejado = só chegando lá come a reserva
+    for (const [list, col, dash] of [[segs.outer, PAL.reserve, true], [segs.inner, PAL.ok, false]]) {
       if (!list.length) continue;
       ctx.beginPath();
       for (let k = 0; k < list.length; k += 2) {
         ctx.moveTo(list[k][0], list[k][1]);
         ctx.lineTo(list[k + 1][0], list[k + 1][1]);
       }
+      ctx.setLineDash(dash ? [6 * F.dpr, 5 * F.dpr] : []);
       ctx.lineWidth = Math.max(1, 3 * F.dpr);
       ctx.strokeStyle = 'rgba(0,0,0,0.35)';
       ctx.stroke();
-      ctx.lineWidth = Math.max(1, 1.5 * F.dpr);
+      ctx.lineWidth = Math.max(1, (dash ? 1.6 : 1.8) * F.dpr);
       ctx.strokeStyle = css(col, 0.85);
       ctx.stroke();
     }
+    ctx.setLineDash([]);
   }
 
   // ---- desenho principal --------------------------------------------------------------------------------------------
@@ -597,6 +612,7 @@
       allVisible: !!view.showAll || !visReady,
       vis: _.visTiles,
       light: null, lightReady, frameNo: ++frameNo, bakeLeft: bakesPerFrame,
+      ts: Math.max(1, Math.min(1.5, +view.textScale || 1)), still: !!view.reduceMotion,
     };
   }
 
@@ -608,6 +624,7 @@
     const F = frameInfo(ctx, B, view);
     st.dpr = F.dpr;
     labels = [];
+    PAL = view.palette === 'cvd' ? COL_CVD : COL;
     // regiões cozidas à escala de repouso (a mesma dos sprites): a meio de um zoom desenham-se reescaladas
     const SS = spriteScale(F.S, F.dpr);
     regionGrid(st, SS);
@@ -812,8 +829,12 @@
       ctx.globalCompositeOperation = 'source-over';
     }
 
+    drawGhosts(ctx, B, F, rects);
+    // barras do selecionado antes das etiquetas (a etiqueta do caminho nunca fica por baixo delas)
+    drawSelectedBars(ctx, B, F, rects);
     drawBlips(ctx, B, F);
     drawThrowRange(ctx, B, F);
+    drawKbCursor(ctx, B, F);
     drawPath(ctx, B, F);
     drawTarget(ctx, B, F);
     drawBlast(ctx, B, F);
@@ -827,11 +848,6 @@
       OV.FX.draw(ctx, { x: F.cam.x - F.sh.x / F.zoom, y: F.cam.y - F.sh.y / F.zoom, zoom: F.zoom }, F.viewZ);
       ctx.restore();
     }
-    // barras da unidade selecionada (por cima de tudo)
-    ctx.save();
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    drawSelectedBars(ctx, B, F, rects);
-    ctx.restore();
 
     last = { B, view, rects, F: { ox: F.ox, oy: F.oy, S: F.S, dpr: F.dpr, viewZ: F.viewZ, revealAll: F.revealAll } };
     statsInfo.units = rects.length;
@@ -855,10 +871,13 @@
     shadeA = Math.min(shadeA, (u.side === 'xcom' ? 0.42 : 0.3) + lvlDim);
     const shadeI = Math.max(0, Math.min(15, Math.round((shadeA / 0.85) * 15)));
     US.drawShadow(ctx, X, Y, r.size, S);
-    if (F.view.selectedId === u.id) US.selectionRing(ctx, X, Y, S, COL.select, r.size);
+    if (F.view.selectedId === u.id) US.selectionRing(ctx, X, Y, S, PAL.select, r.size);
     else if (u.side === 'alien' && u.status !== 'dead') hostileRing(ctx, X, Y, S, r.size, F);
     const spr = US.get(key, r.dir, pose, frame, S, inf.opts);
     US.blit(ctx, spr, X, Y, S, shadeI, a && a.flash ? a.flash : 0);
+    r.spr = spr;
+    r.X = X;
+    r.Y = Y;
     if (u.burn > 0) {
       if (OV.FX) OV.FX.flame(ctx, X, Y + 2 * S, S * 0.8, F.time, u.id, 0.8);
       glows.push({ X, Y: Y - 10 * S, r: 120, col: 0xff8a30, a: 0.45 });
@@ -868,20 +887,94 @@
     const cx = X / F.dpr, cy = Y / F.dpr;
     const half = (r.size > 1 ? 26 : 13) * F.zoom;
     rects.push({ x0: cx - half, x1: cx + half, y0: cy - hgt - 6 * F.zoom + (r.size > 1 ? 16 * F.zoom : 0), y1: cy + 8 * F.zoom + (r.size > 1 ? 16 * F.zoom : 0),
-      unitId: u.id, x: Math.round(r.fx), y: Math.round(r.fy), z: Math.round(r.fz), X, Y, hgt, friend: u.side === 'xcom' && r.size === 1, yBody: cy - hgt * 0.55 });
+      unitId: u.id, x: Math.round(r.fx), y: Math.round(r.fy), z: Math.round(r.fz), X, Y, hgt, friend: u.side === 'xcom' && r.size === 1, yBody: cy - hgt * 0.55,
+      rec: r, hostile: u.side === 'alien' && u.status !== 'dead' });
   }
 
-  // anel vermelho discreto debaixo de um alienígena visível (lê-se em terreno escuro e a zoom 0.75)
-  function hostileRing(ctx, X, Y, S, size, F) {
-    const big = size > 1, rx = (big ? 32 : 15) * S, ry = rx / 2, cy = Y + (big ? 16 * S : 0);
+  // há parede ou objeto alto à frente da unidade (desenhado depois dela, tapa-a)?
+  function occluded(B, F, r) {
+    const m = B.map, D = OV.Data.tileDefs;
+    const s1 = (r.size || 1) - 1;
+    const x = Math.round(r.fx) + s1, y = Math.round(r.fy) + s1, z = Math.round(r.fz);
+    const at = (tx, ty) => (tx < m.w && ty < m.h ? (z * m.h + ty) * m.w + tx : -1);
+    const disc = (i) => F.revealAll || m.disc[i];
+    for (const [tx, ty] of [[x + 1, y], [x, y + 1], [x + 1, y + 1], [x + 2, y + 1], [x + 1, y + 2]]) {
+      const i = at(tx, ty);
+      if (i < 0) continue;
+      const o = m.parts[i * 4 + 3];
+      if (o && D[o] && (D[o].fullBlock || (D[o].height | 0) >= 12) && disc(i) & 1) return true;
+    }
+    for (const [tx, ty, part] of [[x + 1, y, 1], [x + 1, y + 1, 1], [x, y + 1, 2], [x + 1, y + 1, 2]]) {
+      const i = at(tx, ty);
+      if (i < 0) continue;
+      const w = m.parts[i * 4 + part];
+      if (w && D[w] && !D[w].open && disc(i) & (part === 1 ? 2 : 4)) return true;
+    }
+    return false;
+  }
+  // unidades visíveis escondidas atrás de paredes: silhueta transparente por cima de tudo + marca de inimigo
+  function drawGhosts(ctx, B, F, rects) {
+    const US = OV.UnitSprites;
+    for (const q of rects) {
+      const r = q.rec;
+      if (!r || !r.spr || !US) continue;
+      if (occluded(B, F, r)) {
+        ctx.save();
+        ctx.globalAlpha = 0.42;
+        US.blit(ctx, r.spr, r.X, r.Y, F.S, 0, 0);
+        ctx.restore();
+      }
+      if (q.hostile) hostileChevron(ctx, F, q);
+    }
+  }
+  // seta para baixo por cima da cabeça de um inimigo à vista (forma própria: não depende da cor)
+  function hostileChevron(ctx, F, q) {
+    const d = F.dpr, S = F.S;
+    const X = q.X, Y = q.Y - q.hgt * d - (q.rec && q.rec.size > 1 ? -4 : 8) * S - 6 * d;
+    const w = Math.max(5 * d, 7 * S), h = Math.max(5 * d, 7 * S);
+    const bob = F.still ? 0 : Math.sin(F.time / 260) * 1.5 * d;
     ctx.save();
     ctx.beginPath();
-    ctx.ellipse(X, cy, rx, ry, 0, 0, TAU);
-    ctx.lineWidth = Math.max(1, 3 * S);
-    ctx.strokeStyle = 'rgba(0,0,0,0.45)';
+    ctx.moveTo(X - w, Y - h + bob);
+    ctx.lineTo(X + w, Y - h + bob);
+    ctx.lineTo(X, Y + bob);
+    ctx.closePath();
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = 3 * d;
+    ctx.strokeStyle = 'rgba(0,0,0,0.85)';
     ctx.stroke();
-    ctx.lineWidth = Math.max(1, 1.4 * S);
-    ctx.strokeStyle = css(COL.target, 0.7 + 0.15 * Math.sin(F.time / 300));
+    ctx.fillStyle = css(PAL.target);
+    ctx.fill();
+    ctx.lineWidth = 1.2 * d;
+    ctx.strokeStyle = css(0xffffff, 0.85);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // marca de inimigo à vista: losango (não a elipse dos soldados) com cantos salientes, aos pés
+  function hostileRing(ctx, X, Y, S, size, F) {
+    const big = size > 1, rx = (big ? 34 : 17) * S, ry = rx / 2, cy = Y + (big ? 16 * S : 0);
+    const pts = [[X, cy - ry], [X + rx, cy], [X, cy + ry], [X - rx, cy]];
+    ctx.save();
+    ctx.lineJoin = 'miter';
+    ctx.beginPath();
+    pts.forEach((p, k) => (k ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])));
+    ctx.closePath();
+    ctx.lineWidth = Math.max(1, 3.2 * S);
+    ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+    ctx.stroke();
+    ctx.setLineDash([Math.max(2, 5 * S), Math.max(2, 3 * S)]);
+    ctx.lineWidth = Math.max(1, 1.6 * S);
+    ctx.strokeStyle = css(PAL.target, F.still ? 0.85 : 0.72 + 0.15 * Math.sin(F.time / 300));
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.lineWidth = Math.max(1, 2.4 * S);
+    ctx.strokeStyle = css(PAL.target);
+    ctx.beginPath();
+    for (const [px, py] of pts) {
+      ctx.moveTo(px + (px - X) * 0.18, py + (py - cy) * 0.18);
+      ctx.lineTo(px - (px - X) * 0.1, py - (py - cy) * 0.1);
+    }
     ctx.stroke();
     ctx.restore();
   }
@@ -905,8 +998,8 @@
         ctx.fillRect(x0, y, Math.round(w * Math.max(0, Math.min(1, frac2))), h);
       }
     };
-    bar(y0, u.tuMax ? u.tu / u.tuMax : 0, COL.tu, 0, 0);
-    bar(y0 + h + 3 * d, u.hpMax ? u.hp / u.hpMax : 0, COL.hp, u.hpMax ? Math.min(u.hp, u.stun || 0) / u.hpMax : 0, COL.stun);
+    bar(y0, u.tuMax ? u.tu / u.tuMax : 0, PAL.tu, 0, 0);
+    bar(y0 + h + 3 * d, u.hpMax ? u.hp / u.hpMax : 0, PAL.hp, u.hpMax ? Math.min(u.hp, u.stun || 0) / u.hpMax : 0, PAL.stun);
   }
 
   function voxDev(F, v) {
@@ -926,63 +1019,146 @@
     const m = B.map, d = F.dpr;
     const pts = P.steps.map((s) => tileCenterDev(F, m, s.i));
     const sel = F.view.selectedId !== undefined && F.view.selectedId !== null && OV.BUnits ? OV.BUnits.findUnit(B, F.view.selectedId) : null;
-    // linha de ligação
+    const startPt = sel ? [(sel.x - sel.y) * 32 * F.S + F.ox, ((sel.x + sel.y) * 16 + 16 - sel.z * 48) * F.S + F.oy] : null;
+    // linha de ligação: cheia onde a reserva fica intacta, tracejada onde a come, nenhuma até casas inalcançáveis
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     for (let k = 0; k < (P.noLine ? 0 : pts.length); k++) {
       const p = pts[k];
-      const prev = k ? pts[k - 1] : sel ? [(sel.x - sel.y) * 32 * F.S + F.ox, ((sel.x + sel.y) * 16 + 16 - sel.z * 48) * F.S + F.oy] : null;
-      if (!prev) continue;
-      const col = COL[P.steps[k].state] || COL.ok;
+      const prev = k ? pts[k - 1] : startPt;
+      const state = P.steps[k].state;
+      if (!prev || state === 'out') continue;
+      const col = PAL[state] || PAL.ok;
+      ctx.setLineDash(state === 'reserve' ? [5 * d, 4 * d] : []);
       ctx.strokeStyle = 'rgba(0,0,0,0.45)';
       ctx.lineWidth = 4 * d;
       ctx.beginPath();
       ctx.moveTo(prev[0], prev[1]);
       ctx.lineTo(p[0], p[1]);
       ctx.stroke();
-      ctx.strokeStyle = css(col, 0.75);
+      ctx.strokeStyle = css(col, 0.8);
       ctx.lineWidth = 2 * d;
       ctx.stroke();
     }
+    ctx.setLineDash([]);
     for (let k = 0; k < pts.length; k++) {
       const p = pts[k], s = P.steps[k];
-      const col = COL[s.state] || COL.ok;
+      const col = PAL[s.state] || PAL.ok;
       const lastStep = k === pts.length - 1;
       const r = (lastStep ? 5 : 3.5) * d;
-      ctx.beginPath();
-      ctx.ellipse(p[0], p[1], r * 1.4, r * 0.8, 0, 0, TAU);
-      ctx.fillStyle = css(col);
-      ctx.fill();
-      ctx.lineWidth = d;
-      ctx.strokeStyle = 'rgba(0,0,0,0.7)';
-      ctx.stroke();
+      if (s.state === 'out') {
+        // ✕ onde as UT não chegam
+        const q = r * 1.25;
+        ctx.lineCap = 'round';
+        for (const [w, c] of [[4.2 * d, 'rgba(0,0,0,0.75)'], [2.2 * d, css(col)]]) {
+          ctx.lineWidth = w;
+          ctx.strokeStyle = c;
+          ctx.beginPath();
+          ctx.moveTo(p[0] - q, p[1] - q * 0.6);
+          ctx.lineTo(p[0] + q, p[1] + q * 0.6);
+          ctx.moveTo(p[0] + q, p[1] - q * 0.6);
+          ctx.lineTo(p[0] - q, p[1] + q * 0.6);
+          ctx.stroke();
+        }
+      } else {
+        ctx.beginPath();
+        ctx.ellipse(p[0], p[1], r * 1.4, r * 0.8, 0, 0, TAU);
+        if (s.state === 'reserve') {
+          // ponto oco: chega lá, mas gasta as UT guardadas para disparar
+          ctx.fillStyle = 'rgba(0,0,0,0.6)';
+          ctx.fill();
+          ctx.lineWidth = 1.8 * d;
+          ctx.strokeStyle = css(col);
+          ctx.stroke();
+        } else {
+          ctx.fillStyle = css(col);
+          ctx.fill();
+          ctx.lineWidth = d;
+          ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+          ctx.stroke();
+        }
+      }
+      // barra onde a reserva começa a ser comida
+      const prevState = k ? P.steps[k - 1].state : 'ok';
+      if (s.state === 'reserve' && prevState === 'ok' && !P.noLine) {
+        const q = k ? pts[k - 1] : startPt;
+        if (q) {
+          const mx = (p[0] + q[0]) / 2, my = (p[1] + q[1]) / 2, ang = Math.atan2(p[1] - q[1], p[0] - q[0]) + Math.PI / 2;
+          const L = 7 * d, cx = Math.cos(ang) * L, cy = Math.sin(ang) * L;
+          for (const [w, c] of [[4.5 * d, 'rgba(0,0,0,0.75)'], [2.4 * d, css(PAL.reserve)]]) {
+            ctx.lineWidth = w;
+            ctx.strokeStyle = c;
+            ctx.beginPath();
+            ctx.moveTo(mx - cx, my - cy);
+            ctx.lineTo(mx + cx, my + cy);
+            ctx.stroke();
+          }
+        }
+      }
       if (s.tu !== undefined && s.tu !== null) smallText(ctx, F, p[0], p[1] - 10 * d, String(s.tu), col);
     }
     if (P.lock) {
-      // destino à espera de confirmação: losango a pulsar
+      // destino à espera de confirmação: losango a pulsar (fixo com movimento reduzido)
       const p = pts[pts.length - 1];
-      const k = 0.5 + 0.5 * Math.sin(F.time / 140);
+      const k = F.still ? 0.8 : 0.5 + 0.5 * Math.sin(F.time / 140);
       const X = p[0], Y = p[1] - 16 * F.S;
       diamond(ctx, X, Y, F.S, 1 - k * 3);
-      ctx.lineWidth = Math.max(1, 2 * d);
-      ctx.strokeStyle = css(COL[P.steps[pts.length - 1].state] || COL.ok, 0.5 + 0.5 * k);
+      ctx.lineWidth = Math.max(1, (F.still ? 3 : 2) * d);
+      ctx.strokeStyle = css(PAL[P.steps[pts.length - 1].state] || PAL.ok, 0.5 + 0.5 * k);
       ctx.stroke();
     }
     if (P.label) {
       // etiqueta do lado oposto ao caminho que chega (não tapa os números dos passos)
       const p = pts[pts.length - 1];
-      const q = pts.length > 1 ? pts[pts.length - 2] : sel ? [(sel.x - sel.y) * 32 * F.S + F.ox, ((sel.x + sel.y) * 16 + 16 - sel.z * 48) * F.S + F.oy] : null;
+      const q = pts.length > 1 ? pts[pts.length - 2] : startPt;
       const below = !!q && q[1] < p[1] - 2 * d;
       const ly = below ? p[1] + 20 * d + 8 * F.S : p[1] - 22 * d - 18 * F.S;
-      pill(ctx, F, p[0], ly, String(P.label), COL[P.steps[pts.length - 1].state] || COL.ok);
+      const col = PAL[P.steps[pts.length - 1].state] || PAL.ok;
+      pill(ctx, F, p[0], ly, String(P.label), col);
+      if (P.sub) pill(ctx, F, p[0], ly + (below ? 1 : -1) * 24 * d * F.ts, String(P.sub), 0xc8d2dc);
     }
+  }
+
+  // cursor de teclado: losango branco sobre preto (contraste máximo em qualquer chão) com cantos
+  function drawKbCursor(ctx, B, F) {
+    const K = F.view.kcur;
+    if (!K || K.z > F.viewZ) return;
+    const S = F.S, d = F.dpr;
+    const X = (K.x - K.y) * 32 * S + F.ox, Y = ((K.x + K.y) * 16 - K.z * 48) * S + F.oy;
+    const k = F.still ? 1 : 0.75 + 0.25 * Math.sin(F.time / 180);
+    ctx.save();
+    diamond(ctx, X, Y, S, 0);
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = 5 * d;
+    ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+    ctx.stroke();
+    ctx.lineWidth = 2.4 * d;
+    ctx.strokeStyle = css(0xffffff, k);
+    ctx.stroke();
+    ctx.fillStyle = css(0xffffff, 0.1);
+    ctx.fill();
+    // cantos para fora (lê-se mesmo por cima do contorno do alcance)
+    const pts = [[X, Y], [X + 32 * S, Y + 16 * S], [X, Y + 32 * S], [X - 32 * S, Y + 16 * S]];
+    ctx.lineCap = 'round';
+    for (const [w, c] of [[5 * d, 'rgba(0,0,0,0.85)'], [2.4 * d, css(0xffffff)]]) {
+      ctx.lineWidth = w;
+      ctx.strokeStyle = c;
+      ctx.beginPath();
+      for (const [px, py] of pts) {
+        const ox = (px - X) * 0.22, oy = (py - (Y + 16 * S)) * 0.22;
+        ctx.moveTo(px + ox * 0.2, py + oy * 0.2);
+        ctx.lineTo(px + ox, py + oy);
+      }
+      ctx.stroke();
+    }
+    ctx.restore();
   }
 
   function drawTarget(ctx, B, F) {
     const T = F.view.target;
     if (!T) return;
     const m = B.map, d = F.dpr;
-    const col = T.blocked ? COL.out : COL.target;
+    const col = T.blocked ? PAL.out : PAL.target;
     if (T.line && T.line.length > 1) {
       const pts = T.line.map((v) => voxDev(F, v));
       ctx.lineCap = 'round';
@@ -992,8 +1168,8 @@
       ctx.lineWidth = 3.5 * d;
       ctx.stroke();
       ctx.setLineDash([6 * d, 4 * d]);
-      ctx.lineDashOffset = -((F.time / 40) % (10 * d));
-      ctx.strokeStyle = css(T.blocked ? COL.out : 0xffe0a0, 0.95);
+      ctx.lineDashOffset = F.still ? 0 : -((F.time / 40) % (10 * d));
+      ctx.strokeStyle = css(T.blocked ? PAL.out : 0xffe0a0, 0.95);
       ctx.lineWidth = 1.6 * d;
       ctx.stroke();
       ctx.setLineDash([]);
@@ -1003,10 +1179,10 @@
       const [bx, by, bz] = tileCenterDev(F, m, T.blockI);
       if (bz <= F.viewZ) {
         diamond(ctx, bx, by - 16 * F.S, F.S, 2);
-        ctx.fillStyle = css(COL.out, 0.2);
+        ctx.fillStyle = css(PAL.out, 0.2);
         ctx.fill();
         ctx.lineWidth = Math.max(1, 1.6 * d);
-        ctx.strokeStyle = css(COL.out, 0.9);
+        ctx.strokeStyle = css(PAL.out, 0.9);
         ctx.stroke();
       }
     }
@@ -1040,13 +1216,14 @@
     const wMax = Math.max(label ? pillSize(ctx, F, label).w : 0, T.sub ? pillSize(ctx, F, String(T.sub)).w : 0);
     const right = X + gap + wMax <= safeBox(F).x1;
     const lx = right ? X + gap : X - gap, al = right ? 'left' : 'right';
-    if (label) pill(ctx, F, lx, ly, label, T.blocked ? COL.out : hitCol(T.hitPct), null, al);
-    if (T.sub) pill(ctx, F, lx, ly + 24 * d, String(T.sub), T.subCol || COL.reserve, null, al);
+    if (label) pill(ctx, F, lx, ly, label, T.blocked ? PAL.out : hitCol(T.hitPct), null, al);
+    const subCol = typeof T.subCol === 'string' ? PAL[T.subCol] || PAL.out : T.subCol || PAL.reserve;
+    if (T.sub) pill(ctx, F, lx, ly + 24 * d * F.ts, String(T.sub), subCol, null, al);
   }
   // cor da etiqueta pela probabilidade (vermelho → âmbar → verde)
   function hitCol(p) {
-    if (p === null || p === undefined) return COL.target;
-    return p >= 60 ? COL.ok : p >= 30 ? COL.reserve : COL.target;
+    if (p === null || p === undefined) return PAL.target;
+    return p >= 60 ? PAL.ok : p >= 30 ? PAL.reserve : PAL.target;
   }
 
   // anel de alcance do arremesso (elipse isométrica à volta da unidade)
@@ -1058,14 +1235,14 @@
     const rx = R.r * 32 * Math.SQRT2 * S, ry = R.r * 16 * Math.SQRT2 * S;
     ctx.save();
     ctx.setLineDash([7 * d, 6 * d]);
-    ctx.lineDashOffset = -((F.time / 60) % (13 * d));
+    ctx.lineDashOffset = F.still ? 0 : -((F.time / 60) % (13 * d));
     ctx.lineWidth = 3 * d;
     ctx.strokeStyle = 'rgba(0,0,0,0.35)';
     ctx.beginPath();
     ctx.ellipse(X, Y, rx, ry, 0, 0, TAU);
     ctx.stroke();
     ctx.lineWidth = 1.4 * d;
-    ctx.strokeStyle = css(COL.throw, 0.7);
+    ctx.strokeStyle = css(PAL.throw, 0.7);
     ctx.stroke();
     ctx.restore();
   }
@@ -1103,12 +1280,12 @@
     for (let k = 0; k < pts.length; k += Math.max(1, Math.floor(pts.length / 24))) {
       ctx.beginPath();
       ctx.arc(pts[k][0], pts[k][1], 2 * d, 0, TAU);
-      ctx.fillStyle = css(COL.throw, 0.9);
+      ctx.fillStyle = css(PAL.throw, 0.9);
       ctx.fill();
     }
     const e = pts[pts.length - 1];
     const info = F.view.throwInfo;
-    const col = info && !info.ok ? COL.out : COL.throw;
+    const col = info && !info.ok ? PAL.out : PAL.throw;
     ctx.lineWidth = 1.6 * d;
     ctx.strokeStyle = css(col, 0.95);
     ctx.beginPath();
@@ -1130,8 +1307,8 @@
     if (!info || !info.label || info.toI === undefined || info.toI === null || info.toI < 0) return;
     const [X, Y] = tileCenterDev(F, B.map, info.toI);
     const ly = Y - 34 * F.dpr - 12 * F.S;
-    pill(ctx, F, X, ly, String(info.label), info.ok ? COL.throw : COL.out);
-    if (info.sub) pill(ctx, F, X, ly - 24 * F.dpr, String(info.sub), COL.out);
+    pill(ctx, F, X, ly, String(info.label), info.ok ? PAL.throw : PAL.out);
+    if (info.sub) pill(ctx, F, X, ly - 24 * F.dpr * F.ts, String(info.sub), PAL.out);
   }
   // área da explosão prevista: losango isométrico de raio r tiles (vermelho; fumo a cinzento)
   function drawBlast(ctx, B, F) {
@@ -1141,8 +1318,8 @@
     const S = F.S, d = F.dpr;
     const X = (b.x - b.y) * 32 * S + F.ox, Y = ((b.x + b.y) * 16 + 16 - b.z * 48) * S + F.oy;
     const rx = (b.r + 0.5) * 32 * Math.SQRT2 * S, ry = (b.r + 0.5) * 16 * Math.SQRT2 * S;
-    const col = b.smoke ? 0xb8c4cc : b.risk ? COL.out : COL.throw;
-    const pulse = 0.5 + 0.5 * Math.sin(F.time / 220);
+    const col = b.smoke ? 0xb8c4cc : b.risk ? PAL.out : PAL.throw;
+    const pulse = F.still ? 0.6 : 0.5 + 0.5 * Math.sin(F.time / 220);
     ctx.save();
     ctx.beginPath();
     ctx.ellipse(X, Y, rx, ry, 0, 0, TAU);

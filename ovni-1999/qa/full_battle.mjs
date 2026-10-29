@@ -155,9 +155,12 @@ async function bringIntoView(getPoint) {
     if (Math.abs(dy) > 90) keys.push(dy > 0 ? 'ArrowDown' : 'ArrowUp');
     if (!keys.length) return (await onCanvas(p)) ? p : null;
     const ms = Math.min(700, Math.max(90, (Math.max(Math.abs(dx), Math.abs(dy)) / 700) * 1000));
+    // com o cursor de teclado ligado, as setas sozinhas movem o cursor: ⇧ + setas desloca a câmara
+    await page.keyboard.down('Shift');
     for (const kk of keys) await page.keyboard.down(kk);
     await sleep(ms);
     for (const kk of keys) await page.keyboard.up(kk);
+    await page.keyboard.up('Shift');
     await sleep(60);
   }
   const p = await getPoint();

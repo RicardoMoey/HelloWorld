@@ -9,10 +9,13 @@
 
    OV.Presenter.play(B, gen, ctx) → Promise<último evento> (as reproduções ficam em fila; nunca em paralelo)
      ctx = {view (cam, w, h, viewZ), side?, anim?, followId?: () → unitId, hooks?: {
-              hidden(on), banner(text|null, kind), event(ev), viewZ(z), blips(list, unitId), sound(name, opts)}}
+              hidden(on), banner(text|null, kind), event(ev), viewZ(z), blips(list, unitId), sound(name, opts),
+              log(ev) (todos os eventos, visíveis ou não, antes de animar: registo de mensagens)}}
      ctx.anim = {units: {[id]: {fx, fy, fz, dir, pose, frame, flash, show}}, hidden: Set, hideItems: Set}
    OV.Presenter.playing ; fast (×8 até ao fim da reprodução) ; hurry() ; timeScale() ; wait(ms) ; tween(ms, fn)
-   OV.Presenter.lastResult = valor devolvido pelo último gerador ; side = lado cuja velocidade está em uso */
+   OV.Presenter.lastResult = valor devolvido pelo último gerador ; side = lado cuja velocidade está em uso
+   OV.Presenter.reduceMotion (posto pela interface): câmara sem deslizar. Textos no feminino (chave + '.f') para
+   soldadas. Movimento oculto: fatias de cálculo maiores entre fotogramas (o turno alienígena acaba mais cedo). */
 (function (OV) {
   'use strict';
 
@@ -110,6 +113,8 @@
   }
   const unit = (B, id) => (id === null || id === undefined ? null : OV.BUnits.findUnit(B, id));
   const name = (u) => (u ? u.name || (u.nameKey ? OV.T(u.nameKey) : OV.T('hud.unit.alien')) : '');
+  // variante no feminino quando existe («ferida», «morta», «paralisada»)
+  const gk = (key, u) => (u && u.female && OV.T.has(key + '.f') ? key + '.f' : key);
   const isPlayer = (u) => !!u && u.side === 'xcom';
   function tileVoxel(B, i, h) {
     const [x, y, z] = xyz(B, i);
@@ -184,6 +189,7 @@
     const cx0 = v.cam.x + w / 2 / v.cam.zoom, cy0 = v.cam.y + h / 2 / v.cam.zoom;
     const cx1 = tc.x + w / 2 / tc.zoom, cy1 = tc.y + h / 2 / tc.zoom;
     const tok = (C.panTok = (C.panTok || 0) + 1);
+    if (P.reduceMotion) ms = 0;
     return tween(ms, (p) => {
       if (C.panTok !== tok) return;
       const e = easeOut(p), zz = v.cam.zoom;
@@ -460,7 +466,7 @@
         if (a.token === tok) a.flash = 1 - p;
       });
     }
-    if (isPlayer(u) && ev.wounds > 0 && ev.cause !== 'wounds' && u.status !== 'dead') toast(C, 'bs.ev.wounded', { name: name(u) }, 'alert');
+    if (isPlayer(u) && ev.wounds > 0 && ev.cause !== 'wounds' && u.status !== 'dead') toast(C, gk('bs.ev.wounded', u), { name: name(u) }, 'alert');
     await wait(DUR.damage);
   };
 
@@ -493,14 +499,14 @@
     if (!u) return;
     const alien = u.origSide === 'alien';
     const snd = alien ? DEATH_SFX[u.sprite] || 'alien_death_sectoid' : 'soldier_death';
-    if (u.origSide === 'xcom') toast(C, 'bs.ev.kia', { name: name(u) }, 'alert');
+    if (u.origSide === 'xcom') toast(C, gk('bs.ev.kia', u), { name: name(u) }, 'alert');
     await topple(C, B, ev, u, snd);
   };
 
   H.stun = async function (C, B, ev) {
     const u = unit(B, ev.unitId);
     if (!u) return;
-    if (u.origSide === 'xcom') toast(C, 'bs.ev.stunned', { name: name(u) }, 'warn');
+    if (u.origSide === 'xcom') toast(C, gk('bs.ev.stunned', u), { name: name(u) }, 'warn');
     await topple(C, B, ev, u, u.origSide === 'alien' ? null : 'soldier_hit');
   };
 
@@ -562,7 +568,7 @@
     const t = unit(B, ev.targetId);
     sfx(C, B, 'medikit', ev.pos);
     if (t && OV.FX && t.onMap) OV.FX.spawn('damage', unitVoxel(t), { text: '+', colour: 0x5fe08a });
-    if (t) toast(C, 'bs.ev.healed', { name: name(t) }, 'good');
+    if (t) toast(C, gk('bs.ev.healed', t), { name: name(t) }, 'good');
     await wait(DUR.medikit);
   };
 
@@ -579,7 +585,7 @@
     if (ev.kind === 'change') return;
     const u = unit(B, ev.unitId);
     if (!u) return;
-    const key = ev.kind === 'berserk' ? 'bs.morale.berserk' : ev.kind === 'freeze' ? 'bs.morale.freeze' : ev.kind === 'flee' ? 'bs.morale.flee' : 'bs.morale.panic';
+    const key = gk(ev.kind === 'berserk' ? 'bs.morale.berserk' : ev.kind === 'freeze' ? 'bs.morale.freeze' : ev.kind === 'flee' ? 'bs.morale.flee' : 'bs.morale.panic', u);
     if (ev.kind === 'panic' || ev.kind === 'berserk') {
       const pr = frame(C, B, ev, ev.pos, true);
       if (pr) await pr;
@@ -604,7 +610,7 @@
     sfx(C, B, 'psi', ev.pos);
     await wait(DUR.psi);
     if (!ev.success) toast(C, 'bs.psi.fail', null, 'info');
-    else if (ev.kind === 'control') toast(C, 'bs.psi.control', { name: name(t) }, 'alert');
+    else if (ev.kind === 'control') toast(C, gk('bs.psi.control', t), { name: name(t) }, 'alert');
     else toast(C, 'bs.psi.panic', null, 'alert');
   };
 
@@ -692,6 +698,9 @@
         const ev = r.value;
         if (!ev) continue;
         last = ev;
+        if (C.hooks.log) {
+          try { C.hooks.log(ev); } catch (e) { console.error(e); }
+        }
         // turno alienígena/civil: o próprio anúncio é «Movimento Oculto…»
         const hiddenTurn = ev.t === 'turnStart' && ev.side !== 'xcom';
         if (!ev.vis || hiddenTurn) {
@@ -702,7 +711,8 @@
               if (hiddenTurn && ev.side === 'alien') sfx(C, B, 'hidden_movement');
             }
           }
-          if (realNow() - slice > 14) {
+          // turno alienígena escondido: mais cálculo por fotograma (o aviso pisca na mesma), menos espera
+          if (realNow() - slice > (C.hiddenOn ? 45 : 14)) {
             if (C.hooks.event) C.hooks.event(ev);
             await nextFrame();
             slice = realNow();

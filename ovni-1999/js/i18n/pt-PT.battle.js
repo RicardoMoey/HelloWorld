@@ -87,9 +87,11 @@
     'bs.ev.reaction': '{name} reage!',
     'bs.ev.door': 'Porta aberta',
     'bs.ev.kia': '{name} foi morto em combate',
+    'bs.ev.kia.f': '{name} foi morta em combate',
     'bs.ev.stunned': '{name} ficou inconsciente',
     'bs.ev.wake': '{name} recuperou os sentidos',
     'bs.ev.wounded': '{name} ficou ferido mortalmente',
+    'bs.ev.wounded.f': '{name} ficou ferida mortalmente',
     'bs.ev.zombify': '{name} transformou-se num zombie!',
     'bs.ev.burning': '{name} está a arder!',
     'bs.ev.grenadeArmed': 'Granada ativada',
@@ -98,11 +100,13 @@
     'bs.ev.scanner.some.other': '{n} sinais de movimento',
     'bs.ev.reload': 'Arma recarregada',
     'bs.ev.healed': '{name} foi tratado',
+    'bs.ev.healed.f': '{name} foi tratada',
 
     // ---- moral e psiónica
     'bs.morale.panic': '{name} entrou em pânico!',
     'bs.morale.berserk': '{name} enlouqueceu!',
     'bs.morale.freeze': '{name} ficou paralisado de medo.',
+    'bs.morale.freeze.f': '{name} ficou paralisada de medo.',
     'bs.morale.flee': '{name} fugiu em pânico!',
     'bs.psi.panic': 'Ataque psiónico: pânico!',
     'bs.psi.control': '{name} está sob controlo mental!',
@@ -110,10 +114,12 @@
     'bs.psi.revert': '{name} recuperou o controlo.',
     'bs.status.panic': 'Em pânico',
     'bs.status.kneel': 'Ajoelhado',
+    'bs.status.kneel.f': 'Ajoelhada',
     'bs.status.bleeding': 'A sangrar ×{n}',
     'bs.status.burning': 'A arder',
     'bs.status.stunned': 'Inconsciente',
     'bs.status.mia': 'Desaparecido em combate',
+    'bs.status.mia.f': 'Desaparecida em combate',
 
     // ---- títulos de missão
     'bs.mission.crash': 'OVNI Despenhado',

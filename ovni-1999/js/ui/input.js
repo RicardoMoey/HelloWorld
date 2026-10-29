@@ -21,7 +21,7 @@
   'use strict';
 
   const isMac = /Mac|iPhone|iPad|iPod/.test((typeof navigator !== 'undefined' && (navigator.platform || navigator.userAgent)) || '');
-  const DRAG_PX = 5, LONG_MS = 450, DBL_MS = 320;
+  const DRAG_PX = 5, LONG_MS = 450, DBL_MS = 320, PINCH_DEAD = 0.06;
 
   const I = {
     isMac,
@@ -98,7 +98,8 @@
           if (press && press.dragging) emit({ kind: 'dragend', x: p.x, y: p.y, dx: 0, dy: 0, pointerType: 'touch' });
           press = null;
           const [a, b] = [...touches.values()];
-          pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2, moved: false, t0: performance.now() };
+          const d0 = Math.hypot(a.x - b.x, a.y - b.y);
+          pinch = { d0, d: d0, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2, moved: false, zooming: false, t0: performance.now(), raf: 0 };
           return;
         }
         if (touches.size > 2) return;
@@ -126,24 +127,39 @@
       if (e.button === 1) e.preventDefault();
     });
 
+    /* pinça: o zoom só arranca quando a distância entre os dedos muda mais de PINCH_DEAD (fração) desde o início
+       do gesto — um deslize com dois dedos não mexe no zoom (no limite de zoom, o fator > 1 cortado e o < 1
+       seguinte faziam-no descer sozinho). Depois de arrancar, o fator é relativo ao fotograma anterior. */
+    function pinchStep() {
+      if (!pinch) return;
+      pinch.raf = 0;
+      if (touches.size < 2) return;
+      const [a, b] = [...touches.values()];
+      const d = Math.hypot(a.x - b.x, a.y - b.y);
+      const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+      if (!pinch.zooming && pinch.d0 > 10 && Math.abs(d / pinch.d0 - 1) > PINCH_DEAD) {
+        pinch.zooming = true;
+        pinch.d = pinch.d0;
+      }
+      if (pinch.zooming && pinch.d > 10 && Math.abs(d - pinch.d) > 0.5) {
+        emit({ kind: 'zoom', factor: d / pinch.d, x: mx, y: my });
+        pinch.moved = true;
+        pinch.d = d;
+      }
+      if (mx !== pinch.mx || my !== pinch.my) {
+        emit({ kind: 'pan', cx: -(mx - pinch.mx), cy: -(my - pinch.my) });
+        pinch.moved = true;
+      }
+      pinch.mx = mx; pinch.my = my;
+    }
     canvas.addEventListener('pointermove', (e) => {
       const p = pos(e);
       if (e.pointerType === 'touch') {
         const t = touches.get(e.pointerId);
         if (t) { t.x = p.x; t.y = p.y; }
         if (pinch && touches.size >= 2) {
-          const [a, b] = [...touches.values()];
-          const d = Math.hypot(a.x - b.x, a.y - b.y);
-          const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
-          if (pinch.d > 10 && Math.abs(d - pinch.d) > 1) {
-            emit({ kind: 'zoom', factor: d / pinch.d, x: mx, y: my });
-            pinch.moved = true;
-          }
-          if (mx !== pinch.mx || my !== pinch.my) {
-            emit({ kind: 'pan', cx: -(mx - pinch.mx), cy: -(my - pinch.my) });
-            pinch.moved = true;
-          }
-          pinch.d = d; pinch.mx = mx; pinch.my = my;
+          // um pointermove por dedo: processar a pinça uma vez por fotograma, já com os dois dedos atualizados
+          if (!pinch.raf) pinch.raf = requestAnimationFrame(pinchStep);
           return;
         }
       }
@@ -166,6 +182,7 @@
       if (e.pointerType === 'touch') {
         touches.delete(e.pointerId);
         if (pinch) {
+          if (touches.size < 2 && pinch.raf) { cancelAnimationFrame(pinch.raf); pinch.raf = 0; }
           if (touches.size === 0) {
             // toque de dois dedos sem mexer = secundário (como no trackpad)
             if (!pinch.moved && performance.now() - pinch.t0 < 350 && !cancelled) emit({ kind: 'secondary', x: pinch.mx, y: pinch.my, mods: mods(e), pointerType: 'touch' });
@@ -233,7 +250,8 @@
     const gesture = (e) => {
       e.preventDefault();
       if (e.type === 'gesturestart') { gScale = 1; return; }
-      if (e.type !== 'gesturechange' || e.target !== canvas) return;
+      // iPad: os dedos já chegam como pointer events (pinça acima); o gesto do Safari só serve o trackpad do Mac
+      if (e.type !== 'gesturechange' || e.target !== canvas || touches.size >= 2 || pinch) return;
       const r = canvas.getBoundingClientRect();
       emit({ kind: 'zoom', factor: e.scale / gScale, x: (e.clientX || r.width / 2 + r.left) - r.left, y: (e.clientY || r.height / 2 + r.top) - r.top });
       gScale = e.scale;
