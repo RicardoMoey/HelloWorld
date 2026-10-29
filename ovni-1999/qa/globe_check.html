@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="pt-PT">
+<head>
+<meta charset="utf-8">
+<title>Verificação do globo — QA</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; height: 100%; background: #02050b; color: #c8d2dc; font: 12px/1.3 -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif; overflow: hidden; overscroll-behavior: none; }
+  #view { display: block; width: 100vw; height: 100vh; touch-action: none; }
+  #info { position: fixed; left: 10px; top: 8px; color: #8a96a6; pointer-events: none; text-shadow: 0 1px 2px #000; white-space: pre; }
+  #err { position: fixed; left: 10px; bottom: 8px; color: #ff6a5a; white-space: pre; }
+</style>
+</head>
+<body>
+<canvas id="view"></canvas>
+<div id="info"></div>
+<div id="err"></div>
+<script>
+/* Banco de ensaio do OV.GlobeRender: carrega as camadas core → i18n → data → sim pela ordem do index.html, mais
+   gfx/color.js e gfx/globe_render.js; cria G com OV.Campaign.newCampaign e injeta OVNIs, locais, naves e bases falsas.
+   Parâmetros: ?scene=<nome>&lon=&lat=&zoom=&t=&mode=&seed=&cursor=lon,lat&sel=kind:id&static=1
+   Interação manual: arrastar roda o globo (com inércia), roda/pinça faz zoom, clique seleciona, duplo clique centra,
+   teclas 1–6 zoom, P alterna «colocar base», T alterna «alvo». */
+(function () {
+  'use strict';
+  const errs = [];
+  window.QA_ERRORS = errs;
+  window.addEventListener('error', (e) => {
+    errs.push({ msg: String(e.message), file: String(e.filename || '') });
+    document.getElementById('err').textContent = errs.map((x) => x.file.split('/').pop() + ': ' + x.msg).join('\n');
+  });
+  const WANT = (f) => /^js\/(core|i18n|data|sim)\//.test(f) || f === 'js/gfx/color.js' || f === 'js/gfx/globe_render.js';
+  fetch('../index.html').then((r) => r.text()).then((html) => {
+    const list = [];
+    const re = /<script\s+src="([^"?]+)(?:\?[^"]*)?"\s*><\/script>/g;
+    let m;
+    while ((m = re.exec(html))) if (WANT(m[1])) list.push(m[1]);
+    let left = list.length;
+    for (const f of list) {
+      const s = document.createElement('script');
+      s.src = '../' + f + '?v=' + Date.now();
+      s.async = false;
+      s.onload = s.onerror = () => { if (--left === 0) start(); };
+      document.head.appendChild(s);
+    }
+  });
+
+  function start() {
+    const OV = window.OV;
+    try { OV.Data.finalize(); } catch (e) { errs.push({ msg: 'finalize: ' + e.message, file: 'finalize' }); }
+    const q = new URLSearchParams(location.search);
+    const num = (k, d) => (q.has(k) && q.get(k) !== '' && Number.isFinite(+q.get(k)) ? +q.get(k) : d);
+    const scene = q.get('scene') || 'europe';
+    const G = OV.Campaign.newCampaign({ seed: num('seed', 7) });
+    const C = OV.Campaign;
+    const base0 = G.bases[0];
+    const ufo = (type, lon, lat, status, extra) => {
+      const u = Object.assign({
+        id: C.nextId(G, 'u'), type, missionId: null, race: 'sectoid', region: OV.GMath.regionAt(lon, lat), traj: 'P0', wp: 1,
+        lon, lat, dest: { lon: lon + 20, lat: lat + 3 }, alt: status === 'flying' ? 3 : 0,
+        speed: status === 'flying' ? OV.Data.ufos[type].speed : 0, status, dmg: 0, detected: true, hyper: false,
+        groundLeftS: status === 'landed' ? 3600 : 0, crashLeftS: status === 'crashed' ? 86400 : 0,
+        lastSeen: null, objective: false, targetBaseId: null, siteCity: null,
+      }, extra || {});
+      G.ufos.push(u);
+      return u;
+    };
+    const site = (cityId) => {
+      const c = OV.Data.citiesById[cityId];
+      const s = { id: C.nextId(G, 't'), kind: 'terror', missionId: null, deployment: 'dep_terror_site', cityId, lon: c.lon, lat: c.lat,
+        race: 'floater', region: c.region, country: OV.GMath.countryAt(c.lon, c.lat), leftS: 36000 };
+      G.sites.push(s);
+      return s;
+    };
+    const alienBase = (lon, lat, discovered) => {
+      const a = { id: C.nextId(G, 'a'), lon, lat, race: 'snakeman', region: OV.GMath.regionAt(lon, lat), country: OV.GMath.countryAt(lon, lat),
+        missionId: null, discovered, foundT: discovered ? 0 : null, supplyT: null };
+      G.alienBases.push(a);
+      return a;
+    };
+    const addBase = (lon, lat, name, radars) => {
+      const b = JSON.parse(JSON.stringify(base0));
+      b.id = C.nextId(G, 'b');
+      b.name = name;
+      b.lon = lon;
+      b.lat = lat;
+      b.crafts = [];
+      b.soldiers = [];
+      b.grid = b.grid.filter((f) => !OV.Data.facilities[f.type].radarRange);
+      radars.forEach((t, i) => b.grid.push({ type: t, x: i, y: 5, daysLeft: 0 }));
+      G.bases.push(b);
+      return b;
+    };
+    const fly = (craftId, lon, lat, dest, status) => {
+      const c = G.crafts[craftId];
+      Object.assign(c, { lon, lat, dest, status: status || 'out', speed: OV.Data.crafts[c.type].speed, missionT: 0, patrol: status === 'patrol' });
+      return c;
+    };
+    const ids = Object.keys(G.crafts);
+    const sky = ids.find((id) => G.crafts[id].type === 'skyranger');
+    const ints = ids.filter((id) => G.crafts[id].type === 'interceptor');
+
+    // cenários
+    const sel = q.get('sel') ? { kind: q.get('sel').split(':')[0], id: q.get('sel').split(':')[1] } : null;
+    const V = { lon: -9, lat: 38.7, zoom: 1, mode: 'normal', cursor: null, selection: sel, hover: null, highlights: [] };
+    G.t = 0;
+    if (scene === 'europe' || scene === 'many' || scene === 'city' || scene === 'night') {
+      addBase(-98, 39, 'Base Pradaria', ['large_radar']);
+      addBase(116, -25, 'Base Outback', ['small_radar', 'hyper_wave_decoder']);
+      const u1 = ufo('medium_scout', 4, 46.5, 'flying');
+      const u2 = ufo('battleship', 24, 52, 'flying', { hyper: true });
+      ufo('small_scout', -3.5, 42.2, 'landed');
+      const u4 = ufo('large_scout', 11, 49.5, 'crashed');
+      ufo('abductor', 30, 41, 'flying');
+      const s1 = site('rome');
+      alienBase(20, 61, true);
+      fly(ints[0], -1, 43, { kind: 'ufo', id: u1.id });
+      fly(ints[1], 9, 46, { kind: 'ufo', id: u2.id });
+      fly(sky, -6, 40.5, { kind: 'site', id: s1.id });
+      V.highlights = [{ kind: 'ufo', id: u1.id }];
+      V.selection = V.selection || { kind: 'ufo', id: u2.id };
+      V.hover = { kind: 'ufo', id: u4.id };
+      V.country = 'france';
+      if (scene === 'many') {
+        const r = OV.RNG.create(99);
+        const types = Object.keys(OV.Data.ufos);
+        for (let i = 0; i < 40; i++) {
+          const st = i % 7 === 0 ? 'landed' : i % 11 === 0 ? 'crashed' : 'flying';
+          ufo(types[r.int(0, types.length - 1)], r.next() * 360 - 180, r.next() * 120 - 60, st, { detected: i % 9 !== 0 });
+        }
+        for (const c of ['new_york', 'tokyo', 'lagos', 'delhi', 'bogota']) site(c);
+        alienBase(-60, -10, true);
+        alienBase(140, 50, false);
+        G.debug = { revealUfos: true, instantResearch: false, instantBuild: false, instantProduction: false };
+        fly(ints[0], -40, 30, { kind: 'point', lon: -20, lat: 20 });
+        fly(sky, 50, 20, { kind: 'point', lon: 50, lat: 20 }, 'patrol');
+        Object.assign(V, { lon: 10, lat: 20, zoom: 0 });
+      }
+      if (scene === 'night') {
+        G.t = 6 * 3600; // 18:00 UTC: sol a 90° O, Ásia de noite
+        Object.assign(V, { lon: 100, lat: 30, zoom: 1 });
+        ufo('terror_ship', 105, 33, 'flying');
+        ufo('harvester', 85, 25, 'landed');
+        site('beijing');
+        V.highlights = [];
+        V.selection = null;
+        V.hover = null;
+        V.country = 'china';
+      }
+      if (scene === 'city') Object.assign(V, { lon: 6, lat: 47, zoom: 3.6 });
+    }
+    if (scene === 'dusk') {
+      G.t = 7 * 3600 + 1800;
+      Object.assign(V, { lon: -30, lat: 25, zoom: 1 });
+    }
+    if (scene === 'place') {
+      Object.assign(V, { lon: 20, lat: 35, zoom: 1, mode: 'placeBase', cursor: { lon: 14, lat: 50 } });
+    }
+    if (scene === 'placeBad') {
+      Object.assign(V, { lon: -30, lat: 30, zoom: 1, mode: 'placeBase', cursor: { lon: -35, lat: 35 } });
+    }
+    if (scene === 'target') {
+      const u1 = ufo('abductor', 40, 30, 'flying');
+      Object.assign(V, { lon: 15, lat: 35, zoom: 1.6, mode: 'target', cursor: { lon: 40, lat: 30 }, targetFrom: { lon: base0.lon, lat: base0.lat }, hover: { kind: 'ufo', id: u1.id } });
+    }
+    if (scene === 'pole') Object.assign(V, { lon: 0, lat: -80, zoom: 0.6 });
+    if (scene === 'pacific') Object.assign(V, { lon: -170, lat: 10, zoom: 0.5 });
+    if (scene === 'arctic') Object.assign(V, { lon: 100, lat: 75, zoom: 1 });
+    if (q.has('lon')) V.lon = num('lon', V.lon);
+    if (q.has('lat')) V.lat = num('lat', V.lat);
+    if (q.has('zoom')) V.zoom = num('zoom', V.zoom);
+    if (q.has('t')) G.t = num('t', G.t);
+    if (q.has('mode')) V.mode = q.get('mode');
+    if (q.has('cursor')) { const [a, b] = q.get('cursor').split(',').map(Number); V.cursor = { lon: a, lat: b }; }
+
+    const cv = document.getElementById('view');
+    const ctx = cv.getContext('2d');
+    const view = Object.assign({ w: 1, h: 1, dpr: 1, time: 0 }, V);
+    function resize() {
+      const r = cv.getBoundingClientRect(), dpr = Math.min(window.devicePixelRatio || 1, 2);
+      view.w = Math.round(r.width); view.h = Math.round(r.height); view.dpr = dpr;
+      cv.width = Math.round(view.w * dpr); cv.height = Math.round(view.h * dpr);
+    }
+    resize();
+    window.addEventListener('resize', resize);
+    const GR = OV.GlobeRender;
+    const stats = { frames: 0, ms: [], base: 0, light: 0 };
+    let freeze = q.get('static') === '1' ? num('time', 1000) : null;
+    let last = null;
+    function frame(ts) {
+      view.time = freeze === null ? ts : freeze;
+      try {
+        const r = GR.draw(ctx, G, view);
+        stats.frames++;
+        stats.ms.push(r.ms);
+        if (r.base) stats.base++;
+        if (r.light) stats.light++;
+        if (stats.ms.length > 600) stats.ms.shift();
+      } catch (e) {
+        errs.push({ msg: 'draw: ' + e.message + '\n' + e.stack, file: 'globe_render.js' });
+        document.getElementById('err').textContent = e.stack;
+        return;
+      }
+      const p = last ? GR.pick(view, last.x, last.y) : null;
+      document.getElementById('info').textContent = scene + '  zoom ' + view.zoom.toFixed(2) + '  centro ' + view.lon.toFixed(1) + ', ' + view.lat.toFixed(1)
+        + (p ? '  cursor ' + p.lon.toFixed(2) + ', ' + p.lat.toFixed(2) : '') + '  ' + (stats.ms.length ? stats.ms[stats.ms.length - 1].toFixed(1) : '') + ' ms';
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+
+    // interação manual (o mesmo contrato que o Geoscape vai usar)
+    let drag = null, lastMove = null;
+    cv.addEventListener('pointerdown', (e) => {
+      drag = { x: e.clientX, y: e.clientY, moved: 0, t: performance.now(), vx: 0, vy: 0 };
+      GR.stop(view);
+      cv.setPointerCapture(e.pointerId);
+    });
+    cv.addEventListener('pointermove', (e) => {
+      last = { x: e.clientX, y: e.clientY };
+      const p = GR.pick(view, e.clientX, e.clientY);
+      view.cursor = p;
+      if (drag) {
+        const dx = e.clientX - drag.x, dy = e.clientY - drag.y, now = performance.now(), dt = Math.max(1, now - drag.t);
+        drag.moved += Math.abs(dx) + Math.abs(dy);
+        GR.rotateBy(view, dx, dy);
+        drag.vx = dx / dt; drag.vy = dy / dt;
+        drag.x = e.clientX; drag.y = e.clientY; drag.t = now;
+      } else {
+        view.hover = GR.objectAt(G, view, e.clientX, e.clientY);
+        view.country = view.hover ? null : GR.countryAt(view, e.clientX, e.clientY);
+      }
+      lastMove = performance.now();
+    });
+    cv.addEventListener('pointerup', (e) => {
+      if (drag && drag.moved < 4) view.selection = GR.objectAt(G, view, e.clientX, e.clientY);
+      else if (drag && performance.now() - drag.t < 60) GR.fling(view, drag.vx, drag.vy);
+      drag = null;
+    });
+    cv.addEventListener('dblclick', (e) => {
+      const p = GR.pick(view, e.clientX, e.clientY);
+      if (p) GR.rotateTo(view, p.lon, p.lat);
+    });
+    cv.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      if (e.ctrlKey) GR.zoomAt(view, view.zoom - e.deltaY * 0.01, e.clientX, e.clientY);
+      else if (Math.abs(e.deltaY) >= 50 && e.deltaX === 0) GR.zoomTo(view, Math.round(view.zoom) + (e.deltaY > 0 ? -1 : 1), 260, e.clientX, e.clientY);
+      else GR.rotateBy(view, -e.deltaX, -e.deltaY);
+    }, { passive: false });
+    window.addEventListener('keydown', (e) => {
+      if (e.key >= '1' && e.key <= '6') GR.zoomTo(view, +e.key - 1);
+      if (e.key === 'p') view.mode = view.mode === 'placeBase' ? 'normal' : 'placeBase';
+      if (e.key === 't') { view.mode = view.mode === 'target' ? 'normal' : 'target'; view.targetFrom = { lon: base0.lon, lat: base0.lat }; }
+    });
+
+    window.QA = { OV, G, view, stats, ready: true, freeze: (ms) => { freeze = ms; }, unfreeze: () => { freeze = null; } };
+  }
+})();
+</script>
+</body>
+</html>
