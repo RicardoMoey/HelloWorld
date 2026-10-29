@@ -20,7 +20,7 @@
     TU_RELOAD: 15,
     TU_UNLOAD: 8, // orig/OpenXcom (costUnload)
     TU_MEDIKIT: 10,
-    TU_ALIEN_MELEE: 15,
+    TU_ALIEN_MELEE: 22, // ours (orig 15 fixo): Crisálidas/Ceifadores atacam menos vezes por turno (terror vencível)
     TU_PSI: 25,
     PCT_PRIME: 50,
     PCT_THROW: 25,
@@ -133,8 +133,11 @@
     GEO_FRAME_BUDGET_MS: 12,
     AUTOSAVE_DAYS: [1, 10, 20], // dias do mês com gravação automática
     LOW_FUEL_MARGIN_10M: 1, // margem (passos de 10 min) no regresso por falta de combustível
-    BASE_DEFENCE_BASE: 1800, // defesa automática da base: guarnição necessária
-    BASE_DEFENCE_PER_COEF: 300,
+    BASE_DEFENCE_BASE: 1000, // defesa automática da base: força necessária (Σ UT+Pontaria+Saúde da guarnição)…
+    BASE_DEFENCE_PER_COEF: 250, // …+250 por coeficiente de dificuldade (0/2/4); × casco que resta ao OVNI
+    BASE_DEFENCE_FACILITY_PCT: 100, // cada defesa concluída soma o seu poder à força da guarnição (precisa de ≥ 1 soldado)
+    MISSION_ARRIVE_NM: 5, // nave em patrulha a ≤ 5 mn de um local conta como chegada (startMission)
+    ALIEN_BASE_SURRENDER: ['commander', 'leader', 'leader'], // ours: base alienígena tomada entrega estes vivos (contenção)
     GEO_IDLE_COALESCE: true, // ours: sem nada no ar, o relógio salta até à fronteira seguinte (hash idêntico)
     UFO_BASE_SIGHT_NM: 268, // OVNI de retaliação vê a base X-COM (orig)
     ALIEN_BASE_SUPPLY_PCT: 6, // abastecimento diário de cada base alienígena (orig)

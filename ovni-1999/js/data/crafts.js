@@ -1,6 +1,7 @@
 /* Naves X-COM, armamento de naves e constantes do dogfight (DESIGN.md §3.13; Lightning cortado).
    OV.Data.crafts, OV.Data.craftWeapons, OV.Data.craftRules, OV.Data.dogfight,
-   OV.Data.dogfightHitChance(acc, sizeIdx), OV.Data.craftFuelPer10Min(type, speed).
+   OV.Data.dogfightHitChance(acc, sizeIdx), OV.Data.craftFuelPer10Min(type, speed),
+   OV.Data.craftServiceStatus(craft, from?) → serviço no hangar (reparar → rearmar → reabastecer → pronta).
    As armas e munições de naves também entram em OV.Data.items (kind 'craft_weapon' / 'craft_ammo'). */
 (function (OV) {
   'use strict';
@@ -146,6 +147,24 @@
     const s = Math.max(0, Math.min(4, sizeIdx | 0));
     const p = Math.trunc((acc * (100 + Math.trunc(300 / (5 - s))) + 100) / 200);
     return Math.max(0, Math.min(100, p));
+  };
+
+  /* Serviço de que uma nave no hangar precisa, a partir da etapa `from` (0 reparar, 1 rearmar, 2 reabastecer) →
+     'repair'|'rearm'|'refuel'|'ready' (orig Craft::checkup). Definição única: OV.BaseSim e OV.World usam-na. */
+  OV.Data.craftServiceStatus = function (craft, from) {
+    const f = from | 0;
+    const def = OV.Data.crafts[craft.type];
+    if (!def) return 'ready';
+    if (f <= 0 && craft.hp < def.hp) return 'repair';
+    if (f <= 1) {
+      for (const w of craft.weapons || []) {
+        if (!w || w.ammo === null || w.ammo === undefined) continue;
+        const wd = OV.Data.craftWeapons[w.type];
+        if (wd && wd.ammoMax !== null && w.ammo < wd.ammoMax) return 'rearm';
+      }
+    }
+    if (f <= 2 && craft.fuel < def.fuel) return 'refuel';
+    return 'ready';
   };
 
   // combustível gasto por cada 10 min de voo à velocidade dada (kn)

@@ -99,7 +99,7 @@ module.exports = function (OV, t) {
     const cyd = D.deployments.dep_cydonia;
     const units = cyd.rows.map((r) => D.rowUnit(cyd, r, 'sectoid', 0)).sort();
     t.eq(units, ['chryssalid', 'ethereal_commander', 'ethereal_leader', 'ethereal_soldier', 'muton_soldier', 'sectopod']);
-    t.eq(D.deployments.dep_terror_site.civilians, [10, 14]);
+    t.eq(D.deployments.dep_terror_site.civilians, [6, 9]); // ritmo da campanha (CAMPAIGN_API §11): menos zombies
     t.eq(D.deployments.dep_alien_base.map, { w: 40, h: 40, d: 2 });
     t.eq(D.deployments.dep_small_scout.ufo, 'small_scout');
   });
@@ -163,7 +163,8 @@ module.exports = function (OV, t) {
     t.eq(m('sectopod_weapon'), { snap: [75, 30, 1], aimed: [110, 60, 1], auto: [50, 35, 3] });
     t.eq(m('stun_rod'), { melee: [100, 30, 1] });
     const claw = D.weaponModes('chryssalid_weapon')[0];
-    t.eq([claw.mode, claw.tu, claw.flat], ['melee', 15, true]);
+    t.eq([claw.mode, claw.tu, claw.flat], ['melee', OV.TUNE.TU_ALIEN_MELEE, true]);
+    t.eq(OV.TUNE.TU_ALIEN_MELEE, 22, 'ritmo da campanha (CAMPAIGN_API §11): Crisálidas atacam menos vezes');
     t.eq(D.weaponModes('grenade').map((x) => [x.mode, x.tu]), [['prime', 50], ['throw', 25]]);
     t.eq(D.weaponModes('electro_flare').map((x) => x.mode), ['throw']);
     t.eq(D.weaponModes('sectoid_corpse'), []);

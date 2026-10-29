@@ -8,7 +8,7 @@
      spawnMission(G, type, {region?, race?, cityId?, delayMin?, targetBaseId?, alienBaseId?, script?}) → alienMission
      spawnUfo(G, missionId) → ufo        próximo OVNI da vaga atual (entrada na zona 5)
      onUfoWaypoint(G, ufoId) ; onUfoLiftOff(G, ufoId)
-     onUfoDown(G, ufoId, 'crashed'|'destroyed', craftId|null)
+     onUfoDown(G, ufoId, 'crashed'|'destroyed', craftId|null)   queda no mar a ≤ crashCoastNm da costa plana até terra
      onSiteCleared(G, siteRef, 'win'|'abort'|'loss') ; onResearch(G, topicId)
      removeUfo(G, ufoId) → ufo|null      retira um OVNI (missão, naves que o seguiam); usado pelo World nos ataques à base
      regionWeights(G) → {regionId: peso}  pesos das missões da tabela (×3 perto de uma base X-COM), para testes/depuração
@@ -166,7 +166,8 @@
     }
     return weightedKey(ai(G), cand) || best;
   }
-  // terror: região uniforme entre as que têm cidades não atacadas há pouco, depois cidade uniforme
+  // terror: região (×terrorNearBaseWeightMul perto de uma base X-COM) entre as que têm cidades não atacadas há pouco,
+  // depois cidade uniforme
   function pickTerrorCity(G, type) {
     const A = mem(G);
     const r = ai(G);
@@ -180,7 +181,11 @@
       regs = regionsWith();
     }
     if (!regs.length) return null;
-    const rid = regs.length === 1 ? regs[0] : r.pick(regs);
+    // ours: regiões perto de uma base X-COM pesam missionRules.terrorNearBaseWeightMul (orig: uniforme)
+    const R = D().missionRules;
+    const w = {};
+    for (const rid of regs) w[rid] = nearAnyBase(G, rid, R.nearBaseNm) ? R.terrorNearBaseWeightMul || 1 : 1;
+    const rid = regs.length === 1 ? regs[0] : weightedKey(r, w);
     const cities = D().regions[rid].cities.filter((c) => A.cities.indexOf(c) < 0);
     const cityId = cities.length === 1 ? cities[0] : r.pick(cities);
     A.cities.push(cityId);
@@ -550,7 +555,16 @@
     const udef = D().ufos[ufo.type];
     const m = findMission(G, ufo.missionId);
     const mdef = m ? D().alienMissions[m.type] : null;
-    const crashed = how === 'crashed' && GM().isLand(ufo.lon, ufo.lat);
+    let crashed = how === 'crashed' && GM().isLand(ufo.lon, ufo.lat);
+    if (how === 'crashed' && !crashed) {
+      // ours: um OVNI a cair perto da costa plana até terra (missionRules.crashCoastNm); longe dela afunda (orig)
+      const p = coastPoint(ufo, R.crashCoastNm | 0);
+      if (p) {
+        ufo.lon = p.lon;
+        ufo.lat = p.lat;
+        crashed = true;
+      }
+    }
     // a missão atrasa a vaga seguinte (geo), depois o temporizador do local da queda (geo), depois a retaliação (ai)
     if (m && spawnsLeft(m, mdef)) m.countdownS += R.shootDownDelayMin(geo(G)) * 60;
     const h = tune('CRASH_SITE_HOURS', [24, 72]);
@@ -573,6 +587,16 @@
     ev(G, 'ufoDestroyed', { ufoId, craftId: craftId || null, type: ufo.type, score: udef.scoreDestroyed });
     removeUfo(G, ufoId);
     return ufo;
+  }
+  // ponto de terra mais próximo a ≤ maxNm (anéis de 20 mn, rumos de 30° a partir do norte) ou null; sem sorteios
+  function coastPoint(p, maxNm) {
+    for (let r = 20; r <= maxNm; r += 20) {
+      for (let b = 0; b < 360; b += 30) {
+        const q = GM().destination(p, b, r);
+        if (GM().isLand(q.lon, q.lat)) return q;
+      }
+    }
+    return null;
   }
   // cada abate pode provocar uma retaliação (4/12/20 %), a partir de missionRules.shootDownRetaliationFromMonth
   function retaliationRoll(G, ufo, craftId) {

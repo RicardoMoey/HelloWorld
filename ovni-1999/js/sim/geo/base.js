@@ -8,7 +8,8 @@
      canHire / hire(G, baseId, kind, n) ; sack(G, baseId, kind, nOrSoldierId)
      canBuy / buy(G, baseId, itemIdOrCraftType, n) ; sell(G, baseId, itemId, n)
      moveCargo(G, craftId, itemId, n) ; setArmour(G, soldierId, armourId) ; assignSoldier(G, soldierId, craftId|null)
-     fitWeapon(G, craftId, slot, weaponType|null) ; checkup(G, craftId) → estado ; renameBase / renameCraft
+     fitWeapon(G, craftId, slot, weaponType|null) ; checkup(G, craftId) → estado ; serviceStatus(G, craftId) → estado (puro)
+     renameBase / renameCraft
      startResearch(G, baseId, topic, scientists) ; setScientists ; cancelResearch ; researchLabel(G, baseId, topic) → chave
      startProduction(G, baseId, item, engineers, qty) ; setEngineers ; setQty ; cancelProduction
      halfHourly(G) ; hourly(G) ; daily(G) ; completeResearch(G, baseId, topic) }
@@ -434,20 +435,19 @@
     const wd = D().craftWeapons[w.type];
     return !!wd && wd.ammoMax !== null && w.ammo < wd.ammoMax;
   }
-  // primeiro serviço necessário a partir da etapa `from` (0 reparar, 1 rearmar, 2 reabastecer)
-  function nextStatus(craft, from) {
-    const def = D().crafts[craft.type];
-    if (from <= 0 && craft.hp < def.hp) return 'repair';
-    if (from <= 1 && craft.weapons.some(needsAmmo)) return 'rearm';
-    if (from <= 2 && craft.fuel < def.fuel) return 'refuel';
-    return 'ready';
-  }
+  // primeiro serviço necessário a partir da etapa `from` (0 reparar, 1 rearmar, 2 reabastecer): definição única nos dados
+  const nextStatus = (craft, from) => D().craftServiceStatus(craft, from);
   function setService(G, craft, status) {
     const was = craft.status;
     craft.status = status;
     if (status === 'ready' && was !== 'ready') C().event(G, 'craftReady', { craftId: craft.id });
   }
-  // estado de manutenção de uma nave no hangar (sem eventos) → estado
+  // serviço de que a nave precisa agora (puro, sem mudar nada) → 'repair'|'rearm'|'refuel'|'ready'
+  function serviceStatus(G, craftId) {
+    const craft = C().findCraft(G, craftId);
+    return craft ? nextStatus(craft, 0) : null;
+  }
+  // estado de manutenção de uma nave no hangar (sem eventos) → estado; definição única (o World usa-a ao aterrar)
   function checkup(G, craftId) {
     const craft = C().findCraft(G, craftId);
     if (!craft) return null;
@@ -823,7 +823,7 @@
   OV.BaseSim = {
     capacities, staff, canPlace, build, canDismantle, dismantle,
     canHire, hire, sack, canBuy, buy, sell,
-    moveCargo, setArmour, assignSoldier, fitWeapon, checkup, renameBase, renameCraft,
+    moveCargo, setArmour, assignSoldier, fitWeapon, checkup, serviceStatus, renameBase, renameCraft,
     startResearch, setScientists, cancelResearch, researchLabel, completeResearch,
     startProduction, setEngineers, setQty, cancelProduction,
     halfHourly, hourly, daily,

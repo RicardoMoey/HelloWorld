@@ -276,9 +276,11 @@ module.exports = function (OV, t) {
     t.eq(D.raceWeights('alien_abduction', 1), { sectoid: 30, floater: 30, snakeman: 20, muton: 20 });
     t.eq(D.raceWeights('alien_harvest', 2).ethereal, 20);
     t.eq(D.raceWeights('alien_base', 9), { muton: 30, ethereal: 30, snakeman: 20, floater: 10, sectoid: 10 });
-    t.eq(D.raceWeights('alien_terror', 1), { snakeman: 60, floater: 20, sectoid: 20 });
-    t.eq(D.raceWeights('alien_terror', 5).snakeman, 60);
-    t.eq(D.raceWeights('alien_terror', 0), { sectoid: 60, floater: 40 });
+    t.eq(D.raceWeights('alien_terror', 1), { floater: 100 });
+    t.eq(D.raceWeights('alien_terror', 5).snakeman, 25);
+    t.ok(!D.raceWeights('alien_terror', 2).snakeman, 'Crisálidas só a partir do mês 3');
+    t.eq(D.raceWeights('alien_terror', 0), { floater: 100 });
+    t.ok(!D.raceWeights('alien_terror', 9).ethereal, 'sem Etéreos no terror');
     const w = D.raceWeights('alien_research', 0);
     w.sectoid = 0;
     t.eq(D.raceWeights('alien_research', 0).sectoid, 60, 'devolve cópia');
@@ -301,7 +303,7 @@ module.exports = function (OV, t) {
 
   t.test('pontuação: atividade dos OVNIs, missões, bases e terror', () => {
     const S = D.scoring;
-    t.eq([S.ufoActivity.flying, S.ufoActivity.landed, S.ufoActivity.everyMin], [1, 2, 30]);
+    t.eq([S.ufoActivity.flying, S.ufoActivity.landed, S.ufoActivity.everyMin], [1, 2, 120]);
     t.eq(S.missionPoints, {
       alien_research: 0, alien_harvest: 30, alien_abduction: 50, alien_infiltration: 150, alien_base: 50,
       alien_terror: 10, alien_retaliation: 0, alien_supply: 0,

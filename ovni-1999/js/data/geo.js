@@ -733,7 +733,7 @@
   //   'supply' — a Nave de Abastecimento aterra na base alienígena (raça da base).
   // table = aparece nas tabelas de missões das regiões; raceFrom 'trigger' = raça do OVNI que a provocou,
   // 'base' = raça da base alienígena.
-  const WAVE_TIMER_SCALE = 0.5; // ours
+  const WAVE_TIMER_SCALE = 0.7; // ours (era 0,5: tráfego a mais para 12–16 batalhas; a abertura e o terror têm tempos fixos)
   function wave(ufo, n, traj, timerOrig, opts) {
     const o = opts || {};
     const timer = o.timer !== undefined ? o.timer : Math.max(30, Math.round((timerOrig * WAVE_TIMER_SCALE) / 30) * 30);
@@ -742,7 +742,8 @@
   const MISSIONS = {
     alien_research: {
       points: 0, objective: 'score', table: true,
-      waves: [wave('small_scout', 1, 'P0', 9000), wave('medium_scout', 1, 'P2', 7800), wave('large_scout', 2, 'P4', 9000)],
+      // abertura (guião gameStart): tempos fixos de 0,5 × orig — o primeiro Batedor Médio chega nos primeiros dias
+      waves: [wave('small_scout', 1, 'P0', 9000, { timer: 4500 }), wave('medium_scout', 1, 'P2', 7800, { timer: 3900 }), wave('large_scout', 2, 'P4', 9000, { timer: 4500 })],
     },
     alien_harvest: {
       points: 30, objective: 'score', table: true,
@@ -777,7 +778,7 @@
     // ours: menos vagas (orig MS P1 15000, LS P1 9600, TS P0 12000, TS P7 9000 objetivo)
     alien_terror: {
       points: 10, objective: 'site', siteType: 'dep_terror_site', spawnZone: 3, cityOnly: true,
-      waves: [wave('medium_scout', 1, 'P1', 15000, { timer: 6000 }), wave('terror_ship', 1, 'P7', 9000, { objective: true })],
+      waves: [wave('medium_scout', 1, 'P1', 15000, { timer: 6000 }), wave('terror_ship', 1, 'P7', 9000, { timer: 4500, objective: true })],
     },
     alien_retaliation: {
       points: 0, objective: 'retaliation', spawnUfo: 'battleship', assaultTraj: 'assault', raceFrom: 'trigger',
@@ -889,10 +890,12 @@
       2: { sectoid: 30, floater: 30, snakeman: 20, muton: 20, ethereal: 20 },
       3: { muton: 30, ethereal: 30, snakeman: 20, floater: 10, sectoid: 10 },
     },
+    // ours (varrimentos de batalha, 10 soldados, Veterano): Flutuantes nos meses 0–1 (espingardas, também de noite);
+    // Ciberdiscos (Sectoides) só com lasers, Crisálidas (Homens-Serpente) só com plasma; Etéreos fora do terror
     alien_terror: {
-      0: { sectoid: 60, floater: 40 },
-      1: { snakeman: 60, floater: 20, sectoid: 20 },
-      2: { snakeman: 60, floater: 20, sectoid: 20, ethereal: 20 },
+      0: { floater: 100 },
+      2: { floater: 40, sectoid: 40, muton: 20 },
+      3: { sectoid: 25, muton: 30, snakeman: 25, floater: 20 },
     },
   };
   // pesos {raça: peso} para uma missão num mês (cópia; retaliação/abastecimento usam a raça de origem quando há)
@@ -910,9 +913,11 @@
     shootDownDelay: { base: 48, rand: 200, stepMin: 30 }, // ours: 30 × (RNG(0,200) + 48) min (orig RNG(0,400))
     nearBaseNm: 4000, // ours: regiões com centróide a ≤ 4 000 mn da base X-COM…
     nearBaseWeightMul: 3, // …pesam ×3 na escolha da região
+    terrorNearBaseWeightMul: 4, // ours: o terror escolhe regiões com centróide a ≤ nearBaseNm de uma base X-COM ×4 (uma só base no MVP)
     shootDownRetaliationFromMonth: 2, // ours: a partir do mês 2 cada abate pode provocar retaliação
     retaliationPct: TUNE.RETALIATION_PCT || [4, 12, 20],
     landPointTries: 10, // pontos de aterragem: 10 tentativas em terra, senão descola logo (orig)
+    crashCoastNm: 180, // ours: OVNI abatido no mar a ≤ 180 mn da costa cai em terra (orig: afunda sempre ⇒ destruído)
     terrorSiteHours: TUNE.TERROR_SITE_HOURS || [8, 16], // ours (orig 4–10)
     alienBaseRevealMonthlyPct: 50, // ours (orig 20): agentes revelam a base no fim do mês
     patrolReveal: { pct: 50, rangeNm: 1696, everyMin: 10 }, // nave em patrulha: 50 − 50·d/1696 % a cada 10 min
@@ -963,7 +968,7 @@
   for (const id in MISSIONS) missionPoints[id] = MISSIONS[id].points;
   const SCORING = {
     // aliens: cada OVNI ganha pontos para a região e o país onde está, a cada 30 min (em terra conta a dobrar)
-    ufoActivity: { flying: 1, landed: 2, everyMin: 30 },
+    ufoActivity: { flying: 1, landed: 2, everyMin: 120 }, // ours: a cada 2 h (orig 30 min) — uma só base no MVP não cobre o globo
     missionPoints, // ver objective em alienMissions (infiltração: pacto contado no fim do mês)
     alienBasePerDay: 5,
     terrorSiteExpired: 1000, // local de terror que expira sem ataque

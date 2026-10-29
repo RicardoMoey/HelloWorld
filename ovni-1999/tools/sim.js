@@ -11,11 +11,19 @@
      --heavy          meses 0–2: Canhão Pesado (HE) e Lança-Foguetes do equipamento inicial em dois soldados
      --race R         raça fixa (sectoid, floater, snakeman, muton, ethereal); sem ela, terror usa raceSchedule
      --squad N        soldados (omissão 8; base alienígena e Cidónia: a nave cheia — Skyranger 10, Avenger 12)
+     --gear N         equipamento X-COM do mês N (independente do --month dos alienígenas)
    Locais de terror: raça pelo calendário da campanha (Data.raceSchedule.alien_terror); missões escuras (base alienígena,
    Marte) levam very-lights; dois soldados levam uma granada de fumo.
      --quiet / --verbose
    Código de saída ≠ 0 em qualquer exceção, falha de invariante ou divergência de hash.
-   Também é um módulo: require('./sim.js') → {runBattle, missionFor, checkInvariants, SWEEP, TARGETS}. */
+   Também é um módulo: require('./sim.js') → {runBattle, missionFor, checkInvariants, SWEEP, TARGETS}.
+
+   node ovni-1999/tools/sim.js campaign --seeds 10 --diff 0..2 [--days 240] [--seed0 1] [--verbose] [--det] [--save-mid [dia]] [--json]
+     campanhas completas com o bot de campanha (tools/campaign_bot.js): por campanha, dia e motivo do fim (victory, council,
+     debt, baseLost, cydonia, timeout), batalhas por tipo e vitórias, soldados perdidos, meses, avaliações mensais, fundos,
+     dias da investigação-chave, OVNIs detetados/intercetados/abatidos/destruídos/fugidos, terror e pactos; resumo por
+     dificuldade contra as metas de DESIGN §14. --det repete cada campanha (mesmo hash); --save-mid grava e carrega G
+     com OV.Save a meio (omissão: dias/3) e exige o mesmo resultado. Código ≠ 0 em exceções ou divergências. */
 'use strict';
 
 const OV = require('./load')({ finalize: true });
@@ -176,6 +184,15 @@ function missionFor(o) {
     if (k === 1 || k === 2) s.loadout.pack.push('smoke_grenade');
   });
   // --vet: equipa com a experiência típica do mês de campanha (ganhos de atributos por missões, até aos limites)
+  // --gear N: equipamento do mês N (espingarda < 3, laser + armadura < 6, plasma + fato), independente dos alienígenas
+  if (o.gear !== undefined && o.gear !== null) {
+    const { lo, armour } = OV.Battle.quickLoadout(o.gear | 0, dark || !!o.night);
+    for (const s of mission.squad) {
+      const extra = s.loadout.pack.filter((x) => x === 'medikit' || x === 'smoke_grenade');
+      s.loadout = { R: lo.R, L: lo.L, belt: lo.belt.slice(), pack: extra };
+      s.armour = armour;
+    }
+  }
   if (o.vet) veteranSquad(mission.squad, o.month | 0);
   if (o.heavy && (o.month | 0) < 3) heavyKit(mission.squad);
   if (kind === 'cydonia') cydoniaKit(mission.squad);
@@ -284,11 +301,131 @@ function runSet(label, base, args, failures) {
   return sum;
 }
 
+// ---- campanha (bot de campanha, DESIGN §14 / §19.3) ----------------------------------------------------------
+// --diff aceita 1, «0,1» ou «0..2»
+function diffList(v) {
+  if (v === undefined || v === true) return [1];
+  const str = String(v);
+  const m = /^(\d)\.\.(\d)$/.exec(str);
+  if (m) {
+    const out = [];
+    for (let d = +m[1]; d <= +m[2]; d++) out.push(d);
+    return out;
+  }
+  return str.split(',').map((x) => Math.max(0, Math.min(2, x | 0)));
+}
+const DIFF_NAME = ['Recruta', 'Veterano', 'Super-humano'];
+const KINDS = ['crash', 'landed', 'terror', 'alienBase', 'cydonia'];
+// metas de DESIGN §14 / CAMPAIGN_API §8
+const CAMPAIGN_TARGETS = { victoryDay: [100, 170], battles: [12, 16], councilPctVeterano: 20 };
+
+function campaignLine(r) {
+  const kinds = KINDS.filter((k) => r.byKind[k]).map((k) => k + ' ' + r.byKind[k].won + '/' + r.byKind[k].n).join(', ');
+  const rt = Object.keys(r.research).map((k) => k + '@' + r.research[k]).join(' ');
+  const u = r.ufos;
+  return [
+    '  semente ' + pad(r.seed, 4) + DIFF_NAME[r.difficulty] + ': fim dia ' + r.endDay + ' — ' + r.reason + ' (meses ' + r.monthsSurvived + ')',
+    '    batalhas ' + r.battles + ' [' + kinds + '] vitórias ' + (r.battles ? Math.round((100 * r.battleLog.filter((b) => b.result === 'win').length) / r.battles) : 0) +
+      ' %, soldados perdidos ' + r.soldiersLost + ', 1.ª deteção dia ' + r.firstDetectDay + ', 1.ª queda dia ' + r.firstCrashDay + ', 1.ª batalha dia ' + r.firstBattleDay,
+    '    avaliações [' + r.ratings.join(', ') + '] fundos [' + r.funds.map((f) => (f / 1e6).toFixed(2) + 'M').join(', ') + '] vendas $' + (r.sold / 1e6).toFixed(2) + 'M',
+    '    OVNIs: detetados ' + u.detected + ', intercetados ' + u.intercepted + ', abatidos ' + u.crashed + ' (no mar ' + u.crashedAtSea + '), destruídos ' + u.destroyed +
+      ', fugiram ' + u.escaped + ', naves perdidas ' + u.craftLost + '; terror ' + r.terror.won + '/' + r.terror.fought + ' (vistos ' + r.terror.seen + ', expirados ' + r.terror.expired + ')' +
+      '; pactos ' + r.pacts.length + (r.pacts.length ? ' (' + r.pacts.map((p) => p.country + '@' + p.day).join(' ') + ')' : '') +
+      '; retaliações ' + r.retaliations.map((x) => x.result + '@' + x.day).join(' ') +
+      '; bases alienígenas descobertas ' + r.basesFound.map((x) => x.race + '@' + x.day + '/' + x.how).join(' ') + '; OVNIs lançados ' + r.ufosSpawned + ', locais de queda ' + r.crashSites,
+    '    investigação: ' + rt + (r.avengerDay !== null ? ' Vingador@' + r.avengerDay : ''),
+  ].join('\n');
+}
+
+function campaignMain(args) {
+  const Bot = require('./campaign_bot');
+  const seeds = args.seeds === undefined ? 10 : +args.seeds;
+  const seed0 = args.seed0 === undefined ? 1 : +args.seed0;
+  const days = args.days === undefined ? 240 : +args.days;
+  const diffs = diffList(args.diff);
+  const verbose = !!args.verbose;
+  const saveMid = args['save-mid'] === undefined ? null : args['save-mid'] === true ? Math.floor(days / 3) : +args['save-mid'];
+  const failures = [];
+  const t0 = Date.now();
+  const all = [];
+  for (const diff of diffs) {
+    const rows = [];
+    for (let k = 0; k < seeds; k++) {
+      const seed = seed0 + k;
+      const opts = { OV, seed, difficulty: diff, days, log: verbose ? (m) => console.log('    ' + m) : null };
+      let r;
+      try {
+        r = Bot.run(opts);
+        if (args.det) {
+          const r2 = Bot.run(Object.assign({}, opts, { log: null }));
+          if (r2.hash !== r.hash) failures.push(DIFF_NAME[diff] + ' semente ' + seed + ': repetição com hash diferente');
+        }
+        if (saveMid !== null) {
+          const r3 = Bot.run(Object.assign({}, opts, { log: null, saveMidDay: saveMid }));
+          if (!r3.savedMid) failures.push(DIFF_NAME[diff] + ' semente ' + seed + ': não gravou a meio (dia ' + saveMid + ')');
+          else if (r3.hash !== r.hash || r3.endDay !== r.endDay || r3.reason !== r.reason) {
+            failures.push(DIFF_NAME[diff] + ' semente ' + seed + ': gravar/carregar no dia ' + saveMid + ' mudou o resultado');
+          }
+        }
+      } catch (e) {
+        failures.push(DIFF_NAME[diff] + ' semente ' + seed + ': ' + (e && e.stack ? e.stack.split('\n').slice(0, 5).join('\n  ') : e));
+        continue;
+      }
+      rows.push(r);
+      all.push(r);
+      if (args.json) console.log(JSON.stringify(r));
+      else console.log(campaignLine(r));
+    }
+    console.log(campaignSummary(DIFF_NAME[diff], rows));
+  }
+  console.log('total: ' + all.length + ' campanhas em ' + ((Date.now() - t0) / 1000).toFixed(1) + ' s' + (saveMid !== null ? ' (gravar/carregar no dia ' + saveMid + ')' : ''));
+  for (const f of failures) console.log('✗ ' + f);
+  process.exit(failures.length ? 1 : 0);
+}
+
+function campaignSummary(label, rows) {
+  if (!rows.length) return '= ' + label + ': sem campanhas';
+  const n = rows.length;
+  const pct = (f) => Math.round((100 * rows.filter(f).length) / n);
+  const won = rows.filter((r) => r.reason === 'victory');
+  const kinds = {};
+  for (const r of rows) for (const k of Object.keys(r.byKind)) {
+    const x = kinds[k] || (kinds[k] = { n: 0, won: 0 });
+    x.n += r.byKind[k].n;
+    x.won += r.byKind[k].won;
+  }
+  const kindStr = KINDS.filter((k) => kinds[k]).map((k) => k + ' ' + Math.round((100 * kinds[k].won) / kinds[k].n) + ' % (' + kinds[k].n + ')').join(', ');
+  const reasons = {};
+  for (const r of rows) reasons[r.reason] = (reasons[r.reason] || 0) + 1;
+  const firstCrash3 = pct((r) => r.firstCrashDay !== null && r.firstCrashDay <= 3);
+  const firstBattle3 = pct((r) => r.firstBattleDay !== null && r.firstBattleDay <= 3);
+  const T = CAMPAIGN_TARGETS;
+  return [
+    '= ' + label + ': ' + n + ' campanhas — vitória ' + pct((r) => r.reason === 'victory') + ' % (dia mediano ' + (won.length ? median(won.map((r) => r.endDay)) : '–') +
+      ', meta ' + T.victoryDay.join('–') + '), Conselho ' + pct((r) => r.reason === 'council') + ' %' + (label === 'Veterano' ? ' (meta ≤ ' + T.councilPctVeterano + ' %)' : '') +
+      ', fins ' + JSON.stringify(reasons),
+    '  batalhas medianas ' + median(rows.map((r) => r.battles)) + ' (meta ' + T.battles.join('–') + '; nas vitórias ' + (won.length ? median(won.map((r) => r.battles)) : '–') + ') — ' + kindStr,
+    '  soldados perdidos (mediana) ' + median(rows.map((r) => r.soldiersLost)) + ', meses sobrevividos (mediana) ' + median(rows.map((r) => r.monthsSurvived)) +
+      ', 1.ª queda ≤ dia 3: ' + firstCrash3 + ' %, 1.ª batalha ≤ dia 3: ' + firstBattle3 + ' %',
+    '  OVNIs abatidos no mar ' + rows.reduce((s, r) => s + r.ufos.crashedAtSea, 0) + '/' + rows.reduce((s, r) => s + r.ufos.crashed, 0) +
+      ', terror ganhos ' + rows.reduce((s, r) => s + r.terror.won, 0) + '/' + rows.reduce((s, r) => s + r.terror.fought, 0) +
+      ' (expirados ' + rows.reduce((s, r) => s + r.terror.expired, 0) + '), pactos ' + rows.reduce((s, r) => s + r.pacts.length, 0) +
+      ', avaliação mês 0 mediana ' + median(rows.map((r) => (r.ratings.length ? r.ratings[0] : 0))),
+  ].join('\n');
+}
+
 function main() {
   const args = parseArgs(process.argv.slice(2));
   const cmd = args._[0] || 'battle';
+  if (cmd === 'campaign') {
+    for (const e of OV.__loadErrors || []) console.log('✗ carregar ' + e);
+    if ((OV.__loadErrors || []).length || OV.__finalizeError) process.exit(1);
+    campaignMain(args);
+    return;
+  }
   if (cmd !== 'battle' && cmd !== 'battles') {
-    console.log('uso: node ovni-1999/tools/sim.js battle [--ufo tipo|all] [--kind terror|alienBase|cydonia] [--terrain T] [--night 0|1] [--diff 0..2] [--month n] [--seeds n] [--squad n] [--det] [--save-at turno]');
+    console.log('uso: node ovni-1999/tools/sim.js battle [--ufo tipo|all] [--kind terror|alienBase|cydonia] [--terrain T] [--night 0|1] [--diff 0..2] [--month n] [--seeds n] [--squad n] [--gear n] [--det] [--save-at turno]');
+    console.log('     node ovni-1999/tools/sim.js campaign [--seeds n] [--seed0 n] [--diff 1|0,1|0..2] [--days n] [--verbose] [--det] [--save-mid [dia]] [--json]');
     process.exit(2);
   }
   for (const e of OV.__loadErrors || []) console.log('✗ carregar ' + e);
@@ -298,6 +435,7 @@ function main() {
     diff: args.diff === undefined ? 1 : +args.diff, squad: args.squad === undefined ? 0 : +args.squad,
     race: args.race && args.race !== true ? args.race : undefined,
     turns: args.turns === undefined ? 40 : +args.turns, vet: !!args.vet, heavy: !!args.heavy,
+    gear: args.gear === undefined || args.gear === true ? null : +args.gear,
   };
   const failures = [];
   const sums = [];

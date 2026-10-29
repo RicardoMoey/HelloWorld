@@ -185,9 +185,9 @@
       row('commander', same(1, 1)), row('leader', same(1, 1)), row('engineer', same(1, 1)), row('medic', same(1, 1)), row('navigator', same(1, 1)),
       row('soldier', [[4, 5], [5, 6], [6, 7]]), row('terrorist', [[1, 2], [2, 3], [3, 4]]),
     ]),
-    // cidade 40×40×3; civis RNG(10,14)
+    // cidade 40×40×3; civis RNG(6,9) (ours, ritmo: orig/§3.12 10–14 — menos civis para zombificar)
     dep_terror_site: {
-      kind: 'terror', terrain: 'URBAN', map: { w: 40, h: 40, d: 3 }, civilians: [10, 14],
+      kind: 'terror', terrain: 'URBAN', map: { w: 40, h: 40, d: 3 }, civilians: [6, 9],
       // ours (varrimento): menos soldados e unidades de terror do que a tabela §3.12 — o terror chega cedo na campanha
       rows: [row('leader', same(1, 1)), row('soldier', [[2, 2], [2, 3], [3, 4]]), row('terrorist', [[2, 2], [2, 3], [3, 4]])],
     },

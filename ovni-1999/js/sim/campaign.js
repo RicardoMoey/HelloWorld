@@ -706,6 +706,25 @@
           if (corpse && Data.items[corpse]) { bagAdd(base.stores, corpse, 1); bagAdd(stored, corpse, 1); }
         }
       }
+      // ours (ritmo, contrato §11): a base alienígena tomada entrega vivas as patentes de TUNE.ALIEN_BASE_SURRENDER
+      // (uma por entrada; contam as já capturadas na batalha) enquanto houver lugar na contenção
+      if (ref.kind === 'alienBase' && deb.result === 'win') {
+        const race = (site.obj && site.obj.race) || B.mission.race;
+        const members = Data.races[race] && Data.races[race].members;
+        const want = {};
+        for (const rank of tune('ALIEN_BASE_SURRENDER', ['commander', 'leader', 'leader'])) {
+          const unit = members && members[rank];
+          const rr = typeof unit === 'string' && Data.units[unit] ? Data.unitRankRace(unit) : null;
+          if (rr && rr.rank === rank) want[unit] = (want[unit] | 0) + 1;
+        }
+        for (const unit of Object.keys(want)) {
+          const n = Math.min(room, want[unit] - (capturedStored[unit] | 0));
+          if (n <= 0) continue;
+          room -= n;
+          bagAdd(base.aliens, unit, n);
+          bagAdd(capturedStored, unit, n);
+        }
+      }
     }
     // 4) equipamento perdido sai da nave
     for (const k of Object.keys(deb.equipmentLost)) bagAdd(craft.equipment, k, -Math.min(deb.equipmentLost[k], craft.equipment[k] | 0));
@@ -753,7 +772,10 @@
     const race = B.mission.race;
     if (Data.races[race] && G.seen.races.indexOf(race) < 0) G.seen.races.push(race);
     const ufoType = B.mission.ufoType;
-    if ((B.mission.kind === 'crash' || B.mission.kind === 'landed') && Data.ufos[ufoType] && G.seen.ufoTypes.indexOf(ufoType) < 0) G.seen.ufoTypes.push(ufoType);
+    const ufoSite = (B.mission.kind === 'crash' || B.mission.kind === 'landed') && !!Data.ufos[ufoType];
+    if (ufoSite && G.seen.ufoTypes.indexOf(ufoType) < 0) G.seen.ufoTypes.push(ufoType);
+    // primeira recuperação de um tipo de OVNI abre o seu artigo da Ufopédia (contrato §5.11, ufo_<tipo>)
+    if (ufoSite && deb.result === 'win' && !deb.craftLost && G.ufopaedia.indexOf('ufo_' + ufoType) < 0) G.ufopaedia.push('ufo_' + ufoType);
 
     // 9) Cidónia decide o jogo
     if (ref.kind === 'cydonia') {
@@ -806,8 +828,13 @@
         const c = s.craftId ? C.findCraft(G, s.craftId) : null;
         return !c || !AIRBORNE[c.status];
       });
-      const strength = garrison.reduce((sum, s) => sum + (s.stats.tu | 0) + (s.stats.fire | 0) + (s.stats.hp | 0), 0);
-      const need = tune('BASE_DEFENCE_BASE', 1800) + tune('BASE_DEFENCE_PER_COEF', 300) * 2 * (G.difficulty | 0);
+      // força = Σ (UT + Pontaria + Saúde) da guarnição + parte do poder das defesas; a exigência desce com o casco
+      // que as defesas já tiraram ao OVNI (afinação: docs/CAMPAIGN_API.md §8)
+      const defPct = tune('BASE_DEFENCE_FACILITY_PCT', 100);
+      let strength = garrison.reduce((sum, s) => sum + (s.stats.tu | 0) + (s.stats.fire | 0) + (s.stats.hp | 0), 0);
+      for (const d of OV.BaseSim.capacities(G, baseId).defences) strength += U.idiv((d.power | 0) * defPct, 100);
+      const full = tune('BASE_DEFENCE_BASE', 1000) + tune('BASE_DEFENCE_PER_COEF', 250) * 2 * (G.difficulty | 0);
+      const need = U.idiv(full * Math.max(0, ufoDef.hp - (ufo.dmg | 0)), Math.max(1, ufoDef.hp));
       if (garrison.length && strength >= need) {
         result = 'repelled';
         const n = Math.min(r.int(1, 3), garrison.length);

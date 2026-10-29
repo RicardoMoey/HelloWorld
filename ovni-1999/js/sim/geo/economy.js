@@ -45,9 +45,12 @@
     return p;
   }
 
-  // atividade alienígena a cada 30 min: +1 por OVNI em voo, +2 em terra (no ponto do OVNI)
+  // atividade alienígena: +1 por OVNI em voo, +2 em terra (no ponto do OVNI), a cada scoring.ufoActivity.everyMin
+  // (scoring.ufoActivity.everyMin: só nas fronteiras desse intervalo — o relógio passa aqui de 30 em 30 min alinhado a UTC)
   function ufoActivity30m(G) {
     const ua = D().scoring.ufoActivity;
+    const every = Math.max(30, ua.everyMin | 0) * 60;
+    if ((G.t | 0) % every !== 0) return;
     for (const u of G.ufos) {
       if (u.status === 'flying') addScore(G, 'alien', ua.flying, u.lon, u.lat);
       else if (u.status === 'landed') addScore(G, 'alien', ua.landed, u.lon, u.lat);

@@ -744,8 +744,11 @@ model = { debrief: deb, mission: B.mission, meta, outcome: 'continue'|'victory'|
 1. Each completed defence facility fires once: hit `pct(hitRatio)`, `dmg = power/2 + int(0, power)` added to
    `ufo.dmg`.
 2. If `ufo.dmg ≥ hp`: `result 'ufoDestroyed'`, `Missions.onUfoDown(…, 'destroyed', null)`.
-3. Otherwise compare `garrison = Σ (tu + fire + hp)` of fit soldiers in the base (not on a craft that is out) against
-   `TUNE.BASE_DEFENCE_BASE + TUNE.BASE_DEFENCE_PER_COEF × 2·difficulty`.
+3. Otherwise compare the strength `Σ (tu + fire + hp)` of fit soldiers in the base (not on a craft that is out)
+   `+ Σ floor(power × TUNE.BASE_DEFENCE_FACILITY_PCT / 100)` over the completed defence facilities, against
+   `floor((TUNE.BASE_DEFENCE_BASE + TUNE.BASE_DEFENCE_PER_COEF × 2·difficulty) × (hp − ufo.dmg) / hp)` (the hull the
+   defences left standing). Wave 4 pacing values: 1 000 + 250/coef, defences at 50 % of their power (§11). With no fit
+   soldier at home the base is always lost.
    - Win: `'repelled'`. `int(1,3)` random fit soldiers die (cause `'base'`), the UFO is removed with
      `+ufo.score`, the retaliation mission ends.
    - Loss: `'lost'` → the base is destroyed → `endGame(G, 'lost', 'baseLost')`.
@@ -889,7 +892,10 @@ The overlay ticks every open dogfight once per 30 ms of real time (`Data.dogfigh
 | `LOW_FUEL_MARGIN_10M` | tuning.js (**new**) | 1 | low-fuel return margin (10-min steps) |
 | `WOUND_RECOVERY_MIN/MAX`, `PROMO_*` | tuning.js | 25/75, 4/8/15/20 | soldier turnaround and ranks |
 | `SOLDIER_/SCIENTIST_/ENGINEER_HIRE/SALARY` | tuning.js | orig | personnel economy |
-| `BASE_DEFENCE_BASE`, `BASE_DEFENCE_PER_COEF` | tuning.js (**new**) | 1800, 300 | retaliation auto-resolve |
+| `BASE_DEFENCE_BASE`, `BASE_DEFENCE_PER_COEF`, `BASE_DEFENCE_FACILITY_PCT` | tuning.js | 1000, 250, 50 (§11) | retaliation auto-resolve |
+| `MISSION_ARRIVE_NM` | tuning.js | 5 | a patrolling transport this close to a site counts as arrived (`startMission`) |
+| `ALIEN_BASE_SURRENDER` | tuning.js | `['commander','leader','leader']` (§11) | ranks handed over alive when an alien base falls |
+| `TU_ALIEN_MELEE` | tuning.js | 22 (§11; orig 15) | Chryssalid/Reaper/Zombie attack cost |
 | `SHADE_DAY/DUSK/NIGHT`, `CHEAT_TURN`, `SQUAD_MAX_UI` | tuning.js | 0/6/13, [12,10,8], 10 | battle feel |
 | facility `cost`, `days`, `upkeep`, radar `radarChance`/`radarRange` | data/base.js `FAC` | §3.14 | build pace, detection |
 | `startingBase` (layout, personnel, crafts, stores) | data/base.js | orig + extras | opening |
@@ -901,8 +907,8 @@ The overlay ticks every open dogfight once per 30 ms of real time (`Data.dogfigh
 | `alienMissions[*].waves[*].timer` (`WAVE_TIMER_SCALE`) | data/geo.js | ×0.5 orig | alien tempo |
 | `missionScripts` (`startDelay`, `firstMonth`, `seedAlienBase.maxBaseDistNm`) | data/geo.js | §3.18 | escalation |
 | `raceSchedule` | data/geo.js | §3.18 | enemy progression |
-| `missionRules` (`shootDownDelay`, `nearBaseNm`, `nearBaseWeightMul`, `shootDownRetaliationFromMonth`, `landPointTries`, `alienBaseRevealMonthlyPct`, `patrolReveal`) | data/geo.js | §3.18 | alien pressure |
-| `scoring` (`ufoActivity`, `alienBasePerDay`, `terrorSiteExpired`, `alienBaseDestroyed`, `rating`) | data/geo.js | §3.17 | council pressure |
+| `missionRules` (`shootDownDelay`, `nearBaseNm`, `nearBaseWeightMul`, `terrorNearBaseWeightMul`, `crashCoastNm`, `shootDownRetaliationFromMonth`, `landPointTries`, `alienBaseRevealMonthlyPct`, `patrolReveal`) | data/geo.js | §3.18, §11 | alien pressure, crash sites on land, reachable terror |
+| `scoring` (`ufoActivity` incl. `everyMin`, `alienBasePerDay`, `terrorSiteExpired`, `alienBaseDestroyed`, `rating`) | data/geo.js | §3.17, §11 | council pressure |
 | `geoConst.entryRingDeg`, `geoConst.sun` | data/geo.js | [25,35], no seasons | UFO entry, day and night |
 | country `fundingBase`, `fundingCap` | data/geo.js | orig | funding |
 | `alienItemTiers`, deployments `rows[*].qty` | data/units.js | §3.12 | battle difficulty |
@@ -950,3 +956,76 @@ battles (12–18), council defeats (≤ 20 % on Veterano).
 - Ids use one counter per prefix (`s1…`, `c1…`), not one global counter.
 - `G.ui` is a UI-owned bag that is saved but ignored by the sim and the hash.
 - Starting Skyranger carries 1 Medi-Kit + 4 Electro-flares taken from base stores (DESIGN §3.14 extras, loaded aboard).
+
+---
+
+## 11. Pacing changes from the campaign bot (wave 4, stage 3)
+
+The campaign bot (`tools/campaign_bot.js`, run with `node ovni-1999/tools/sim.js campaign`) plays whole campaigns
+through the public sim APIs and the battle playerBot (`OV.AI`, X-COM side). Every change below was measured with it or
+with `tools/sim.js battle` (Veterano, 10 soldiers unless noted). All are data or tuning values, except the four rule
+changes marked **rule**, which are small sim fixes with tests in `tools/tests/campaign_pacing.test.js`.
+
+### 11.1 Rule changes (contract-level)
+| Change | Where | Before → after | Why / measured effect |
+|---|---|---|---|
+| **rule** Craft check-up has one definition | `OV.Data.craftServiceStatus(craft, from)` (crafts.js); `BaseSim.checkup` / new `BaseSim.serviceStatus`; `World` lands crafts with `BaseSim.checkup` | two copies (World, BaseSim) → one | `World.checkup` stays a pure query. Without BaseSim, World falls back to the same data function. |
+| **rule** `ufo_<type>` Ufopaedia article on first recovery | `Campaign.finishMission` step 8 | only via engineer interrogation → also on the first **won** crash/landed battle of that type | §5.11 rule unchanged; Campaign writes `G.ufopaedia`. |
+| **rule** Base defence strength | `Campaign.baseDefence` step 3 (§5.9) | garrison only vs 1 800 + 300/coef → garrison + defences (`BASE_DEFENCE_FACILITY_PCT` % of their power) vs (1 000 + 250/coef) × hull left | 8 rookies (≈ 1 150) always lost before, even on Recruta. Now they repel a Battleship on Recruta. On Veterano, 3 soldiers plus 2 Missile Defences hold. No soldier at home still loses the base. |
+| **rule** Crash near the coast lands | `Missions.onUfoDown`, `missionRules.crashCoastNm` 180 | crash at sea always destroyed (orig) → crash site on the nearest land point within 180 nm (20-nm rings, 30° bearings, no RNG) | Bot campaigns: 1–9 of 140–270 shoot-downs per batch end at sea (≈ 3 %). The world engineer's Europe sample had 2 of 3. |
+| **rule** Terror city choice | `Missions` (`pickTerrorCity`), `missionRules.terrorNearBaseWeightMul` 4 | uniform region → regions with a centroid within `nearBaseNm` of an X-COM base weigh ×4 | One base in the MVP. Out-of-reach sites expired unattended (−1 000 each). The chance of a far region drops from 5/9 to 5/21. |
+| **rule** Alien activity cadence | `Economy.ufoActivity30m` honours `scoring.ufoActivity.everyMin` | +1/+2 every 30 min → every 120 min | UFO-activity and alien-base points in months 2–3: ≈ 2 600 → 500–1 000 per month. One base cannot cover the globe, and the compressed wave timers multiply the traffic. |
+| **rule** Alien base surrender | `Campaign.finishMission` step 3, `TUNE.ALIEN_BASE_SURRENDER` | — → a won alien-base assault adds `['commander','leader','leader']` of the base race to containment (counts captures; needs room) | The playerBot almost never captures leaders: abductor 0/12, battleship 0/10, alien base 2/12 leader and 1/12 commander, even with stun launchers and a focus tactic. Without this no Veterano bot reached Cydonia. A human gets the same «Crisis» beat as DESIGN §14: assault the base, take the commander. |
+
+### 11.2 Data and tuning values
+| Knob | Before → after | Measured effect |
+|---|---|---|
+| `TUNE.MISSION_ARRIVE_NM` | read with default 5 → defined 5 | — |
+| `raceSchedule.alien_terror` | m0 {sectoid 60, floater 40}; m1+ {snakeman 60, floater 20, sectoid 20}; m2 +ethereal 20 → m0–1 {floater 100}; m2 {floater 40, sectoid 40, muton 20}; m3+ {sectoid 25, muton 30, snakeman 25, floater 20}; no Ethereals | Terror win rate by race and gear, 10 soldiers: Sectoid with rifles m0 5 %, m1 0 % (Cyberdiscs). Floater with rifles m0 85 %, m1 90 % (night 67 %). With lasers and armour: Sectoid m1 81 %, m2 75 % (night 67 %); Muton m2 81 % (night 67 %); Snakeman m2 6 %. With plasma: Snakeman 58 % at m2 and 42 % at m3; Ethereal 0 %. The stage-1 sweep put month-1 terror at 18 % (Veterano). The bot now wins 67 % (Veterano) and 78 % (Recruta) of all its campaign terror sites, months 0–7, night ones included. |
+| `deployments.dep_terror_site.civilians` | 10–14 → 6–9 | Snakeman m3 with plasma: 42 % → 83 % win, 7.3 → 3.8 losses (fewer zombies). |
+| `TUNE.TU_ALIEN_MELEE` | 15 → 22 | Same sweep (Chryssalids attack less per turn). Floater m0 with rifles is unchanged (85 % → 83 %). |
+| `WAVE_TIMER_SCALE` | 0.5 → 0.7 (the opening Alien Research waves and the terror waves keep their 0.5 timers explicitly) | Less traffic. With the bot's battle choice, median battles 32–38 → 19–20. The first crash site still comes by day 3 in 50–60 % of seeds, the first battle in 70 %. |
+| `scoring.ufoActivity.everyMin` | 30 → 120 | see 11.1 |
+| `TUNE.BASE_DEFENCE_BASE`, `_PER_COEF`, `_FACILITY_PCT` | 1 800, 300, — → 1 000, 250, 100 | see 11.1 |
+
+`TERROR_SITE_HOURS` (8–16 h) was **not** changed: `geo_missions.test.js` pins it. A longer window (16–28 h) would let
+one Skyranger reach any city; the terror city weighting does most of that job instead.
+
+### 11.3 Still pinned by other owners' tests (proposals, not applied)
+- Terror crews per difficulty (`battle_spawn_race.test.js`, `data_items_units.test.js`): making the Veterano terror
+  site 5 instead of 5–7 aliens lifted night terror from 67 % to 75 % for Floaters, Sectoids and Mutons alike.
+- Terror site lifetime 16–28 h (`geo_missions.test.js` line 196).
+- A lost terror battle keeps the site (`campaign_flow.test.js`). The site then also expires for −1 000. OpenXcom removes
+  the site after any battle, so a loss is currently penalised twice.
+- Council constants (`geo_economy.test.js`).
+
+### 11.4 Results (bot, `--days 240`)
+10 seeds per difficulty (4 for Super-humano), `node ovni-1999/tools/sim.js campaign --seeds 10 --diff 0|1 --days 240`:
+
+| | Recruta | Veterano | Super-humano (4) | DESIGN §14 target |
+|---|---|---|---|---|
+| Victories | 80 % (8/10) | 40 % (4/10) | 0 % | ≥ 50 % of runs never hit a council defeat |
+| Victory day (median, range) | 128 (122–187) | 159 (130–212) | – | 100–170 (months 4–6) |
+| Council defeats | 0 % | 20 % | 100 % (days 150–211) | ≤ 20 % on Veterano |
+| Other endings | 1 Cydonia lost, 1 timeout | 2 Cydonia lost, 2 timeout | – | – |
+| Battles (median; in victories) | 19.5; 19 | 19; 24 | 19 | 12–16 |
+| Battle win rate: crash / landed / terror / alien base / Cydonia | 96 / 93 / 78 / 90 / 89 % | 96 / 75 / 67 / 81 / 67 % | 88 / 63 / 50 / 0 / – % | – |
+| Soldiers lost (median) | 56.5 | 76 | 99.5 | – |
+| First crash ≤ day 3 / first battle ≤ day 3 | 50 % / 70 % | 60 % / 70 % | 50 % / 75 % | "most seeds" |
+| Shoot-downs ending at sea | 8 / 282 | 6 / 351 | 1 / 147 | – |
+| Infiltration pacts (all runs) | 21 | 25 | 13 | – |
+| Research medians (day): laser rifle, personal armour, Alien Origins, Martian Solution, Cydonia, Avenger | 26.5, 25.5, 45.5, 95.5, 115.5, 104.5 | 26.5, 25, 59.5, 101, 123.5, 119 | – | – |
+
+`--det` and `--save-mid 50` (3 Veterano seeds, 150 days) give identical hashes. In the bot's runs the Veterano
+defeats come from three causes: terror losses, which cost twice (see 11.3); repeated squad wipes on landed or crashed
+Ethereal and Muton scouts; and Cydonia, where the bot has no Blaster Launchers.
+The bot's own battle policy (also documented in its header):
+- up to 2 optional crash or landed battles a month;
+- small and medium scouts only in month 0, or when the story needs a live alien;
+- large scouts only when alloys are short;
+- terror sites always;
+- crash sites by daylight;
+- the Avenger kept for Cydonia.
+
+The bot is weaker than a human in battle: the battle engineers' sweeps already show about twice a careful player's
+losses per battle. It cannot stun leaders. So treat the Veterano numbers as a floor.

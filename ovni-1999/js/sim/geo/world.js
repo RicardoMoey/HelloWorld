@@ -134,21 +134,11 @@
     }
     return false;
   }
-  // estado de manutenção ao aterrar: reparar → rearmar → reabastecer → pronta (orig Craft::checkup)
-  function checkupOf(c) {
-    const def = defOf(c);
-    if (c.hp < def.hp) return 'repair';
-    for (const w of c.weapons || []) {
-      if (!w) continue;
-      const wd = D().craftWeapons[w.type];
-      if (wd && wd.ammoMax !== null && !wd.beam && (w.ammo | 0) < wd.ammoMax) return 'rearm';
-    }
-    if (c.fuel < def.fuel) return 'refuel';
-    return 'ready';
-  }
+  // manutenção ao aterrar: reparar → rearmar → reabastecer → pronta (orig Craft::checkup; definição única nos dados,
+  // OV.Data.craftServiceStatus, que o OV.BaseSim também usa)
   function checkup(G, craftId) {
     const c = Camp().findCraft(G, craftId);
-    return c ? checkupOf(c) : null;
+    return c ? D().craftServiceStatus(c, 0) : null;
   }
   function targetsUfo(G, ufoId) {
     for (const id in G.crafts) {
@@ -343,7 +333,8 @@
     c.patrol = false;
     c.lowFuel = false;
     c.missionT = null;
-    c.status = checkupOf(c);
+    if (OV.BaseSim && typeof OV.BaseSim.checkup === 'function') OV.BaseSim.checkup(G, c.id);
+    else c.status = D().craftServiceStatus(c, 0);
     ev(G, 'craftReturned', { craftId: c.id, baseId: b.id });
   }
   function arrive(G, c, def, ref) {
