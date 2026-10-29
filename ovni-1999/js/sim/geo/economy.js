@@ -155,21 +155,28 @@
     const Data = D();
     const month = G.month | 0;
     const m = G.score.month;
+
+    // pactos novos deste fim de mês (Missions.monthEnd, passo 17, já marcou country.pact e somou os pontos)
+    const newPacts = {};
+    for (const e of eventsNow(G, 'pactSigned')) newPacts[e.countryId] = true;
+    // Country::newMonth (orig): os pontos do pacto entram no registo do mês depois de calculados os totais — não
+    // contam para a avaliação nem para as mudanças de financiamento
+    let pactPts = 0;
+    for (const cid in newPacts) pactPts += Math.max(0, Math.min(Data.scoring.missionPoints.alien_infiltration | 0, m.alien.countries[cid] | 0));
+
     const bonus = councilBonus(G, month);
     const xcomTotal = m.xcom.total + m.research + bonus;
-    const alienTotal = m.alien.total;
+    const alienTotal = m.alien.total - pactPts;
     const r = xcomTotal - alienTotal;
     const T = threshold(G);
 
-    // receitas e manutenção (SavedGame::monthlyFunding corre com o financiamento ainda por alterar)
-    const inc = income(G);
+    // receitas e manutenção (SavedGame::monthlyFunding corre com o financiamento ainda por alterar: o país que
+    // assina o pacto neste fim de mês ainda paga o mês que acabou)
+    let inc = 0;
+    for (const c of G.countries) if (!c.pact || newPacts[c.id]) inc += c.funding | 0;
     const up = upkeep(G);
     const fundsBefore = G.funds;
     G.funds = fundsBefore + inc - up.total;
-
-    // pactos novos deste fim de mês
-    const newPacts = {};
-    for (const e of eventsNow(G, 'pactSigned')) newPacts[e.countryId] = true;
 
     const geo = C().rng(G, 'geo');
     const countries = [];
@@ -212,7 +219,7 @@
     pushCapped(G.history, { month, funds: G.funds, income: inc, upkeep: up.total, xcom: m.xcom.total, alien: alienTotal, research: m.research, rating: r });
     pushCapped(G.reports, report);
     G.score.all.xcom += m.xcom.total;
-    G.score.all.alien += alienTotal;
+    G.score.all.alien += m.alien.total; // inclui os pontos do pacto (fora da avaliação)
     G.score.all.research += m.research;
     G.score.month = C().newScoreMonth();
     return report;

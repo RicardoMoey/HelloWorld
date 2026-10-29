@@ -11,6 +11,8 @@
      onUfoDown(G, ufoId, 'crashed'|'destroyed', craftId|null)   queda no mar a ≤ crashCoastNm da costa plana até terra
      onSiteCleared(G, siteRef, 'win'|'abort'|'loss') ; onResearch(G, topicId)
      removeUfo(G, ufoId) → ufo|null      retira um OVNI (missão, naves que o seguiam); usado pelo World nos ataques à base
+   Retaliação (ours): ao encontrar a base, baseSpotted {baseId, missionId, etaS} (paragem) e pelo menos
+   RETALIATION_WARNING_MIN até o Couraçado partir; o Couraçado do ataque nasce já detetado (ufoDetected).
      regionWeights(G) → {regionId: peso}  pesos das missões da tabela (×3 perto de uma base X-COM), para testes/depuração
    }
    Trajetórias: a perna i → i+1 voa à altitude pts[i][1] e a pts[i][2] % da velocidade máxima; um ponto com altitude 0
@@ -432,6 +434,7 @@
       lon: 0, lat: 0, dest: null, alt: traj.pts[0][1], speed: 0, status: 'flying', dmg: 0, detected: false, hyper: false,
       groundLeftS: 0, crashLeftS: 0, lastSeen: null, objective,
       targetBaseId: assault ? m.targetBaseId : null, siteCity: objective && def.objective === 'site' ? m.cityId : null,
+      siege: null,
     };
     ufo.speed = legSpeed(ufo, traj.pts[0][2]);
     const ring = D().geoConst.entryRingDeg;
@@ -446,6 +449,11 @@
     if (assault) {
       m.wave = def.waves.length + 1;
       m.ufoCounter = 0;
+      // ours: a base foi avisada (baseSpotted) — o Couraçado do ataque aparece logo no radar
+      ufo.detected = true;
+      ufo.lastSeen = { lon: ufo.lon, lat: ufo.lat, t: G.t | 0 };
+      G.stats.ufosDetected++;
+      ev(G, 'ufoDetected', { ufoId: ufo.id, hyper: false });
       return ufo;
     }
     m.ufoCounter++;
@@ -669,6 +677,9 @@
         m.targetBaseId = b.id;
         const def = D().alienMissions[m.type];
         if (m.wave >= def.waves.length) m.countdownS = countdownS(G, def.waves[def.waves.length - 1].timer);
+        // ours: aviso com tempo para reagir (trazer a equipa, guardar os intercetores, construir defesas)
+        m.countdownS = Math.max(m.countdownS, tune('RETALIATION_WARNING_MIN', 1440) * 60);
+        ev(G, 'baseSpotted', { baseId: b.id, missionId: m.id, etaS: m.countdownS });
         break;
       }
     }
@@ -711,14 +722,19 @@
     A.newPacts = { month: G.month | 0, countries: signed };
   }
 
-  // batalha ganha: o local desaparece (e a sua missão termina quando não tiver mais OVNIs)
+  /* Depois de uma batalha. Vitória: o local desaparece (e a sua missão termina quando não tiver mais OVNIs).
+     Local de terror: desaparece depois de qualquer batalha (OpenXcom; a pontuação da batalha já conta os civis, sem
+     terrorSiteExpired). Queda/aterragem e base alienígena perdidas ou abortadas ficam (com o seu temporizador). */
   function onSiteCleared(G, siteRef, result) {
-    if (result !== 'win' || !siteRef) return;
-    if (siteRef.kind === 'ufo') removeUfo(G, siteRef.id);
-    else if (siteRef.kind === 'site') {
+    if (!siteRef) return;
+    if (siteRef.kind === 'site') {
       const s = Camp().removeById(G.sites, siteRef.id);
       if (s) dropTarget(G, 'site', s.id, s.lon, s.lat);
-    } else if (siteRef.kind === 'alienBase') {
+      return;
+    }
+    if (result !== 'win') return;
+    if (siteRef.kind === 'ufo') removeUfo(G, siteRef.id);
+    else if (siteRef.kind === 'alienBase') {
       const ab = Camp().removeById(G.alienBases, siteRef.id);
       if (!ab) return;
       for (const m of G.alienMissions.slice()) {

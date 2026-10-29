@@ -314,7 +314,7 @@
     researchDone: 'popup', productionDone: 'popup', productionStalled: 'popup', facilityDone: 'popup',
     deliveryArrived: 'popup', transferArrived: 'toast', soldierRecovered: 'toast',
     terrorSite: 'popup', terrorSiteExpired: 'popup', crashSiteExpired: 'toast', landedUfoGone: 'toast',
-    alienBaseFound: 'popup', alienBaseBuilt: 'debug', baseAttack: 'popup', baseDefence: 'popup',
+    alienBaseFound: 'popup', alienBaseBuilt: 'debug', baseSpotted: 'popup', baseAttack: 'popup', baseDefence: 'popup',
     retaliation: 'debug', pactSigned: 'toast',
     monthEnd: 'scene', gameOver: 'scene', victory: 'scene', autosaveDue: 'action',
   };
@@ -1533,6 +1533,16 @@
             tone: 'alert', icon: 'alien', title: T('geo.ev.alienBaseFound'), sound: 'ufo_detected', focus: ref,
             text: T('geo.ev.alienBaseFound.' + (has('geo.ev.alienBaseFound.' + ev.how) ? ev.how : 'agents'), { place: placeName(a.lon, a.lat) }),
             rows: alienBaseRows(G, a), lines: [T('geo.ev.alienBaseFound.stakes')], buttons: [sendBtn(ref, true), centreBtn(ref), ok],
+          };
+        }
+        case 'baseSpotted': {
+          // aviso de retaliação: há pelo menos um dia para preparar a defesa
+          const base = C().findBase(G, ev.baseId);
+          const eta = ev.etaS > 0 ? T('geo.approx', { t: fmtDur(ev.etaS / 3600) }) : '—';
+          return {
+            tone: 'terror', icon: 'base', title: T('geo.ev.baseSpotted'), sound: 'base_alarm', focus: base ? refOf('base', base.id) : null,
+            text: T('geo.ev.baseSpotted.body', { base: baseName(base), eta }),
+            lines: [T('geo.ev.baseSpotted.tips')], buttons: [baseBtn(ev.baseId, 'facilities'), ok],
           };
         }
         case 'baseAttack': {

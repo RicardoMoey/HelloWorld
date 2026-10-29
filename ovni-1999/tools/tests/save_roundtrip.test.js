@@ -231,6 +231,7 @@ module.exports = function (OV, t) {
   t.test('exportFile/importFile: nome pela data do jogo; G direto ou gravação; ida e volta', () => {
     const G = C.newCampaign({ seed: 14 });
     G.t = 86400 * 40;
+    G.month = OV.Clock.monthIndex(G); // o mês acompanha sempre o relógio (validação profunda)
     const f = S.exportFile(S.toJSON(G));
     t.eq([f.filename, f.name, f.mime], ['ovni1999-1999-02-10.json', 'ovni1999-1999-02-10.json', 'application/json']);
     t.eq(C.hash(S.importFile(f.text).G), C.hash(G));

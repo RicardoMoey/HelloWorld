@@ -100,7 +100,8 @@
   }
 
   // interrogatório: modelo (não é um tópico); tópicos concretos 'interrogate_<unidade>' sintetizados por researchTopic
-  // outcomes: flag só é ganha se 'after' já estiver investigado quando o interrogatório termina (sequência orig)
+  // outcomes: flag ganha se 'after' já estiver investigado quando o interrogatório termina (sequência orig); ours
+  // (retroativo): quando 'after' termina, a flag também é ganha se uma patente de 'ranks' já tiver sido interrogada
   R.interrogate = {
     template: true, cat: 'alien_life', points: 50, consumes: 'liveAlien',
     costByRank: { soldier: 45, navigator: 45, engineer: 45, medic: 45, terrorist: 45, leader: 55, commander: 65 },
@@ -326,6 +327,16 @@
     return out;
   }
 
+  // patentes já interrogadas (pelos tópicos interrogate_<unidade> investigados)
+  function interrogatedRanks(has) {
+    const out = [];
+    for (const unit of interrogableUnits()) {
+      const t = researchTopic(interrogationId(unit));
+      if (t && has(t.id) && !out.includes(t.rank)) out.push(t.rank);
+    }
+    return out;
+  }
+
   // efeitos de concluir um tópico, calculados ANTES de o marcar como investigado
   // → {id, points, flags:[novas], freeArticle, consumes, finalMission} | null
   function researchEffects(topicId, researchedSet, flags) {
@@ -335,6 +346,14 @@
     const fl = flags || {};
     const out = { id: t.id, points: has(t.id) ? 0 : t.points, flags: [], freeArticle: null, consumes: t.consumes || null, finalMission: false };
     for (const f of t.setsFlags) if (!fl[f] && !out.flags.includes(f)) out.flags.push(f);
+    // ours (retroativo): o conhecimento de um líder/comandante interrogado antes do tempo não se perde
+    const late = R.interrogate.outcomes.filter((o) => o.flag && o.after === t.id && !fl[o.flag]);
+    if (late.length) {
+      const ranks = interrogatedRanks(has);
+      for (const o of late) {
+        if (!out.flags.includes(o.flag) && (o.ranks === '*' || o.ranks.some((r) => ranks.includes(r)))) out.flags.push(o.flag);
+      }
+    }
     if (t.interrogation) {
       for (const f of interrogationFlags(t, has, fl)) if (!out.flags.includes(f)) out.flags.push(f);
       for (const o of R.interrogate.outcomes) {

@@ -213,7 +213,8 @@ ufo = { id, type, missionId, race, region,      // region = mission region
   detected:bool, hyper:bool /* identified by a hyper-wave decoder */,
   groundLeftS:int /* landed: seconds left on the ground */, crashLeftS:int /* crashed: seconds before the site vanishes */,
   lastSeen:{lon, lat, t}|null, objective:bool /* this UFO completes the mission objective */,
-  targetBaseId:string|null /* retaliation assault run */, siteCity:string|null /* terror objective city */ }
+  targetBaseId:string|null /* retaliation assault run */, siteCity:string|null /* terror objective city */,
+  siege:null|{baseId, shots:[{type, hit, dmg}]} /* assault run at the base: defences already fired (§5.9) */ }
 ```
 - Crash and landed sites are UFO records with status `crashed` or `landed`. They are not in `G.sites`.
 - A `crashed` UFO never moves. A `landed` UFO lifts off when `groundLeftS ≤ 0`.
@@ -235,6 +236,8 @@ Missions owns `G.alien`. Its content may grow (plain JSON only) if this table do
 `site = {id, kind:'terror', missionId, deployment:'dep_terror_site', cityId, lon, lat, race, region, country,
 leftS}`. A terror site is always visible. Each 30-min check does `leftS −= 1800`. At ≤ 0 the site expires (§3.2).
 Ours: a craft flying to the site does **not** stop the timer (the orig "cheeky exploit" is removed).
+A terror site is removed after **any** battle there (win, loss or abort; OpenXcom): the battle score already holds the
+civilian losses, so there is no `terrorSiteExpired` on top.
 
 ### 1.14 Alien bases
 `alienBase = {id, lon, lat, race, region, country, missionId, discovered:bool, foundT:int|null, supplyT:int|null}`.
@@ -256,6 +259,11 @@ save is refused while any exists (§7).
 cydoniaUnlocked /* = Data.researchFlags, set by research */, won, lost, lostReason}`.
 `lostReason` is `'council' | 'debt' | 'baseLost' | 'cydonia'`. Only `Campaign.endGame` writes `won`, `lost` and
 `lostReason`.
+Ours (retroactive interrogation, `Data.researchEffects`): an interrogation still gives `leaderInterrogated` /
+`commanderInterrogated` only when `alien_origins` / `martian_solution` is already researched (orig sequence), **and**
+when `alien_origins` / `martian_solution` completes, the flag is also granted if a leader/commander (resp. commander) was
+interrogated earlier (read from the `interrogate_<unit>` topics in `G.researched`; no new state). A commander questioned
+"too early" is no longer a dead end to Cydonia.
 
 ### 1.17 Stats (lifetime counters; writer in parentheses)
 `ufosDetected` (World), `ufosShotDown` and `ufosDestroyed` (Missions.onUfoDown), `missionsWon`, `missionsLost`,
@@ -298,10 +306,10 @@ Then for each tick, `mask = Clock.advance(G, 1)` and run the steps below in this
 |---|---|---|---|
 | 1 | 5 s | `World.moveCrafts(G)` | crafts `out`, `patrol`, `returning` move (§3.3); arrivals, contacts and dogfight requests |
 | 2 | 5 s | `World.moveUfos(G)` | flying UFOs move toward `dest`. On arrival: `Missions.onUfoWaypoint(G, ufo)`. Landed UFOs: `groundLeftS −= 5`; at ≤ 0: `Missions.onUfoLiftOff(G, ufo)` |
-| 3 | 5 s | `World.contacts(G)` | craft–UFO contacts that came from UFO movement (UFO reached a chasing craft); assault runs reaching an X-COM base → `Campaign.baseDefence(G, baseId, ufoId)` |
+| 3 | 5 s | `World.contacts(G)` | craft–UFO contacts that came from UFO movement (UFO reached a chasing craft); assault runs reaching an X-COM base: `baseAttack`, `Campaign.baseVolley` (defences fire first), armed non-transport crafts `ready` in that base's hangar scramble into dogfights (≤ `MAX_DOGFIGHTS`; World stops), and on the first tick with no dogfight left `Campaign.baseDefence(G, baseId, ufoId)` (§5.9) |
 | 4 | 10 min | `World.burnFuel(G)` | fuel use, low-fuel auto return (§3.3) |
 | 5 | 10 min | `World.patrolDiscovery(G)` | each patrolling craft (`patrol:true`) within 1 696 nm of an undiscovered alien base: `geo.pct(50 − 50·d/1696)` ⇒ discovered (`alienBaseFound`, how `'patrol'`) |
-| 6 | 10 min | `Missions.scan10m(G)` | retaliation UFOs search for X-COM bases (REA §3.2 chance; sets `base.spotted`, `mission.targetBaseId`) |
+| 6 | 10 min | `Missions.scan10m(G)` | retaliation UFOs search for X-COM bases (REA §3.2 chance; sets `base.spotted`, `mission.targetBaseId`); ours: `countdownS ≥ TUNE.RETALIATION_WARNING_MIN·60` and `baseSpotted` (stop) |
 | 7 | 30 min | `BaseSim.halfHourly(G)` | refuel crafts in status `refuel` (+`def.refuel`; Elerium craft consume `refuelItem`) |
 | 8 | 30 min | `World.detect(G)` | radar detection and loss (§3.4) |
 | 9 | 30 min | `Economy.ufoActivity30m(G)` | alien score: +1 per flying UFO, +2 per landed UFO, at the UFO's point (`Data.scoring.ufoActivity`) |
@@ -345,7 +353,8 @@ The result must be **identical** to stepping 5 s at a time. World ships a test p
   remaining distance ≤ its 5-s move), or the UFO reaches the craft (step 3).
   - Craft with at least one weapon that has ammo or is a beam, `ufo.speed ≤ def.speed`
     (`craftRules.engageRequiresSpeed`), and fewer than `MAX_DOGFIGHTS` running: `Dogfight.create` and
-    `dogfightStart`.
+    `dogfightStart`. Ours: the speed rule does not apply to the assault Battleship of a retaliation against the craft's
+    own base (`ufo.targetBaseId === craft.baseId`; it comes to the craft), and `canOrder` gives no `tooSlow` for it.
   - Otherwise, or for unarmed transports: shadow the UFO (`craft.lon/lat = ufo.lon/lat`) and keep chasing.
 - **Arrival at a landed or crashed UFO, a terror site or an alien base.** Status becomes `patrol` (it waits there) and
   `craftArrived {craftId, target, prompt}` is pushed. `prompt` is `'mission'` if the craft is a transport with ≥ 1
@@ -376,6 +385,8 @@ For every UFO with status `flying` or `landed` (crashed UFOs keep their flag):
    −30 (it replaces the size modifier), very low −20, low −10, high 0, very high −10 (REA §3.1).
 4. On a new detection: `stats.ufosDetected++`, `lastSeen` updated, `ufoDetected {ufoId, hyper}` pushed. While
    detected, `lastSeen = {lon, lat, t}` each check. `G.debug.revealUfos` forces step 1 semantics without `hyper`.
+5. Ours: the assault Battleship of a retaliation is created detected by `Missions.spawnUfo` (`ufoDetected`; the base was
+   warned by `baseSpotted`) and is never lost by step 2.
 
 ---
 
@@ -403,11 +414,11 @@ and stays paused while the popup is open (only the top scene thinks). **stop:fal
 | `craftLowFuel` | ✔ | `craftId` | World | popup | `ev.craftLowFuel` |
 | `craftReturned` | – | `craftId, baseId` | World | toast | `ev.craftReturned` |
 | `craftReady` | – | `craftId` | BaseSim | toast | `ev.craftReady` |
-| `craftRearmShort` | – | `craftId, itemId, what:'ammo'\|'fuel'` | BaseSim | toast «Sem munições/combustível em armazém» | `ev.craftRearmShort` |
+| `craftRearmShort` | – | `craftId, itemId, what:'ammo'\|'fuel'` | BaseSim | toast «Sem munições/combustível em armazém» — once per service cycle, when the other weapons finished rearming (orig: notify once, stop rearming that weapon) | `ev.craftRearmShort` |
 | `craftLost` | ✔ | `craftId, type, reason:'dogfight'\|'mission'\|'base', soldiers` | World.loseCraft | popup | `ev.craftLost` |
 | `targetLost` | ✔ | `craftId, target` | World | popup «Alvo perdido» with «Patrulhar / Regressar» | `ev.targetLost` |
 | `interceptOrderInvalid` | – | `craftId, reason` | World (an order became invalid by itself) | toast | `ev.orderInvalid.<reason>` |
-| `dogfightStart` | ✔ | `dogfightId, craftId, ufoId` | World | `DogfightUI.open(G, dogfightId)` | `df.start` |
+| `dogfightStart` | ✔ | `dogfightId, craftId, ufoId, scramble?:true` | World | `DogfightUI.open(G, dogfightId)`; `scramble` = a craft that took off from a base under attack | `df.start` |
 | `dogfightEnd` | – | `dogfightId, craftId, ufoId, outcome` | Dogfight.finish | DogfightUI closes that panel | `df.end.<outcome>` |
 | `researchDone` | ✔ | `baseId, topic, article, unlocked:[topicId], manufacture:[manufactureId], flags:[flag]` | BaseSim | popup «Investigação concluída» → «Ver Ufopédia» (`Ufopaedia.open`) and «Novo projeto» (`BaseUI.open(G, baseId, 'research')`) (GeoUI) | `ev.researchDone` |
 | `productionDone` | ✔ | `baseId, item, qty` | BaseSim | popup → «Ir para a base» | `ev.productionDone` |
@@ -423,7 +434,8 @@ and stays paused while the popup is open (only the top scene thinks). **stop:fal
 | `alienBaseFound` | ✔ | `alienBaseId, how:'patrol'\|'agents'\|'supply'` | World / Missions | popup + centre the globe | `ev.alienBaseFound` |
 | `alienBaseBuilt` | – | `alienBaseId` | Missions | nothing (hidden); debug toast | — |
 | `retaliation` | – | `missionId, region` | Missions | nothing (hidden) unless `G.debug` | — |
-| `baseAttack` | ✔ | `baseId, ufoId` | World.contacts | popup «A base está a ser atacada!» then the result | `ev.baseAttack` |
+| `baseSpotted` | ✔ | `baseId, missionId, etaS` | Missions.scan10m | red popup «Os alienígenas localizaram a base — ataque iminente» with the earliest attack time (`etaS` seconds from now, ≥ 24 h) and advice: bring the squad home, keep soldiers and interceptors at the base, build defences; «Centrar»/«Ir para a base» | `ev.baseSpotted` |
+| `baseAttack` | ✔ | `baseId, ufoId` | World.contacts | popup «A base está a ser atacada!» (defences have fired; ready armed crafts are taking off), then the dogfights, then the result | `ev.baseAttack` |
 | `baseDefence` | ✔ | `baseId, ufoId, shots:[{type, hit, dmg}], result:'ufoDestroyed'\|'repelled'\|'lost', soldiersLost:[ids]` | Campaign.baseDefence | result popup (CampaignUI) | `ev.baseDefence.<result>` |
 | `pactSigned` | – | `countryId` | Missions.monthEnd | listed in the month report | `ev.pactSigned` |
 | `monthEnd` | ✔ | `report` (§5.7) | World (step 18) | `CampaignUI.monthReport(G, report)` | `mr.*` |
@@ -501,8 +513,9 @@ onUfoDown(G, ufoId, how:'crashed'|'destroyed', craftId)
        X-COM score ufo.score (crash) or scoreDestroyed; next-wave delay missionRules.shootDownDelayMin;
        shoot-down retaliation roll (ai) from missionRules.shootDownRetaliationFromMonth; stats; ufoCrashed|ufoDestroyed
 onSiteCleared(G, siteRef, result:'win'|'abort'|'loss')
-     → win: remove the UFO / terror site / alien base (+ end its mission; alien base: also +scoring.alienBaseDestroyed
-       is already inside the battle score, do not add again); abort/loss: nothing (the site keeps its timer)
+     → terror site: removed after any result (OpenXcom; no terrorSiteExpired, no −1 000 on top of the battle score);
+       win: remove the UFO / alien base (+ end its mission; alien base: also +scoring.alienBaseDestroyed is already
+       inside the battle score, do not add again); crash/landed/alien base abort or loss: nothing (keeps its timer)
 onResearch(G, topicId)                         'immediate' scripts (researchRetaliation after martian_solution)
 ```
 Mission rules follow `Data.alienMissions`, `Data.missionScripts`, `Data.missionRules`, `Data.raceWeights` and
@@ -527,6 +540,8 @@ finish(G, dogfightId)                           applies the outcome and removes 
   - `craftDestroyed` → `World.loseCraft(G, craftId, 'dogfight')`.
 - Then `dogfightEnd` is pushed and `craft.dogfightId = null`.
 - Craft damage lowers `craft.hp`. UFO damage raises `ufo.dmg`. Ammo is taken from `craft.weapons[slot].ammo`.
+- Ours: an assault-run UFO (`ufo.targetBaseId`) never breaks off (it is committed to its target); when its escape
+  countdown ends the dogfight ends `disengaged` (it flies past to the base).
 - Tick-level events (returned, **not** pushed to `G.events`) feed the overlay animation:
   `{t:'df.fire', from, slot}`, `{t:'df.hit', target:'ufo'|'craft', dmg}`, `{t:'df.miss', from}`, `{t:'df.move', dist}`,
   `{t:'df.end', outcome}`.
@@ -539,16 +554,24 @@ capacities(G, baseId) → { personnel:{cap,used}, labs:{cap,used}, workshops:{ca
 canPlace(G, baseId, type, x, y) → reason|null   'cells'|'overlap'|'notConnected'|'lift'|'research'|'funds'
 build(G, baseId, type, x, y) → {ok,reason}       pays cost; daysLeft = def.days (debug.instantBuild ⇒ 0)
 canDismantle(G, baseId, x, y) → reason|null ; dismantle(G, baseId, x, y) → {ok,reason}   no refund; refused if it breaks
-                                                 connectivity, is the lift, or drops a capacity below its use
+                                                 connectivity, is the lift, or drops a capacity **that this facility
+                                                 provides** below its use (hangars: crafts + deliveries + paid craft
+                                                 production orders, as freeHangars)
 hire(G, baseId, kind:'soldier'|'scientist'|'engineer', n) → {ok,reason}   pays TUNE.*_HIRE; delivery after DELIVERY_PERSONNEL_H
 sack(G, baseId, kind, nOrSoldierId) → {ok,reason}     free staff only; a sacked soldier's armour/items return to stores
 buy(G, baseId, itemIdOrCraftType, n) → {ok,reason}    Data.items[id].buy or Data.crafts[type].buy; ETA item.deliveryH ‖ DELIVERY_ITEMS_H ‖ def.deliveryH
 sell(G, baseId, itemId, n) → {ok,reason}              immediate, Data.items[id].sell; live aliens never (Data.liveAliensSellable)
+canSellCraft(G, craftId) → reason|null ; sellCraft(G, craftId) → {ok, price}|{ok:false, reason}
+                                                     'noCraft'|'away' (not in its hangar, in a dogfight or on a mission)|'crew'
+                                                     (soldiers aboard); +Data.crafts[type].sell; fitted weapons, their loaded ammo
+                                                     (whole items) and the cargo go to stores; the rent stops, the hangar frees
 moveCargo(G, craftId, itemId, n) → {ok,reason}        n > 0 stores→craft.equipment, n < 0 back (craft at its base)
 setArmour(G, soldierId, armourId) → {ok,reason} ; assignSoldier(G, soldierId, craftId|null) → {ok,reason}
 fitWeapon(G, craftId, slot, weaponType|null) → {ok,reason}   launcher items from/to stores; ammo starts 0 → 'rearm'
 startResearch(G, baseId, topic, scientists) → {ok,reason}   'unavailable'|'labs'|'scientists'|'busy'; consumes needItem / live alien
-setScientists(G, baseId, topic, n) ; cancelResearch(G, baseId, topic)   (cancel keeps nothing consumed, orig)
+setScientists(G, baseId, topic, n) ; cancelResearch(G, baseId, topic) → {ok, returned:unitType|null}
+                                                     (a consumed item is not returned, orig; ours: the live alien of an
+                                                     interrogation goes back to containment, even over capacity)
 startProduction(G, baseId, item, engineers, qty) → {ok,reason}   'unavailable'|'workshops'|'engineers'|'hangar'
 setEngineers(G, baseId, productionId, n) ; setQty(G, baseId, productionId, qty) ; cancelProduction(G, baseId, productionId)
 halfHourly(G) ; hourly(G) ; daily(G)                 §3.1 steps 7, 11, 12
@@ -571,7 +594,9 @@ completeResearch(G, baseId, topic)                   exported for tests/debug: s
 - **Craft maintenance** (status chain repair → rearm → refuel → ready):
   - repair: `hp += CRAFT_REPAIR_HP_H` per hour.
   - rearm: each weapon gains `rearmPerHour` ammo per hour (cannon 100 = 2 × `cannon_rounds`), using
-    `ammoItem` from stores; if stores are short, push `craftRearmShort` and skip to the next status.
+    `ammoItem` from stores; a weapon whose ammo is out of stock is skipped; when no weapon is still rearming, push
+    `craftRearmShort` once per short item and go to the next status. A `craft_ammo` delivery sets `ready` crafts with
+    such a weapon back to `rearm`.
   - refuel: `+def.refuel` per 30 min; Elerium craft use 1 `elerium_115` per refuel step.
   - `craftReady` is pushed when the chain finishes.
 - Personnel delivered → `Soldiers.generate` + `Campaign.addSoldier`, or `scientists` / `engineers +=`. Craft
@@ -592,7 +617,10 @@ monthEnd(G) → report ; checkDefeat(G) → null|'council'|'debt'|'baseLost'
   capped at `fundingCap`, pact ⇒ 0.
 - The council bonus (`TUNE.COUNCIL_BONUS`) is added to the X-COM side when `endedMonth + 1 ≥ COUNCIL_BONUS_FROM_MONTH`
   (from the February report on).
-- `funds += income − upkeep`.
+- `funds += income − upkeep`. Income is the funding of every country without a pact **plus** the countries whose pact
+  was signed at this month end (`pactSigned` from step 17): they still pay the month that ended (SavedGame::monthlyFunding,
+  orig). The +150 pact points that `Missions.monthEnd` added stay in `score.all` but are subtracted from `alienTotal`
+  before the rating and the funding changes (Country::newMonth adds them after the totals, orig).
 - `council.badMonths` counts consecutive months with `rating ≤ T` (`TUNE.RATING_THRESHOLD[difficulty]`).
   `council.debtMonths` counts consecutive month ends with `funds ≤ TUNE.DEBT_LIMIT`.
 - Then: push `history` and `reports`, push each country's `history` (12 max), add `score.month` into `score.all`, and
@@ -740,15 +768,20 @@ model = { debrief: deb, mission: B.mission, meta, outcome: 'continue'|'victory'|
 
   Both keep the equipment invariant (§1.10).
 
+**`baseVolley(G, baseId, ufoId) → {shots, destroyed}`** — the defences fire first, once per attack: each completed
+defence facility rolls hit `pct(hitRatio)`, `dmg = power/2 + int(0, power)` added to `ufo.dmg`; sets
+`ufo.siege = {baseId, shots}`. A second call returns the same shots without firing. World calls it on arrival, then
+scrambles the base's ready armed crafts (§3.1 step 3), then calls `baseDefence` once no dogfight is left.
+
 **`baseDefence`** (MVP auto-resolve, DESIGN §4; combat stream):
-1. Each completed defence facility fires once: hit `pct(hitRatio)`, `dmg = power/2 + int(0, power)` added to
-   `ufo.dmg`.
+1. `baseVolley` (no-op if the defences already fired).
 2. If `ufo.dmg ≥ hp`: `result 'ufoDestroyed'`, `Missions.onUfoDown(…, 'destroyed', null)`.
 3. Otherwise compare the strength `Σ (tu + fire + hp)` of fit soldiers in the base (not on a craft that is out)
    `+ Σ floor(power × TUNE.BASE_DEFENCE_FACILITY_PCT / 100)` over the completed defence facilities, against
    `floor((TUNE.BASE_DEFENCE_BASE + TUNE.BASE_DEFENCE_PER_COEF × 2·difficulty) × (hp − ufo.dmg) / hp)` (the hull the
-   defences left standing). Wave 4 pacing values: 1 000 + 250/coef, defences at 50 % of their power (§11). With no fit
-   soldier at home the base is always lost.
+   defences and interceptors left standing). Values: 850 + 100/coef (850 / 1 050 / 1 250), defences at 100 % of their
+   power (§11). 8 starting rookies (1 105–1 198) hold on Veterano; Super-humano needs a defence, more or better
+   soldiers, or hull damage from interceptors. With no fit soldier at home the base is always lost.
    - Win: `'repelled'`. `int(1,3)` random fit soldiers die (cause `'base'`), the UFO is removed with
      `+ufo.score`, the retaliation mission ends.
    - Loss: `'lost'` → the base is destroyed → `endGame(G, 'lost', 'baseLost')`.
@@ -758,8 +791,9 @@ model = { debrief: deb, mission: B.mission, meta, outcome: 'continue'|'victory'|
 ```
 SCHEMA = 1 ; SLOTS = ['auto','autoTurn','1','2','3'] ; KEY(slot) = 'ovni1999.save.' + slot
 toJSON(G, B?, meta?) → obj      throws Error('save.err.busy') if G.dogfights.length; B via OV.Battle.serialize
-fromJSON(obj) → {G, B, meta}    validates game/schema, runs MIGRATIONS, Campaign.rebuildDerived(G), G.events = [],
-                                B via OV.Battle.deserialize; throws Error('save.err.game'|'save.err.schema'|'save.err.parse')
+fromJSON(obj) → {G, B, meta}    validates game/schema, runs MIGRATIONS, deep validation of G (below),
+                                Campaign.rebuildDerived(G), G.events = [], B via OV.Battle.deserialize;
+                                throws Error('save.err.game'|'save.err.schema'|'save.err.parse')
 write(slot, obj) → {ok, reason?:'quota'|'unavailable'} ; read(slot) → obj|null ; remove(slot) → bool
 list() → [{slot, label, savedAt, t, month, battle:bool}] (existing slots only) ; slots() → same (alias)
 load(slot) → {G, B, meta}|null
@@ -767,6 +801,13 @@ exportFile(obj) → {filename:'ovni1999-YYYY-MM-DD.json' (game date), mime:'appl
 importFile(text) → {G, B, meta}  (= fromJSON(JSON.parse(text)))
 MIGRATIONS = []                  MIGRATIONS[n] upgrades a schema-n save object to n+1 (in place, returns it)
 ```
+- Deep validation (`fromJSON`): `t` integer ≥ 0 and a multiple of 5, `month === Clock.monthIndex(t)`, integer funds,
+  `ids.seq`/`craftNum`, `score.month`/`score.all`, every country, base (arrays `grid soldiers crafts research production
+  deliveries`, known facility types), craft (known type, existing base that lists it, known status), soldier (stats,
+  base that lists it, craft that seats it), UFO, alien mission, site and alien base must be well-formed, or
+  `save.err.parse`. Obvious defaults are repaired: missing `transfers`/`aliens`/`spotted`, counters, flags, `seen`, a
+  short or null `weapons` list, a missing loadout, a non-object `ui`; hand-written dogfights are dropped. Then every
+  clock handler of §3.1 runs once on a JSON clone; any exception ⇒ `save.err.parse` (the real G is untouched).
 - Save shape (DESIGN §18): `{game:'ovni-1999', schema, savedAt, label, build, campaign: G without events,
   battle: null|serialized B}`.
 - `meta.label` is supplied by the UI (translated, e.g. «Mar 1999 — Base Lusitânia»). `savedAt` is an ISO string,
@@ -892,7 +933,8 @@ The overlay ticks every open dogfight once per 30 ms of real time (`Data.dogfigh
 | `LOW_FUEL_MARGIN_10M` | tuning.js (**new**) | 1 | low-fuel return margin (10-min steps) |
 | `WOUND_RECOVERY_MIN/MAX`, `PROMO_*` | tuning.js | 25/75, 4/8/15/20 | soldier turnaround and ranks |
 | `SOLDIER_/SCIENTIST_/ENGINEER_HIRE/SALARY` | tuning.js | orig | personnel economy |
-| `BASE_DEFENCE_BASE`, `BASE_DEFENCE_PER_COEF`, `BASE_DEFENCE_FACILITY_PCT` | tuning.js | 1000, 250, 50 (§11) | retaliation auto-resolve |
+| `BASE_DEFENCE_BASE`, `BASE_DEFENCE_PER_COEF`, `BASE_DEFENCE_FACILITY_PCT` | tuning.js | 850, 100, 100 (§11) | retaliation auto-resolve |
+| `RETALIATION_WARNING_MIN` | tuning.js (**new**) | 1440 (§11.5) | minimum time from `baseSpotted` to the assault Battleship's launch |
 | `MISSION_ARRIVE_NM` | tuning.js | 5 | a patrolling transport this close to a site counts as arrived (`startMission`) |
 | `ALIEN_BASE_SURRENDER` | tuning.js | `['commander','leader','leader']` (§11) | ranks handed over alive when an alien base falls |
 | `TU_ALIEN_MELEE` | tuning.js | 22 (§11; orig 15) | Chryssalid/Reaper/Zombie attack cost |
@@ -900,6 +942,7 @@ The overlay ticks every open dogfight once per 30 ms of real time (`Data.dogfigh
 | facility `cost`, `days`, `upkeep`, radar `radarChance`/`radarRange` | data/base.js `FAC` | §3.14 | build pace, detection |
 | `startingBase` (layout, personnel, crafts, stores) | data/base.js | orig + extras | opening |
 | craft `speed`, `fuel`, `hp`, `refuel`; `craftRules.*`; `dogfight.*` | data/crafts.js | §3.13 | interception |
+| craft `sell` | data/crafts.js | Skyranger 375 000, Interceptor 450 000, Firestorm 300 000, Avenger 675 000 (ours: 75 % of the purchase or of the $ production cost) | `BaseSim.sellCraft` |
 | craft weapon `dmg`, `acc`, `ammoMax`, `reload` | data/crafts.js | §3.13 | interception |
 | UFO `hp`, `speed`, `weapon`, `breakOff`, `score`; `ufoRules.*` | data/ufos.js | §3.12 | interception, recovery |
 | research `cost`, `points`; `researchRules.costRandPct` | data/research.js | ×0.25 orig | tech pace |
@@ -986,7 +1029,8 @@ changes marked **rule**, which are small sim fixes with tests in `tools/tests/ca
 | `TUNE.TU_ALIEN_MELEE` | 15 → 22 | Same sweep (Chryssalids attack less per turn). Floater m0 with rifles is unchanged (85 % → 83 %). |
 | `WAVE_TIMER_SCALE` | 0.5 → 0.7 (the opening Alien Research waves and the terror waves keep their 0.5 timers explicitly) | Less traffic. With the bot's battle choice, median battles 32–38 → 19–20. The first crash site still comes by day 3 in 50–60 % of seeds, the first battle in 70 %. |
 | `scoring.ufoActivity.everyMin` | 30 → 120 | see 11.1 |
-| `TUNE.BASE_DEFENCE_BASE`, `_PER_COEF`, `_FACILITY_PCT` | 1 800, 300, — → 1 000, 250, 100 | see 11.1 |
+| `TUNE.BASE_DEFENCE_BASE`, `_PER_COEF`, `_FACILITY_PCT` | 1 800, 300, — → 1 000, 250, 100 → (wave 4 fixer) 850, 100, 100 | see 11.1 and 11.5 |
+| `dogfight.approach` (crafts.js) | 2 → 4 per tick | shorter duels; the first shoot-down is feasible on Veterano with the starting Interceptors (DESIGN §3.13 / REA §6 say −2; DESIGN §22 still needs the entry) |
 
 `TERROR_SITE_HOURS` (8–16 h) was **not** changed: `geo_missions.test.js` pins it. A longer window (16–28 h) would let
 one Skyranger reach any city; the terror city weighting does most of that job instead.
@@ -995,8 +1039,7 @@ one Skyranger reach any city; the terror city weighting does most of that job in
 - Terror crews per difficulty (`battle_spawn_race.test.js`, `data_items_units.test.js`): making the Veterano terror
   site 5 instead of 5–7 aliens lifted night terror from 67 % to 75 % for Floaters, Sectoids and Mutons alike.
 - Terror site lifetime 16–28 h (`geo_missions.test.js` line 196).
-- A lost terror battle keeps the site (`campaign_flow.test.js`). The site then also expires for −1 000. OpenXcom removes
-  the site after any battle, so a loss is currently penalised twice.
+- ~~A lost terror battle keeps the site~~ — applied in §11.5.
 - Council constants (`geo_economy.test.js`).
 
 ### 11.4 Results (bot, `--days 240`)
@@ -1029,3 +1072,41 @@ The bot's own battle policy (also documented in its header):
 
 The bot is weaker than a human in battle: the battle engineers' sweeps already show about twice a careful player's
 losses per battle. It cannot stun leaders. So treat the Veterano numbers as a floor.
+
+### 11.5 Wave 4 fixes (sim/data fixer)
+Verified review findings, fixed at the root with tests in `tools/tests/geo_wave4fix.test.js` (plus the pinned tests
+they changed). **rule** = contract-level change.
+
+| Change | Where | Before → after |
+|---|---|---|
+| **rule** Retroactive interrogation (ours) | `Data.researchEffects` (research.js) | a leader/commander interrogated before `alien_origins` / `martian_solution` was wasted (the alien-base surrender gives exactly 1 commander + 2 leaders, so one wrong click locked Cydonia) → the flag is granted when that topic completes (§1.16) |
+| **rule** Cancel an interrogation | `BaseSim.cancelResearch` | the live alien was lost → it returns to containment (`{ok, returned}`) |
+| **rule** Terror site after a lost/aborted battle | `Missions.onSiteCleared` | the site stayed and later expired (−1 000 on top of the negative battle score) → removed after any battle (OpenXcom) |
+| **rule** Retaliation warning | `Missions.scan10m`, event `baseSpotted` (stop) | the base was found silently and the assault could arrive within an hour → `baseSpotted {baseId, missionId, etaS}` and ≥ `RETALIATION_WARNING_MIN` (24 h) before the assault Battleship launches |
+| **rule** Assault Battleship | `Missions.spawnUfo`, `World.detect` | usually never seen → spawns detected (`ufoDetected`) and stays tracked |
+| **rule** Base defence sequence | `World.contacts`, `Campaign.baseVolley` / `baseDefence`, `Dogfight` | defences + garrison in one roll → defences fire first (`ufo.siege`), then ready armed non-transport crafts in that hangar scramble into dogfights (no speed requirement against an assault on their own base; the assault ship never breaks off, its escape timer ends the duel `disengaged`), then the garrison against the hull left |
+| Base defence sizing | `TUNE.BASE_DEFENCE_BASE / _PER_COEF` | 1 000 + 250/coef (Veterano 1 500 > any 8-rookie garrison, 1 105–1 198) → 850 + 100/coef (850 / 1 050 / 1 250): an alert Veterano player with the 8 starting soldiers at home holds (20/20 seeds, 1–3 killed); Super-humano needs a defence or better soldiers |
+| **rule** Sell crafts | `BaseSim.sellCraft` / `canSellCraft`, craft `sell` | crafts could never be sold (rent forever, no free hangar in the starting base) → sold at `Data.crafts[type].sell` from the hangar, without crew |
+| **rule** Pact month-end order | `Economy.monthEnd` | the pact country's last funding was never paid and its +150 lowered that month's rating → paid, and the points stay out of the rating (§5.7) |
+| Rearm notifications | `BaseSim` rearm | `craftRearmShort` every hour while another weapon rearmed → once per service cycle |
+| Dismantle checks | `BaseSim.canDismantle` | a hangar reserved by paid craft production could be dismantled; an overfull store made every facility «em uso» → only capacities the facility provides, hangars count reserved production |
+| Save validation | `Save.fromJSON` | only top-level types → deep validation + repair + a dry run of every clock handler on a clone (§5.10) |
+| Contract values | this file | §5.9/§8 said defences count 50 % (shipped 100 %); the dogfight approach 2 → 4 is now listed in §11.2 |
+
+The campaign bot keeps its squad at home while its base is spotted (`baseSpotted` until the retaliation ends) and
+disengages scrambles that cannot hurt the attacker (`canFight`).
+
+Bot sweep, `node ovni-1999/tools/sim.js campaign --seeds 6 --diff 0,1 --days 240 --det` (deterministic, exit 0), before
+→ after these fixes (the bot also stopped spending the Avenger's alloys on power suits when Cydonia is researched first):
+
+| | Recruta before | Recruta after | Veterano before | Veterano after |
+|---|---|---|---|---|
+| Victories | 5/6 (83 %) | 5/6 (83 %) | 2/6 (33 %) | 1/6 (17 %) |
+| Council defeats | 0 | 0 | 2/6 (33 %) | 1/6 (17 %) |
+| Base losses (attacks; all repelled) | 0 (–) | 0 (4) | 0 (–) | 0 (10) |
+| Median victory day | 132 | 135.5 | 159 | 144.5 |
+| Other endings | 1 Cydonia lost | 1 timeout | 1 timeout, 1 Cydonia lost | 2 timeouts, 2 Cydonia lost |
+| Terror sites expired | 7 | 4 | 15 | 8 |
+
+Six seeds are noisy: the Veterano victory lost is seed 2, where the bot's Cydonia battle failed (the bot has no Blaster
+Launchers; Cydonia 67 % → 33 % on 3 attempts). Seed 5 now survives the council to day 240 (was defeated on day 119).

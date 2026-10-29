@@ -43,7 +43,7 @@ module.exports = function (OV, t) {
 
   t.test('afinação: chaves novas do contrato em OV.TUNE (§8)', () => {
     t.eq(T.MISSION_ARRIVE_NM, 5);
-    t.eq([T.BASE_DEFENCE_BASE, T.BASE_DEFENCE_PER_COEF, T.BASE_DEFENCE_FACILITY_PCT], [1000, 250, 100]);
+    t.eq([T.BASE_DEFENCE_BASE, T.BASE_DEFENCE_PER_COEF, T.BASE_DEFENCE_FACILITY_PCT, T.RETALIATION_WARNING_MIN], [850, 100, 100, 1440]);
     t.eq(T.ALIEN_BASE_SURRENDER, ['commander', 'leader', 'leader']);
     t.eq(D.missionRules.terrorNearBaseWeightMul, 4);
     t.eq(D.missionRules.crashCoastNm, 180);
@@ -104,7 +104,7 @@ module.exports = function (OV, t) {
       t.eq(r.result, 'repelled', 'semente ' + seed);
       t.ok(r.soldiersLost.length >= 1 && r.soldiersLost.length <= 3);
     }
-    // Veterano (exigência 1 500): 3 soldados sozinhos não chegam; com duas defesas de mísseis (+500 cada) sim
+    // Veterano (exigência 1 050): 3 soldados sozinhos não chegam; com duas defesas de mísseis (+500 cada) sim
     const vet = (withDefences) => {
       const G = freshG(9, 1);
       const sky = skyOf(G);
@@ -119,10 +119,10 @@ module.exports = function (OV, t) {
       const u = placeUfo(G, 'flying', 'battleship', G.bases[0].lon, G.bases[0].lat);
       const r = C.baseDefence(G, 'b1', u.id);
       const shot = r.shots.reduce((s, x) => s + x.dmg, 0);
-      const need = Math.floor((1500 * (D.ufos.battleship.hp - shot)) / D.ufos.battleship.hp);
+      const need = Math.floor((1050 * (D.ufos.battleship.hp - shot)) / D.ufos.battleship.hp);
       return { r, strength, need };
     };
-    t.eq(T.BASE_DEFENCE_BASE + T.BASE_DEFENCE_PER_COEF * 2, 1500);
+    t.eq(T.BASE_DEFENCE_BASE + T.BASE_DEFENCE_PER_COEF * 2, 1050);
     const bare = vet(false);
     t.ok(bare.strength < bare.need, 'só 3 soldados: ' + bare.strength);
     t.eq(bare.r.result, 'lost');

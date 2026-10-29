@@ -41,7 +41,7 @@
     deliveryArrived: { stop: true }, transferArrived: { stop: false }, soldierRecovered: { stop: false },
     terrorSite: { stop: true }, terrorSiteExpired: { stop: true }, crashSiteExpired: { stop: false }, landedUfoGone: { stop: false },
     alienBaseFound: { stop: true }, alienBaseBuilt: { stop: false }, baseAttack: { stop: true }, baseDefence: { stop: true },
-    retaliation: { stop: false }, pactSigned: { stop: false },
+    retaliation: { stop: false }, baseSpotted: { stop: true }, pactSigned: { stop: false },
     monthEnd: { stop: true }, gameOver: { stop: true }, victory: { stop: true }, autosaveDue: { stop: false },
   };
 
@@ -395,6 +395,7 @@
        startMission(G, siteRef, craftId, {settings}?) → missão para OV.Battle.create (marca G.activeMission)
        cancelMission(G) → bool (sai do briefing sem batalha) ; abortMission(G, B) → modelo (abortar + finishMission)
        finishMission(G, B) → modelo do debriefing
+       baseVolley(G, baseId, ufoId) → {shots, destroyed} (defesas atiram uma vez; ufo.siege)
        baseDefence(G, baseId, ufoId) → {result, shots, soldiersLost} }
      Erros de pré-condição: Error('campaign.err.<motivo>'). */
   const U = OV.U;
@@ -802,13 +803,13 @@
     return finishMission(G, B);
   }
 
-  /* Ataque a uma base X-COM, resolvido automaticamente (MVP; contrato §5.9 baseDefence; stream combat). */
-  function baseDefence(G, baseId, ufoId) {
-    const Data = D();
+  /* Salva das defesas da base contra o OVNI do ataque (atiram primeiro, uma vez por ataque; stream combat). Marca
+     ufo.siege = {baseId, shots} (o World lança depois as naves armadas do hangar e só então resolve o assalto). */
+  function baseVolley(G, baseId, ufoId) {
     const base = C.findBase(G, baseId);
     const ufo = C.findUfo(G, ufoId);
     if (!base || !ufo) throw fail('noTarget');
-    const ufoDef = Data.ufos[ufo.type];
+    if (ufo.siege && ufo.siege.baseId === baseId) return { shots: ufo.siege.shots, destroyed: (ufo.dmg | 0) >= D().ufos[ufo.type].hp };
     const r = C.rng(G, 'combat');
     const shots = [];
     for (const d of OV.BaseSim.capacities(G, baseId).defences) {
@@ -817,6 +818,20 @@
       if (hit) ufo.dmg = (ufo.dmg | 0) + dmg;
       shots.push({ type: d.type, hit, dmg });
     }
+    ufo.siege = { baseId, shots };
+    return { shots, destroyed: (ufo.dmg | 0) >= D().ufos[ufo.type].hp };
+  }
+
+  /* Ataque a uma base X-COM, resolvido automaticamente (MVP; contrato §5.9 baseDefence; stream combat): salva das
+     defesas (se ainda não houve), depois a guarnição contra o casco que resta. */
+  function baseDefence(G, baseId, ufoId) {
+    const Data = D();
+    const base = C.findBase(G, baseId);
+    const ufo = C.findUfo(G, ufoId);
+    if (!base || !ufo) throw fail('noTarget');
+    const ufoDef = Data.ufos[ufo.type];
+    const shots = baseVolley(G, baseId, ufoId).shots;
+    const r = C.rng(G, 'combat');
     const soldiersLost = [];
     let result;
     if ((ufo.dmg | 0) >= ufoDef.hp) {
@@ -833,7 +848,7 @@
       const defPct = tune('BASE_DEFENCE_FACILITY_PCT', 100);
       let strength = garrison.reduce((sum, s) => sum + (s.stats.tu | 0) + (s.stats.fire | 0) + (s.stats.hp | 0), 0);
       for (const d of OV.BaseSim.capacities(G, baseId).defences) strength += U.idiv((d.power | 0) * defPct, 100);
-      const full = tune('BASE_DEFENCE_BASE', 1000) + tune('BASE_DEFENCE_PER_COEF', 250) * 2 * (G.difficulty | 0);
+      const full = tune('BASE_DEFENCE_BASE', 850) + tune('BASE_DEFENCE_PER_COEF', 100) * 2 * (G.difficulty | 0);
       const need = U.idiv(full * Math.max(0, ufoDef.hp - (ufo.dmg | 0)), Math.max(1, ufoDef.hp));
       if (garrison.length && strength >= need) {
         result = 'repelled';
@@ -871,6 +886,6 @@
 
   Object.assign(OV.Campaign, {
     availableResearch, availableManufacture, equipPool, applyEquip, siteRefOf, briefingMeta,
-    startMission, cancelMission, abortMission, finishMission, baseDefence,
+    startMission, cancelMission, abortMission, finishMission, baseVolley, baseDefence,
   });
 })(globalThis.OV || (globalThis.OV = {}));

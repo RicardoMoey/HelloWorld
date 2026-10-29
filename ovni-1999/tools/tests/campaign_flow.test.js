@@ -223,7 +223,7 @@ module.exports = function (OV, t) {
     }
   });
 
-  t.test('terror: derrota → equipa perdida (memorial), nave perdida (uma só penalização), local continua', () => {
+  t.test('terror: derrota → equipa perdida (memorial), nave perdida (uma só penalização), local desaparece sem −1000', () => {
     const G = freshG(13);
     const sky = skyOf(G);
     const site = placeSite(G, 'paris', 'floater');
@@ -241,7 +241,11 @@ module.exports = function (OV, t) {
     t.ok(model.craftLost && !G.crafts[sky.id], 'nave perdida');
     t.eq(G.stats.missionsLost, 1);
     t.eq(G.stats.craftsLost, 1);
-    t.eq(G.sites.length, 1, 'o local de terror fica (o temporizador continua)');
+    t.eq(G.sites.length, 0, 'o local de terror desaparece depois de qualquer batalha (OpenXcom)');
+    const alienBefore = G.score.month.alien.total;
+    for (let k = 0; k < 40; k++) OV.Missions.think30m(G);
+    t.eq(G.score.month.alien.total - alienBefore < D.scoring.terrorSiteExpired, true, 'sem terrorSiteExpired depois da derrota');
+    t.ok(!G.events.some((e) => e.t === 'terrorSiteExpired'));
     t.eq(G.score.month.xcom.total - xBefore, model.debrief.score, 'penalização da nave contada uma vez');
     t.eq(G.dead.length, 8);
     t.eq(Object.keys(G.soldiers).length, 0);

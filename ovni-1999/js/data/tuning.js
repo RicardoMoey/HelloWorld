@@ -133,8 +133,10 @@
     GEO_FRAME_BUDGET_MS: 12,
     AUTOSAVE_DAYS: [1, 10, 20], // dias do mês com gravação automática
     LOW_FUEL_MARGIN_10M: 1, // margem (passos de 10 min) no regresso por falta de combustível
-    BASE_DEFENCE_BASE: 1000, // defesa automática da base: força necessária (Σ UT+Pontaria+Saúde da guarnição)…
-    BASE_DEFENCE_PER_COEF: 250, // …+250 por coeficiente de dificuldade (0/2/4); × casco que resta ao OVNI
+    BASE_DEFENCE_BASE: 850, // defesa automática da base: força necessária (Σ UT+Pontaria+Saúde da guarnição)…
+    BASE_DEFENCE_PER_COEF: 100, // …+100 por coeficiente (0/2/4) ⇒ 850/1050/1250 × casco que resta ao OVNI; 8 recrutas em casa
+    // (1105–1198) aguentam em Veterano; em Super-humano é preciso uma defesa ou soldados melhores
+    RETALIATION_WARNING_MIN: 1440, // ours: base encontrada (baseSpotted) ⇒ pelo menos 24 h até o Couraçado do ataque partir
     BASE_DEFENCE_FACILITY_PCT: 100, // cada defesa concluída soma o seu poder à força da guarnição (precisa de ≥ 1 soldado)
     MISSION_ARRIVE_NM: 5, // nave em patrulha a ≤ 5 mn de um local conta como chegada (startMission)
     ALIEN_BASE_SURRENDER: ['commander', 'leader', 'leader'], // ours: base alienígena tomada entrega estes vivos (contenção)

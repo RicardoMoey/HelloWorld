@@ -21,6 +21,8 @@
      médios só no mês 0 ou quando a história precisa de um alienígena vivo, grandes só quando faltam ligas; bases
      alienígenas com lasers e armadura (Homens-Serpente: plasma; Mutões: fatos energéticos e Cidónia desbloqueada) e
      20 dias de pausa depois de um fracasso; o Vingador fica para Cidónia, que parte com 12 fatos (ou ao fim de 12 dias);
+   - base localizada (baseSpotted): a nave de transporte volta e fica em casa até a retaliação acabar; descolagens
+     contra o Couraçado do ataque sem hipóteses (canFight) desengatam logo;
    - batalhas com OV.AI (lado X-COM) através de Campaign.startMission / finishMission (limite 40 turnos ⇒ abortar);
    - equipa os soldados com o melhor material investigado (armas alienígenas só depois de investigadas, como o
      motor exige), armaduras, kits médicos, very-lights e granadas; fabrica lasers, armaduras, carregadores de plasma,
@@ -93,7 +95,7 @@ function create(OV, opts) {
       battles: [], dogfights: { started: 0, crashed: 0, destroyed: 0, escaped: 0, other: 0, lost: 0 },
       research: {}, months: [], built: {}, firstCrashT: null, firstBattleT: null, firstDetectT: null, avengerT: null,
       retaliations: [], seaDowns: 0, baseFail: {}, basesFound: [], crashSites: 0, terror: { seen: 0, fought: 0, won: 0, expired: 0 }, lastManageDay: -1,
-      sold: 0, pacts: [],
+      sold: 0, pacts: [], spotted: [],
     },
   };
 
@@ -110,6 +112,8 @@ function create(OV, opts) {
   const fitSoldiers = (c) => c.soldiers.filter((id) => bot.G.soldiers[id] && !(bot.G.soldiers[id].woundDays > 0)).length;
   const transports = () => crafts().filter((c) => D.crafts[c.type].transport);
   const interceptors = () => crafts().filter((c) => !D.crafts[c.type].transport);
+  // base encontrada por uma retaliação (aviso baseSpotted): a equipa fica em casa até o ataque passar
+  const threatened = () => !!base() && bot.G.alienMissions.some((m) => m.targetBaseId === base().id);
   const baseReserve = () => 600000 + 150000 * (bot.G.month | 0);
   // a juntar para o Vingador: obras, contratações e fabrico comum esperam (o Vingador usa só a reserva base)
   const saving = () => has('ultimate_craft') && !craftsOf('avenger').length && !producing('avenger').length;
@@ -426,8 +430,10 @@ function create(OV, opts) {
     }
     if (has('power_suit')) {
       const n = owned('power_suit') + pending('power_suit');
-      // fase final: fatos para os 12 de Cidónia antes de tudo
-      if (n < squad) out.push({ item: 'power_suit', qty: Math.min(2, squad - n), pri: bot.G.flags.cydoniaUnlocked ? 101 : 80, forAvenger: !!bot.G.flags.cydoniaUnlocked });
+      // fase final: fatos para os 12 de Cidónia antes de tudo — mas só com o Vingador feito ou em fabrico (as ligas
+      // reservadas para ele não vão para os fatos quando Cidónia é investigada antes da nave)
+      const last = !!bot.G.flags.cydoniaUnlocked && avenger;
+      if (n < squad) out.push({ item: 'power_suit', qty: Math.min(2, squad - n), pri: last ? 101 : 80, forAvenger: last });
     }
     if (has('medikit') && owned('medikit') + pending('medikit') < 4) out.push({ item: 'medikit', qty: 1, pri: 75 });
     if (has('alien_grenade') && bot.G.flags.martianSolution && owned('alien_grenade') + pending('alien_grenade') < 12) out.push({ item: 'alien_grenade', qty: 4, pri: 74 });
@@ -680,7 +686,8 @@ function create(OV, opts) {
       });
     }
     // fora do alcance da arma do OVNI: «Cauteloso» (alcance mais longo) dispara sem levar tiros
-    if (ufo && craft) {
+    if (ufo && craft && ufo.targetBaseId && !canFight(craft, ufo)) mode = 'disengage'; // descolagem sem hipóteses
+    else if (ufo && craft) {
       const reach = Math.max(0, ...craft.weapons.filter((w) => w && (w.ammo === null || w.ammo > 0)).map((w) => D.craftWeapons[w.type].range));
       if (D.ufos[ufo.type].weapon.range > 0 && reach > D.ufos[ufo.type].weapon.range) mode = 'cautious';
     }
@@ -782,6 +789,10 @@ function create(OV, opts) {
     // a caminho de um alvo: se outro mais urgente aparecer (terror), muda de rumo
     const busy = AIR[c.status];
     if (busy && c.status === 'returning') return;
+    if (threatened()) {
+      if (busy) W.recall(G, c.id);
+      return;
+    }
     if (!busy && !launchable(c)) return;
     // fase final: Cidónia desbloqueada e Vingador pronto ⇒ a equipa espera por Cidónia (sem arriscar o Vingador)
     if (G.flags.cydoniaUnlocked && c.type === 'avenger') return;
@@ -902,6 +913,10 @@ function create(OV, opts) {
       case 'productionDone':
         if (ev.item === 'avenger' && bot.mem.avengerT === null) bot.mem.avengerT = G.t;
         break;
+      case 'baseSpotted':
+        bot.mem.spotted.push(+(G.t / DAY).toFixed(1));
+        say('a base foi localizada pelos alienígenas — a equipa fica em casa');
+        break;
       case 'baseDefence':
         bot.mem.retaliations.push({ day: +(G.t / DAY).toFixed(1), result: ev.result, lost: ev.soldiersLost.length });
         say('ataque à base → ' + ev.result);
@@ -1009,7 +1024,7 @@ function create(OV, opts) {
         detected: G.stats.ufosDetected, intercepted: m.dogfights.started, crashed: m.dogfights.crashed, destroyed: m.dogfights.destroyed,
         escaped: m.dogfights.escaped, craftLost: m.dogfights.lost, crashedAtSea: m.seaDowns, shotDownTotal: G.stats.ufosShotDown, destroyedTotal: G.stats.ufosDestroyed,
       },
-      terror: m.terror, pacts: m.pacts, retaliations: m.retaliations, sold: m.sold, basesFound: m.basesFound,
+      terror: m.terror, pacts: m.pacts, retaliations: m.retaliations, spotted: m.spotted, sold: m.sold, basesFound: m.basesFound,
       ufosSpawned: (G.ids.seq.u | 0), crashSites: m.crashSites,
       firstDetectDay: m.firstDetectT === null ? null : +(m.firstDetectT / DAY).toFixed(2),
       firstCrashDay: m.firstCrashT === null ? null : +(m.firstCrashT / DAY).toFixed(2),

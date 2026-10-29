@@ -265,14 +265,13 @@ module.exports = function (OV, t) {
     t.eq(G.flags.interrogated, true);
     t.ok(G.ufopaedia.indexOf('race_sectoid') >= 0 && G.ufopaedia.indexOf('ufo_small_scout') >= 0, 'engenheiro ⇒ artigo de OVNI');
     t.eq(G.score.month.research, 50);
-    B.completeResearch(G, 'b1', 'interrogate_sectoid_leader');
-    t.eq(G.flags.leaderInterrogated, false, 'só depois de Origens Alienígenas');
     B.completeResearch(G, 'b1', 'alien_origins');
     t.eq(B.startResearch(G, 'b1', 'martian_solution', 1), { ok: false, reason: 'unavailable' });
+    B.completeResearch(G, 'b1', 'interrogate_sectoid_leader');
     const e = B.completeResearch(G, 'b1', 'interrogate_sectoid_leader');
-    t.eq(e.flags, ['leaderInterrogated']);
+    t.eq(G.flags.leaderInterrogated, true);
     t.eq(G.researched.filter((x) => x === 'interrogate_sectoid_leader').length, 1, 'sem duplicados');
-    t.ok(e.unlocked.indexOf('martian_solution') >= 0);
+    t.ok(G.researched.indexOf('alien_origins') >= 0 && e.flags.length === 0, 'segunda vez: nada de novo');
     B.completeResearch(G, 'b1', 'martian_solution');
     t.eq(G.flags.martianSolution, true);
     B.completeResearch(G, 'b1', 'interrogate_sectoid_commander');

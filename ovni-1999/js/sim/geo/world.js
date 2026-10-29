@@ -140,6 +140,8 @@
     const c = Camp().findCraft(G, craftId);
     return c ? D().craftServiceStatus(c, 0) : null;
   }
+  // ours: o Couraçado de um ataque à base da própria nave pode ser intercetado sem a nave ser mais rápida (vem até ela)
+  const assaultOnHome = (c, u) => !!u && !!u.targetBaseId && u.targetBaseId === c.baseId;
   function targetsUfo(G, ufoId) {
     for (const id in G.crafts) {
       const d = G.crafts[id].dest;
@@ -183,7 +185,7 @@
     const base = Camp().findBase(G, c.baseId);
     let warn = null;
     if (flyingUfo && !armed(c)) warn = 'noWeapons';
-    else if (flyingUfo && tg.obj.speed > def.speed) warn = 'tooSlow';
+    else if (flyingUfo && tg.obj.speed > def.speed && !assaultOnHome(c, tg.obj)) warn = 'tooSlow';
     else if (!home && base) {
       const nm = GM().distNm(c, tg) + GM().distNm(tg, base);
       if (fuelNeed(def, nm) > c.fuel) warn = 'tooFar';
@@ -303,7 +305,7 @@
     c.lon = u.lon;
     c.lat = u.lat;
     const max = tune('MAX_DOGFIGHTS', 2);
-    const fast = !D().craftRules.engageRequiresSpeed || u.speed <= def.speed;
+    const fast = !D().craftRules.engageRequiresSpeed || u.speed <= def.speed || assaultOnHome(c, u);
     if (!armed(c) || !fast || c.dogfightId || G.dogfights.length >= max) return false;
     if (!OV.Dogfight || typeof OV.Dogfight.create !== 'function') return false;
     const df = OV.Dogfight.create(G, c.id, u.id);
@@ -443,7 +445,7 @@
       const u = Camp().findUfo(G, c.dest.id);
       if (!u || u.status !== 'flying' || !u.detected) continue;
       const def = defOf(c);
-      if (u.speed > def.speed) continue; // a nave não acompanha um OVNI mais rápido
+      if (u.speed > def.speed && !assaultOnHome(c, u)) continue; // a nave não acompanha um OVNI mais rápido
       if (GM().distNm(c, u) <= stepNm(Math.max(u.speed, def.speed))) contact(G, c, u);
     }
     for (const u of G.ufos.slice()) {
@@ -451,12 +453,41 @@
       const b = Camp().findBase(G, u.targetBaseId);
       if (b && GM().distNm(u, b) > 1) continue;
       if (b) {
-        ev(G, 'baseAttack', { baseId: b.id, ufoId: u.id });
+        /* Ataque à base (ours, contrato §5.9): aviso; as defesas atiram primeiro; as naves armadas prontas no hangar
+           descolam contra o Couraçado (dogfight; o World para); no tick seguinte ao fim dos dogfights, o assalto. */
+        if (!u.siege) {
+          ev(G, 'baseAttack', { baseId: b.id, ufoId: u.id });
+          if (typeof Camp().baseVolley === 'function' && OV.BaseSim) {
+            const v = Camp().baseVolley(G, b.id, u.id);
+            if (!v.destroyed && scramble(G, b, u) > 0) continue;
+          }
+        }
         if (typeof Camp().baseDefence === 'function') Camp().baseDefence(G, b.id, u.id);
       }
       if (Camp().findUfo(G, u.id) && OV.Missions) OV.Missions.removeUfo(G, u.id);
       if (ended(G)) return;
     }
+  }
+  // naves armadas (não de transporte) prontas no hangar da base atacada descolam contra o OVNI → n.º de dogfights
+  function scramble(G, b, u) {
+    if (!OV.Dogfight || typeof OV.Dogfight.create !== 'function') return 0;
+    const max = tune('MAX_DOGFIGHTS', 2);
+    let n = 0;
+    for (const cid of b.crafts.slice()) {
+      if (G.dogfights.length >= max) break;
+      const c = Camp().findCraft(G, cid);
+      if (!c || c.status !== 'ready' || c.dogfightId || defOf(c).transport || !armed(c)) continue;
+      const def = defOf(c);
+      Object.assign(c, { status: 'out', dest: { kind: 'ufo', id: u.id }, patrol: false, speed: def.speed, missionT: G.t | 0, lowFuel: false, lon: b.lon, lat: b.lat });
+      const df = OV.Dogfight.create(G, c.id, u.id);
+      if (!df || !df.id) {
+        Object.assign(c, { status: 'ready', dest: null, speed: 0, missionT: null });
+        continue;
+      }
+      ev(G, 'dogfightStart', { dogfightId: df.id, craftId: c.id, ufoId: u.id, scramble: true });
+      n++;
+    }
+    return n;
   }
 
   // ---- combustível (passo 4) -----------------------------------------------------------------------------------
@@ -564,7 +595,8 @@
           if (r.hyper) inHyper = true;
         }
       }
-      let inCraft = false;
+      // o Couraçado de um ataque à base, uma vez visto, não se perde (a base foi avisada)
+      let inCraft = !!u.targetBaseId && u.detected;
       for (const c of air) if (GM().distNm(c, u) <= craftNm) inCraft = true;
       if (inHyper || reveal) {
         u.detected = true;

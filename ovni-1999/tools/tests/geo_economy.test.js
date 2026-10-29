@@ -151,7 +151,7 @@ module.exports = function (OV, t) {
     const rep = E.monthEnd(G);
     const c = rep.countries[3];
     t.eq([c.after, c.pact, c.newPact, c.mood], [0, true, true, 'unhappy']);
-    t.eq(rep.income, 6000000 - c.before, 'o país do pacto já não paga');
+    t.eq(rep.income, 6000000, 'o país do pacto ainda paga o mês que acabou (monthlyFunding orig)');
     t.eq(rep.alienBaseRevealed, 'a4');
     G.events.length = 0; // a interface esvazia a fila; o mês seguinte acaba noutro instante
     G.t = OV.Clock.monthStartT(1);
@@ -159,6 +159,25 @@ module.exports = function (OV, t) {
     const rep2 = E.monthEnd(G);
     t.eq(rep2.alienBaseRevealed, null);
     t.eq([rep2.countries[3].after, rep2.countries[3].newPact, rep2.countries[3].mood], [0, false, 'same']);
+    t.eq(rep2.income, 6000000 - c.before, 'depois do pacto o país já não paga');
+  });
+
+  t.test('monthEnd: os pontos do pacto (Missions.monthEnd) ficam no registo do mês mas fora da avaliação', () => {
+    const pts = OV.Data.scoring.missionPoints.alien_infiltration;
+    const G = fresh();
+    E.addScore(G, 'xcom', 300, -9.14, 38.72);
+    const G0 = JSON.parse(JSON.stringify(G));
+    Camp.rebuildDerived(G0);
+    const ref = E.monthEnd(G0);
+    const cid = G.countries[3].id;
+    G.countries[3].pact = true;
+    const def = OV.Data.countries[cid];
+    E.addScore(G, 'alien', pts, def.label[0], def.label[1]);
+    Camp.event(G, 'pactSigned', { countryId: cid });
+    const rep = E.monthEnd(G);
+    t.eq(rep.rating, ref.rating, 'avaliação igual à de um mês sem pacto');
+    t.eq(rep.alien, ref.alien);
+    t.eq(G.score.all.alien, pts, 'os pontos ficam no total de sempre');
   });
 
   t.test('derrota pelo Conselho: avaliação ≤ T dois meses seguidos', () => {

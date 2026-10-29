@@ -12,25 +12,26 @@
   // burn: 'speed' ⇒ floor(velocidade atual/100) por 10 min (querosene); número ⇒ unidades fixas por 10 min (Elerium)
   // refuel: combustível por 30 min; refuelItem: item gasto (1 por cada refuel de combustível)
   // seats = orig; seatsUI = limite da equipa no MVP; block = bloco de batalha (só transportes)
+  // sell = venda no mercado (ours: 75 % da compra, ou do custo em $ do fabrico; o material não volta)
   const CRAFTS = {
     skyranger: {
       speed: 760, accel: 2, fuel: 1500, burn: 'speed', hp: 150, weapons: 0, seats: 14, seatsUI: TUNE.SQUAD_MAX_UI || 10,
-      buy: 500000, rent: 500000, score: 200, block: 'CRAFT_SKYRANGER', refuel: 50, refuelItem: null,
+      buy: 500000, sell: 375000, rent: 500000, score: 200, block: 'CRAFT_SKYRANGER', refuel: 50, refuelItem: null,
       deliveryH: 72, transport: true, spacecraft: false, requires: null,
     },
     interceptor: {
       speed: 2100, accel: 3, fuel: 1000, burn: 'speed', hp: 100, weapons: 2, seats: 0, seatsUI: 0,
-      buy: 600000, rent: 600000, score: 250, block: null, refuel: 50, refuelItem: null,
+      buy: 600000, sell: 450000, rent: 600000, score: 250, block: null, refuel: 50, refuelItem: null,
       deliveryH: 96, transport: false, spacecraft: false, requires: null,
     },
     firestorm: {
       speed: 4200, accel: 9, fuel: 20, burn: 1, hp: 500, weapons: 2, seats: 0, seatsUI: 0,
-      buy: 0, rent: 0, score: 250, block: null, refuel: 5, refuelItem: 'elerium_115',
+      buy: 0, sell: 300000, rent: 0, score: 250, block: null, refuel: 5, refuelItem: 'elerium_115',
       deliveryH: 0, transport: false, spacecraft: false, requires: 'new_fighter',
     },
     avenger: {
       speed: 5400, accel: 10, fuel: 60, burn: 1, hp: 1200, weapons: 2, seats: 26, seatsUI: 12,
-      buy: 0, rent: 0, score: 400, block: 'CRAFT_AVENGER', refuel: 5, refuelItem: 'elerium_115',
+      buy: 0, sell: 675000, rent: 0, score: 400, block: 'CRAFT_AVENGER', refuel: 5, refuelItem: 'elerium_115',
       deliveryH: 0, transport: true, spacecraft: true, requires: 'ultimate_craft',
     },
   };

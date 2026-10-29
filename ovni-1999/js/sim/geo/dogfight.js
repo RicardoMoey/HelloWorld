@@ -61,9 +61,10 @@
     return d;
   }
 
-  // o OVNI acelerou para a velocidade máxima e a nave não o acompanha
+  // o OVNI acelerou para a velocidade máxima e a nave não o acompanha; ours: o Couraçado de um ataque à base vai
+  // a caminho do alvo e não foge (as naves da base atacada combatem-no até ao fim)
   function breaking(ufo, cdef) {
-    return !!ufo && !!cdef && ufo.status === 'flying' && ufo.speed > cdef.speed;
+    return !!ufo && !!cdef && ufo.status === 'flying' && !ufo.targetBaseId && ufo.speed > cdef.speed;
   }
 
   // distância pretendida pelo modo (minimumDistance/maximumDistance orig: só armas ativas com munição)
@@ -153,12 +154,17 @@
       if (d.escapeT === 0) {
         ufo.speed = udef.speed;
         if (breaking(ufo, cdef)) ev.push({ t: 'df.breakOff' });
+        // ours: o Couraçado de um ataque à base não foge — passa pela nave e segue para a base
+        else if (ufo.targetBaseId) {
+          end(d, 'disengaged');
+          return closeOut(G, d, ev);
+        }
       }
     }
     if (d.ufoReload > 0) d.ufoReload--;
     const fleeing = breaking(ufo, cdef);
 
-    // distância: recuar +4, aproximar −2; a fugir o OVNI afasta-se +4
+    // distância: recuar +4, aproximar −approach (ours 4, orig 2); a fugir o OVNI afasta-se +4
     const before = d.dist;
     let change = 0;
     if (fleeing) change = DF.retreat;

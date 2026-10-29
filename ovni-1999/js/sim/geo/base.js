@@ -7,6 +7,7 @@
      canDismantle(G, baseId, x, y) → reason|null ; dismantle(G, baseId, x, y) → {ok, reason}
      canHire / hire(G, baseId, kind, n) ; sack(G, baseId, kind, nOrSoldierId)
      canBuy / buy(G, baseId, itemIdOrCraftType, n) ; sell(G, baseId, itemId, n)
+     canSellCraft(G, craftId) → reason|null ('noCraft'|'away'|'crew') ; sellCraft(G, craftId) → {ok, price}|{ok:false, reason}
      moveCargo(G, craftId, itemId, n) ; setArmour(G, soldierId, armourId) ; assignSoldier(G, soldierId, craftId|null)
      fitWeapon(G, craftId, slot, weaponType|null) ; checkup(G, craftId) → estado ; serviceStatus(G, craftId) → estado (puro)
      renameBase / renameCraft
@@ -213,9 +214,20 @@
     const rest = base.grid.filter((_, j) => j !== k);
     if (!D().gridConnected(rest).ok) return 'notConnected';
     if (built(f)) {
+      // só as capacidades que esta instalação dá (armazém já cheio demais não bloqueia um laboratório vazio)
+      const def = D().facilities[f.type];
       const c = capacitiesOf(G, base, rest);
-      for (const key of ['personnel', 'labs', 'workshops', 'aliens', 'crafts']) if (c[key].used > c[key].cap) return 'inUse';
-      if (c.storage.usedTenths > c.storage.cap * 10) return 'inUse';
+      for (const key of ['personnel', 'labs', 'workshops', 'aliens']) if (def[key] > 0 && c[key].used > c[key].cap) return 'inUse';
+      if (def.crafts > 0) {
+        // naves em fabrico já pagas reservam um hangar (como freeHangars)
+        let reserved = 0;
+        for (const p of base.production) {
+          const m = D().manufacture[p.item];
+          if (m && m.produces.craft && p.paid) reserved++;
+        }
+        if (c.crafts.used + reserved > c.crafts.cap) return 'inUse';
+      }
+      if (def.storage > 0 && c.storage.usedTenths > c.storage.cap * 10) return 'inUse';
     }
     return null;
   }
@@ -337,6 +349,37 @@
     take(base.stores, id, n);
     G.funds += it.sell * n;
     return OK;
+  }
+
+  /* Venda de uma nave (orig: preço de venda; só no hangar, sem dogfight nem missão, sem soldados a bordo).
+     As armas montadas (e as munições carregadas, em carregadores inteiros) e a carga voltam ao armazém; o aluguer
+     acaba e o hangar fica livre. Sem penalização de pontuação. */
+  function canSellCraft(G, craftId) {
+    const craft = C().findCraft(G, craftId);
+    if (!craft) return 'noCraft';
+    const base = C().findBase(G, craft.baseId);
+    if (!base || !inHangar(craft) || craft.dogfightId) return 'away';
+    if (G.activeMission && G.activeMission.craftId === craftId) return 'away';
+    if (craft.soldiers.length) return 'crew';
+    return null;
+  }
+  function sellCraft(G, craftId) {
+    const r = canSellCraft(G, craftId);
+    if (r) return fail(r);
+    const craft = C().findCraft(G, craftId);
+    const base = C().findBase(G, craft.baseId);
+    for (const w of craft.weapons) {
+      if (!w) continue;
+      add(base.stores, w.type, 1);
+      const cd = D().craftWeapons[w.type];
+      if (cd && cd.ammoItem && w.ammo > 0) add(base.stores, cd.ammoItem, U.idiv(w.ammo, cd.ammoPerItem || 1));
+    }
+    for (const id in craft.equipment) add(base.stores, id, craft.equipment[id] | 0);
+    const price = D().crafts[craft.type].sell | 0;
+    G.funds += price;
+    C().removeById(base.crafts, craftId);
+    delete G.crafts[craftId];
+    return { ok: true, price };
   }
 
   // ---- naves e soldados ------------------------------------------------------------------------------------
@@ -491,9 +534,12 @@
     if (craft.hp >= def.hp) setService(G, craft, nextStatus(craft, 1));
   }
 
-  // CraftWeapon::rearm (orig): até rearmPerHour munições por hora em carregadores inteiros do armazém
+  /* CraftWeapon::rearm (orig): até rearmPerHour munições por hora em carregadores inteiros do armazém. Uma arma sem
+     munição em armazém fica como está e é avisada uma só vez, quando o rearme das outras acaba (orig: avisa e deixa
+     de a rearmar); a entrega de munição de nave volta a pôr a nave a rearmar (arrive). */
   function rearm(G, base, craft) {
     let pending = false;
+    const short = [];
     for (const w of craft.weapons) {
       if (!needsAmmo(w)) continue;
       const wd = D().craftWeapons[w.type];
@@ -503,7 +549,7 @@
       }
       const avail = base.stores[wd.ammoItem] | 0;
       if (avail <= 0) {
-        C().event(G, 'craftRearmShort', { craftId: craft.id, itemId: wd.ammoItem, what: 'ammo' });
+        if (short.indexOf(wd.ammoItem) < 0) short.push(wd.ammoItem);
         continue;
       }
       const clip = wd.ammoPerItem || 1;
@@ -513,7 +559,9 @@
       w.ammo = Math.min(wd.ammoMax, w.ammo + use * clip);
       if (w.ammo < wd.ammoMax) pending = true;
     }
-    if (!pending) setService(G, craft, nextStatus(craft, 2));
+    if (pending) return;
+    for (const itemId of short) C().event(G, 'craftRearmShort', { craftId: craft.id, itemId, what: 'ammo' });
+    setService(G, craft, nextStatus(craft, 2));
   }
 
   function refuel(G, base, craft) {
@@ -594,13 +642,17 @@
     return OK;
   }
 
-  // cancelar não devolve o que foi consumido (orig)
+  // cancelar não devolve o item consumido (orig); ours: o alienígena de um interrogatório volta à contenção
+  // (mesmo sem lugar livre — estava lá quando o projeto começou)
   function cancelResearch(G, baseId, topicId) {
     const base = C().findBase(G, baseId);
     const p = base ? findProject(base, topicId) : null;
     if (!p) return fail('unavailable');
     base.research.splice(base.research.indexOf(p), 1);
-    return OK;
+    const topic = D().researchTopic(topicId);
+    const live = topic && topic.consumes && topic.consumes.liveAlien;
+    if (live) add(base.aliens, live, 1);
+    return { ok: true, returned: live || null };
   }
 
   function researchLabel(G, baseId, topicId) {
@@ -822,7 +874,7 @@
 
   OV.BaseSim = {
     capacities, staff, canPlace, build, canDismantle, dismantle,
-    canHire, hire, sack, canBuy, buy, sell,
+    canHire, hire, sack, canBuy, buy, sell, canSellCraft, sellCraft,
     moveCargo, setArmour, assignSoldier, fitWeapon, checkup, serviceStatus, renameBase, renameCraft,
     startResearch, setScientists, cancelResearch, researchLabel, completeResearch,
     startProduction, setEngineers, setQty, cancelProduction,

@@ -5,7 +5,9 @@
    OV.Save = {
      SCHEMA, SLOTS:['auto','autoTurn','1','2','3'], KEY(slot) → 'ovni1999.save.' + slot, MIGRATIONS:[]
      toJSON(G, B?, meta?) → objeto            Error('save.err.busy') com interceções em curso
-     fromJSON(obj) → {G, B, meta}            Error('save.err.game'|'save.err.schema'|'save.err.parse')
+     fromJSON(obj) → {G, B, meta}            Error('save.err.game'|'save.err.schema'|'save.err.parse'); validação profunda
+                                             (repara listas/contadores em falta, recusa o resto) e ensaio dos passos do
+                                             relógio numa cópia antes de devolver G
      migrate(obj, list?, target?) → obj       MIGRATIONS[n] eleva uma gravação do esquema n para n+1
      write(slot, obj) → {ok, reason?:'slot'|'quota'|'unavailable'} ; read(slot) → objeto|null ; remove(slot) → bool
      save(slot, G, B?, meta?) → {ok, reason?}  (toJSON + write; 'busy' com interceções em curso)
@@ -93,6 +95,18 @@
   }
 
   const typeOk = (v, ty) => (ty === 'array' ? Array.isArray(v) : ty === 'object' ? !!v && typeof v === 'object' && !Array.isArray(v) : typeof v === ty && (ty !== 'number' || Number.isFinite(v)));
+  const isObj = (v) => typeOk(v, 'object');
+  const isInt = (v) => Number.isInteger(v);
+  const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
+  const isStr = (v) => typeof v === 'string' && v.length > 0;
+  const need = (ok) => {
+    if (!ok) throw err('parse');
+  };
+  const CRAFT_STATUS = { ready: 1, out: 1, patrol: 1, returning: 1, repair: 1, rearm: 1, refuel: 1 };
+  const UFO_STATUS = { flying: 1, landed: 1, crashed: 1 };
+  const STATS = ['ufosDetected', 'ufosShotDown', 'ufosDestroyed', 'missionsWon', 'missionsLost', 'missionsAborted', 'aliensKilled',
+    'aliensCaptured', 'soldiersLost', 'civiliansSaved', 'terrorIgnored', 'craftsLost'];
+
   function checkCampaign(G) {
     if (!G || typeof G !== 'object' || Array.isArray(G)) throw err('parse');
     if (G.game !== GAME) throw err('game');
@@ -102,6 +116,111 @@
     for (const id of Object.keys(G.crafts)) if (!G.crafts[id] || G.crafts[id].id !== id) throw err('parse');
     for (const id of Object.keys(G.soldiers)) if (!G.soldiers[id] || G.soldiers[id].id !== id) throw err('parse');
     if (G.activeMission !== null && G.activeMission !== undefined && !typeOk(G.activeMission, 'object')) throw err('parse');
+  }
+
+  /* Validação profunda (contrato §1): repara o que tem um valor por omissão óbvio (listas e contadores em falta,
+     interceções gravadas à mão) e recusa (save.err.parse) o que não se pode adivinhar, antes de chegar ao ciclo
+     principal. Depois corre todos os passos do relógio numa cópia: se algum rebentar, a gravação é recusada. */
+  function repairCampaign(G) {
+    const Data = OV.Data;
+    const Camp = OV.Campaign;
+    need(isInt(G.t) && G.t >= 0 && G.t % 5 === 0 && isInt(G.month) && G.month === OV.Clock.monthIndex(G.t));
+    need(isInt(G.plannedMonth) && G.plannedMonth >= -1 && G.plannedMonth <= G.month);
+    need(isInt(G.difficulty) && G.difficulty >= 0 && G.difficulty <= 2 && isInt(G.funds));
+    need(isObj(G.ids.seq) && isObj(G.ids.craftNum));
+    for (const k in G.ids.seq) need(isInt(G.ids.seq[k]));
+    // pontuação
+    const sm = G.score.month, sa = G.score.all;
+    need(isObj(sm) && isObj(sa) && isNum(sm.research) && isNum(sa.xcom) && isNum(sa.alien) && isNum(sa.research));
+    for (const side of ['xcom', 'alien']) need(isObj(sm[side]) && isNum(sm[side].total) && isObj(sm[side].regions) && isObj(sm[side].countries));
+    // contadores, bandeiras, vistos, conselho
+    for (const k of ['badMonths', 'debtMonths', 'lastRating']) if (!isInt(G.council[k])) G.council[k] = 0;
+    for (const k of STATS) if (!isInt(G.stats[k])) G.stats[k] = 0;
+    for (const f of Data.researchFlags) if (typeof G.flags[f] !== 'boolean') G.flags[f] = false;
+    for (const f of ['won', 'lost']) if (typeof G.flags[f] !== 'boolean') G.flags[f] = false;
+    if (G.flags.lostReason === undefined) G.flags.lostReason = null;
+    for (const k of ['ufoTypes', 'races']) if (!Array.isArray(G.seen[k])) G.seen[k] = [];
+    need(G.researched.every(isStr) && G.ufopaedia.every(isStr));
+    // países
+    for (const c of G.countries) {
+      need(isObj(c) && isStr(c.id) && isInt(c.funding) && c.funding >= 0);
+      if (!Array.isArray(c.history)) c.history = [];
+      if (typeof c.pact !== 'boolean') c.pact = false;
+      if (typeof c.mood !== 'string') c.mood = 'same';
+      if (!isInt(c.lastDelta)) c.lastDelta = 0;
+    }
+    // bases
+    const baseIds = {};
+    for (const b of G.bases) {
+      need(isStr(b.id) && !baseIds[b.id] && isNum(b.lon) && isNum(b.lat) && isInt(b.scientists) && isInt(b.engineers));
+      baseIds[b.id] = b;
+      for (const k of ['soldiers', 'crafts', 'research', 'production', 'deliveries']) need(Array.isArray(b[k]));
+      if (!Array.isArray(b.transfers)) b.transfers = [];
+      if (!isObj(b.aliens)) b.aliens = {};
+      if (typeof b.spotted !== 'boolean') b.spotted = false;
+      for (const f of b.grid) need(isObj(f) && !!Data.facilities[f.type] && isInt(f.x) && isInt(f.y) && isInt(f.daysLeft));
+      for (const bag of [b.stores, b.aliens]) for (const k in bag) need(isInt(bag[k]));
+      for (const p of b.research) need(isObj(p) && isStr(p.topic) && isInt(p.cost) && isInt(p.spent) && isInt(p.scientists));
+      for (const p of b.production) need(isObj(p) && isStr(p.id) && !!Data.manufacture[p.item] && isInt(p.engineers) && isInt(p.qty) && isInt(p.done) && isNum(p.spent));
+      for (const d of b.deliveries.concat(b.transfers)) need(isObj(d) && isStr(d.kind) && isInt(d.n) && isInt(d.etaT));
+    }
+    // naves (interceções nunca se gravam: as que vierem à mão são descartadas)
+    G.dogfights = [];
+    for (const id of Object.keys(G.crafts)) {
+      const c = G.crafts[id];
+      const def = Data.crafts[c.type];
+      const b = baseIds[c.baseId];
+      need(!!def && !!b && b.crafts.indexOf(id) >= 0 && !!CRAFT_STATUS[c.status] && isNum(c.lon) && isNum(c.lat) && isNum(c.fuel) && isNum(c.hp));
+      if (!Array.isArray(c.weapons)) c.weapons = [];
+      while (c.weapons.length < (def.weapons | 0)) c.weapons.push(null);
+      for (const w of c.weapons) need(w === null || (isObj(w) && !!Data.craftWeapons[w.type] && (w.ammo === null || isInt(w.ammo))));
+      need(Array.isArray(c.soldiers));
+      if (!isObj(c.equipment)) c.equipment = {};
+      c.dogfightId = null;
+      if (c.dest !== null && c.dest !== undefined) need(isObj(c.dest) && isStr(c.dest.kind));
+      else c.dest = null;
+    }
+    for (const b of G.bases) for (const cid of b.crafts) need(!!G.crafts[cid] && G.crafts[cid].baseId === b.id);
+    // soldados
+    const statKeys = Data.soldierGen && Data.soldierGen.statKeys;
+    for (const id of Object.keys(G.soldiers)) {
+      const s = G.soldiers[id];
+      need(isObj(s.stats) && !!baseIds[s.baseId] && baseIds[s.baseId].soldiers.indexOf(id) >= 0 && isInt(s.rank) && isInt(s.woundDays));
+      if (Array.isArray(statKeys)) for (const k of statKeys) need(isNum(s.stats[k]));
+      if (!isObj(s.loadout)) s.loadout = Camp.emptyLoadout();
+      if (!Array.isArray(s.loadout.belt)) s.loadout.belt = [];
+      if (!Array.isArray(s.loadout.pack)) s.loadout.pack = [];
+      if (s.craftId === undefined) s.craftId = null;
+      if (s.craftId !== null) need(!!G.crafts[s.craftId] && G.crafts[s.craftId].soldiers.indexOf(id) >= 0);
+    }
+    for (const b of G.bases) for (const sid of b.soldiers) need(!!G.soldiers[sid]);
+    // estratégia alienígena
+    for (const u of G.ufos) need(isObj(u) && isStr(u.id) && !!Data.ufos[u.type] && !!UFO_STATUS[u.status] && isNum(u.lon) && isNum(u.lat) && isInt(u.dmg));
+    for (const m of G.alienMissions) need(isObj(m) && isStr(m.id) && !!Data.alienMissions[m.type] && Array.isArray(m.liveUfos) && isNum(m.countdownS));
+    for (const x of G.sites) need(isObj(x) && isStr(x.id) && isNum(x.lon) && isNum(x.lat) && isNum(x.leftS));
+    for (const x of G.alienBases) need(isObj(x) && isStr(x.id) && isNum(x.lon) && isNum(x.lat));
+    for (const r of G.history.concat(G.reports)) need(isObj(r));
+  }
+
+  // todos os passos do relógio (contrato §3.1) numa cópia: um G que os rebente nunca chega ao Geoscape
+  const SMOKE = [['World', 'moveCrafts'], ['World', 'moveUfos'], ['World', 'contacts'], ['World', 'burnFuel'], ['World', 'patrolDiscovery'],
+    ['Missions', 'scan10m'], ['BaseSim', 'halfHourly'], ['World', 'detect'], ['Economy', 'ufoActivity30m'], ['Missions', 'think30m'],
+    ['BaseSim', 'hourly'], ['BaseSim', 'daily'], ['Soldiers', 'daily'], ['Economy', 'daily'], ['Missions', 'daily'], ['Missions', 'monthEnd'],
+    ['Economy', 'monthEnd'], ['Economy', 'checkDefeat'], ['Economy', 'upkeep'], ['World', 'radarCircles']];
+  function smoke(G) {
+    try {
+      const S = JSON.parse(JSON.stringify(G));
+      OV.Campaign.rebuildDerived(S);
+      S.events = [];
+      for (const b of S.bases) {
+        if (OV.BaseSim) OV.BaseSim.capacities(S, b.id);
+        if (OV.BaseSim && typeof OV.BaseSim.staff === 'function') OV.BaseSim.staff(S, b.id);
+      }
+      for (const [mod, fn] of SMOKE) if (OV[mod] && typeof OV[mod][fn] === 'function') OV[mod][fn](S);
+      OV.Campaign.hash(S);
+    } catch (e) {
+      throw err('parse');
+    }
   }
 
   function fromJSON(input) {
@@ -121,12 +240,14 @@
       checkCampaign(obj.campaign);
       G = obj.campaign;
       G.schema = SCHEMA;
-      if (G.ui === undefined || G.ui === null || typeof G.ui !== 'object') G.ui = {};
+      repairCampaign(G);
+      if (G.ui === undefined || G.ui === null || typeof G.ui !== 'object' || Array.isArray(G.ui)) G.ui = {};
       if (G.debug === undefined) G.debug = null;
       // missão marcada sem batalha gravada (gravado no briefing): a batalha nunca começou, o Geoscape tem de andar
       if (G.activeMission === undefined || (G.activeMission && obj.battle === null)) G.activeMission = null;
       G.events = [];
       OV.Campaign.rebuildDerived(G);
+      smoke(G);
     }
     if (obj.battle !== null) {
       const raw = obj.battle;

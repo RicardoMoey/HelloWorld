@@ -213,9 +213,11 @@ module.exports = function (OV, t) {
       t.eq(Camp.findCraft(G, 'c2').dest.kind, 'point');
       G.sites.push({ id: 't2', kind: 'terror', missionId: null, deployment: 'dep_terror_site', cityId: 'paris', lon: 2.375, lat: 48.75, race: 'floater', region: 'europe', country: 'france', leftS: 9000 });
       Mi.onSiteCleared(G, { kind: 'site', id: 't2' }, 'abort');
-      t.ok(Camp.findSite(G, 't2'), 'abortar não limpa');
-      Mi.onSiteCleared(G, { kind: 'site', id: 't2' }, 'win');
-      t.eq(Camp.findSite(G, 't2'), null);
+      t.eq(Camp.findSite(G, 't2'), null, 'terror: qualquer batalha limpa o local (OpenXcom)');
+      G.sites.push({ id: 't3', kind: 'terror', missionId: null, deployment: 'dep_terror_site', cityId: 'rome', lon: 12.5, lat: 41.9, race: 'floater', region: 'europe', country: 'italy', leftS: 9000 });
+      Mi.onSiteCleared(G, { kind: 'site', id: 't3' }, 'win');
+      t.eq(Camp.findSite(G, 't3'), null);
+      t.eq(G.stats.terrorIgnored, 1, 'só o local que expirou conta como ignorado');
     });
   });
 

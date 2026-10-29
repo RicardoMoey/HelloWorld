@@ -301,6 +301,7 @@
     'base.err.busy': 'Estão ocupados em projetos: retire-os primeiro.',
     'base.err.noSoldier': 'Soldado não encontrado.',
     'base.err.away': 'A nave está fora da base.',
+    'base.err.crew': 'Há soldados a bordo: retire-os da nave primeiro.',
     'base.err.hangar': 'Não há hangar livre.',
     'base.err.storage': 'O armazém não tem espaço suficiente.',
     'base.err.unsellable': 'Não se pode vender.',
