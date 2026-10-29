@@ -232,6 +232,9 @@ button.bsc-row:hover { border-color: #3d6a8e; background: rgba(22, 36, 52, 0.9);
 .bsc-cd-t { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0; flex: 1; }
 .bsc-cd-name { display: flex; align-items: center; gap: 6px; font: 800 17px var(--sans); color: var(--ink); }
 .bsc-cd-bars { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; width: 100%; margin-top: 4px; }
+.bsc-cd-acts { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; margin: 2px 0 8px; }
+.bsc .btn.cydonia { border-color: #b8442f; color: #fff; background: linear-gradient(180deg, #a0301f, #6a1a10); box-shadow: 0 0 14px rgba(255, 79, 67, 0.3); }
+.bsc .btn.cydonia.disabled { opacity: 0.6; box-shadow: none; }
 .bsc-cd-bars .bar { height: 15px; }
 .bsc-cd-bars .bar span { font-size: 10px; line-height: 13px; }
 .bsc-craft-detail .bsc-sec { margin: 12px 0 0; }

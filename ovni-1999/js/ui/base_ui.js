@@ -11,7 +11,7 @@
      errText(reason) → texto pt-PT de 'base.err.<reason>'
      debug: { state(), cellCenter(x, y) → {x, y} px do centro de uma célula, scene() }
    }
-   Teclado: 1–9 separadores, U Ufopédia, B construir, N novo projeto/produção, E equipar, M memorial, [ ] base
+   Teclado: 1–9 separadores, U Ufopédia, B construir, N novo projeto/produção, E equipar, X missão final (Naves), M memorial, [ ] base
    anterior/seguinte, setas + Enter na construção, ⌫ desmantelar, Esc cancela/volta. */
 (function (OV) {
   'use strict';
@@ -78,6 +78,9 @@
     return h;
   }
   const warnLine = (t) => '<span class="bsc-tip-why">' + esc(t) + '</span>';
+  // textos de ajuda com variante de toque (iPad): «Toque…» em vez de «Clique…», sem Shift+clique
+  const touchNow = () => !!(OV.Input && OV.Input.lastPointerType === 'touch') || (typeof matchMedia === 'function' && matchMedia('(hover: none) and (pointer: coarse)').matches);
+  const TT = (k, p) => (touchNow() && OV.T.has(k + '.touch') ? T(k + '.touch', p) : T(k, p));
 
   // botão com dica e razão de bloqueio: bloqueado fica cinzento e o clique explica porquê (com zumbido)
   function btn(label, o) {
@@ -434,7 +437,7 @@
         if (cur) {
           const p = ghostPos(cur);
           const why = BS().canPlace(g, b.id, S.build.type, p.x, p.y);
-          state = why ? el('span', { class: 'bad', text: errText(why) }) : el('span', { class: 'good', text: T('base.build.validHere') });
+          state = why ? el('span', { class: 'bad', text: errText(why) }) : el('span', { class: 'good', text: TT('base.build.validHere') });
           r.info.classList.add(why ? 'invalid' : 'valid');
         } else state = el('span', { class: 'muted', text: T('base.build.hint') });
         r.info.append(el('div', { class: 'bsc-info-main' }, facIcon(S.build.type, 40),
@@ -450,7 +453,7 @@
       if (!f) {
         r.info.append(el('div', { class: 'bsc-info-main' }, el('div', { class: 'bsc-info-txt' },
           el('div', { class: 'bsc-info-name muted', text: T('base.info.idle') }),
-          el('div', { class: 'bsc-info-sub muted', text: T('base.info.idleHint') }))));
+          el('div', { class: 'bsc-info-sub muted', text: TT('base.info.idleHint') }))));
         return;
       }
       const def = D().facilities[f.type];
@@ -572,7 +575,7 @@
         row.addEventListener('mouseenter', () => { S.hlFac = type; S.dirty = true; });
         row.addEventListener('mouseleave', () => { S.hlFac = null; S.dirty = true; });
         OV.Dom.tooltip(row, () => tipHtml(facName(type), [esc(T('base.build.cost') + ': ' + money(def.cost)), esc(T('base.build.days') + ': ' + Tn('common.days', def.days)),
-          esc(T('base.build.upkeep') + ': ' + money(def.upkeep)), why ? warnLine(why) : esc(T('base.build.clickToPlace'))]));
+          esc(T('base.build.upkeep') + ': ' + money(def.upkeep)), why ? warnLine(why) : esc(TT('base.build.clickToPlace'))]));
         list.appendChild(row);
       }
       wrap.appendChild(section(T('base.build.title'), note(T('base.build.rules')), list));
@@ -723,8 +726,14 @@
       return wrap;
     }
     async function cancelResearchDlg(p) {
-      const ok = await OV.Dom.modal({ title: T('base.research.cancel'), body: T('base.research.cancelConfirm', { name: esc(topicName(p.topic)) }) + '<br><span class="muted">' + esc(T('base.research.cancelLoss')) + '</span>', buttons: [{ label: T('common.no'), value: false }, { label: T('base.research.cancel'), value: true, kind: 'danger' }] });
-      if (ok && S.root) act(() => BS().cancelResearch(S.G, base().id, p.topic), T('base.toast.researchCancelled', { name: topicName(p.topic) }));
+      const topic = D().researchTopic(p.topic);
+      const live = topic && topic.consumes && topic.consumes.liveAlien;
+      // um interrogatório cancelado devolve o alienígena à contenção (BaseSim.cancelResearch → returned)
+      const loss = live ? T('base.research.cancelReturns', { name: unitName(live) }) : T('base.research.cancelLoss');
+      const ok = await OV.Dom.modal({ title: T('base.research.cancel'), body: T('base.research.cancelConfirm', { name: esc(topicName(p.topic)) }) + '<br><span class="muted">' + esc(loss) + '</span>', buttons: [{ label: T('common.no'), value: false }, { label: T('base.research.cancel'), value: true, kind: 'danger' }] });
+      if (!ok || !S.root) return;
+      const r = act(() => BS().cancelResearch(S.G, base().id, p.topic), T('base.toast.researchCancelled', { name: topicName(p.topic) }));
+      if (r && r.returned) OV.Dom.toast(T('base.toast.alienReturned', { name: unitName(r.returned) }), null, 'info');
     }
     function researchPicker() {
       const g = S.G, b = base();
@@ -748,7 +757,9 @@
           const notes = [];
           if (t.needItem) notes.push(T('base.research.needsItem', { item: itemName(D().researchConsumable(id, b.stores) || t.needItem[0]) }));
           if (t.interrogation) notes.push(T('base.research.consumesAlien'));
-          const leads = (t.unlocks || []).map(topicName).concat((t.enables && t.enables.manufacture || []).map(prodName), (t.enables && t.enables.facilities || []).map(facName));
+          // projetos novos pelo nome; fabrico e construção com o verbo, para não parecer uma tautologia («Kit Médico — Desbloqueia: Kit Médico»)
+          const leads = (t.unlocks || []).map(topicName).concat((t.enables && t.enables.manufacture || []).map((m) => T('base.research.leadMake', { name: prodName(m) })),
+            (t.enables && t.enables.facilities || []).map((f) => T('base.research.leadBuild', { name: facName(f) })));
           if (leads.length) notes.push(T('base.research.unlocks') + ': ' + leads.slice(0, 4).join(', ') + (leads.length > 4 ? '…' : ''));
           const art = articleFor(g, [id].concat(t.needItem || [], t.items || []));
           const row = el('div', { class: 'bsc-row bsc-pick', dataset: { topic: id } },
@@ -1041,6 +1052,16 @@
             OV.Dom.bar(c.hp, def.hp, 'hp', T('base.crafts.hp') + ' ' + Math.round((c.hp / def.hp) * 100) + ' %')))));
       if (!inHangar(c)) box.appendChild(note(T('base.crafts.awayNote'), 'warn'));
       else if (c.status !== 'ready') box.appendChild(note(T('base.crafts.service.' + c.status), 'muted'));
+      // missão final (Vingador) e venda da nave
+      const acts = el('div', { class: 'bsc-cd-acts' });
+      const CU = OV.CampaignUI;
+      if (g.flags.cydoniaUnlocked && CU && CU.cydoniaCapable && CU.cydoniaCapable(c)) {
+        const st = CU.cydoniaState(g, c.id);
+        acts.appendChild(btn(T('base.crafts.cydonia'), { cls: 'primary cydonia', title: T('base.crafts.cydonia'), tip: T('base.crafts.cydoniaTip'), key: 'X', why: st.ok ? null : CU.cydoniaWhy(st.reason), data: { act: 'cydonia' }, on: () => CU.launchCydonia(g, c.id) }));
+      }
+      const sellWhy = BS().canSellCraft ? BS().canSellCraft(g, c.id) : 'unavailable';
+      acts.appendChild(btn(T('base.crafts.sell'), { cls: 'small danger', title: T('base.crafts.sell'), tip: T('base.crafts.sellTip', { price: money(def.sell) }), why: sellWhy ? errText(sellWhy) : null, data: { act: 'sellCraft' }, on: () => sellCraftDlg(c) }));
+      box.appendChild(acts);
       // armas
       if (def.weapons > 0) {
         const ws = el('div', { class: 'bsc-list' });
@@ -1064,7 +1085,7 @@
       if (def.seatsUI > 0) {
         const max = def.seatsUI;
         const crewHead = el('div', { class: 'bsc-crew-head' },
-          el('span', { class: 'bsc-note muted', text: T('base.crafts.crewHint') }),
+          el('span', { class: 'bsc-note muted', text: TT('base.crafts.crewHint') }),
           btn(T('base.crafts.equip'), { cls: 'primary small', title: T('base.crafts.equip'), tip: T('base.crafts.equipTip'), key: 'E', why: away || (!c.soldiers.length ? T('base.crafts.noCrew') : null), on: () => openEquip(c.id), data: { act: 'equip' } }));
         const crew = el('div', { class: 'bsc-crew' });
         const sols = b.soldiers.map((id) => C().findSoldier(g, id)).filter(Boolean);
@@ -1131,6 +1152,24 @@
         { label: T('common.close') },
       ]);
     }
+    async function sellCraftDlg(c) {
+      const g = S.G, def = D().crafts[c.type];
+      const why = BS().canSellCraft(g, c.id);
+      if (why) { deny(errText(why)); return; }
+      const name = craftName(c);
+      const ok = await OV.Dom.modal({
+        title: T('base.crafts.sell'), cls: 'alert',
+        body: el('div', { class: 'bsc-confirm' }, craftIcon(c.type, 64),
+          el('div', null, el('p', { class: 'modal-text', text: T('base.crafts.sellConfirm', { craft: name, price: money(def.sell) }) }),
+            el('p', { class: 'bsc-note muted', text: T(def.rent > 0 ? 'base.crafts.sellNote.rent' : 'base.crafts.sellNote', { rent: money(def.rent) }) }))),
+        buttons: [{ label: T('common.cancel'), value: false }, { label: T('base.crafts.sellGo', { price: money(def.sell) }), value: true, kind: 'danger' }],
+      });
+      if (!ok || !S.root) return;
+      if (act(() => BS().sellCraft(g, c.id), T('base.toast.craftSold', { craft: name, money: money(def.sell) }))) {
+        S.craftSel = null;
+        refresh();
+      }
+    }
     function renameCraftDlg(c) {
       const inp = el('input', { type: 'text', class: 'bsc-input', maxlength: '24', value: craftName(c), 'aria-label': T('base.crafts.rename') });
       const doIt = () => { act(() => BS().renameCraft(S.G, c.id, inp.value)); s.close(); };
@@ -1153,7 +1192,7 @@
         el('div', { class: 'bsc-equip-panel' },
           el('div', { class: 'bsc-equip-head' },
             el('div', null, el('div', { class: 'bsc-kicker', text: T('base.equip.kicker') }), el('h2', { class: 'bsc-h', text: craftName(c) })),
-            el('div', { class: 'bsc-equip-note muted', text: T('base.equip.hint') }), done),
+            el('div', { class: 'bsc-equip-note muted', text: TT('base.equip.hint') }), done),
           bodyBox));
       S.root.appendChild(ov);
       // cada alteração é aplicada logo (Campaign.applyEquip recusa o que criaria ou destruiria itens)
@@ -1532,7 +1571,7 @@
         if (S.sheet === api) S.sheet = null;
       };
       const onKey = (e) => {
-        if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); sfx('ui_click'); close(); }
+        if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); if (!e.repeat) { sfx('ui_click'); close(); } }
       };
       const acts = el('div', { class: 'modal-actions' });
       for (const bt of buttons || []) {
@@ -1728,10 +1767,12 @@
       const k = ev.key;
       const m = ev.mods || {};
       if (S.equip) {
-        if (k === 'Escape') { closeEquip(); return true; }
+        if (k === 'Escape') { if (!ev.repeat) closeEquip(); return true; }
         return false;
       }
       if (m.ctrl || m.alt) return false;
+      // Esc mantido premido não atravessa vários ecrãs: só uma pressão nova sai
+      if (ev.repeat && (k === 'Escape' || k === 'Enter')) return true;
       if (k === 'Escape') {
         if (S.build) cancelBuild();
         else if (S.dismantle) { S.sel = null; S.dismantle = null; sfx('ui_click'); S.dirty = true; renderInfo(); }
@@ -1756,6 +1797,7 @@
         return false;
       }
       if (lk === 'e' && S.tab === 'crafts') { const b = S.r.content.querySelector('[data-act="equip"]'); if (b) b.click(); return true; }
+      if (lk === 'x' && S.tab === 'crafts') { const b = S.r.content.querySelector('[data-act="cydonia"]'); if (b) b.click(); return true; }
       if (lk === 'm' && S.tab === 'soldiers') { S.memorial = !S.memorial; sfx('ui_select'); renderContent(); return true; }
       if (k === '[') { switchBase(-1); return true; }
       if (k === ']') { switchBase(1); return true; }

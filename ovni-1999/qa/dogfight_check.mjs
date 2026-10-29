@@ -156,8 +156,10 @@ try {
     await sleep(300);
     let s = await H.st();
     check(s.top === 'dogfight', 'cena dogfight no topo');
-    check(s.d && s.d.mode === 'standoff', 'postura inicial Distância');
-    check(await page.locator('.df-panel:not(.hidden) .df-mode.on').getAttribute('data-mode') === 'standoff', 'botão Distância realçado');
+    // a interface abre a atacar (Normal, ou a última postura do jogador), nunca em «Distância» (vaga 4)
+    check(s.d && s.d.mode === 'standard', 'postura inicial Normal (' + (s.d && s.d.mode) + ')');
+    check(await page.locator('.df-panel:not(.hidden) .df-mode.on').getAttribute('data-mode') === 'standard', 'botão Normal realçado');
+    check(await page.locator('.df-panel:not(.hidden) .df-hint').count() === 1, 'dica das posturas no primeiro combate');
     const lbl = await page.locator('.df-mode[data-mode="standard"]').getAttribute('aria-label');
     check(/\(3\)/.test(lbl || ''), 'botão Normal anuncia o atalho 3');
     await H.noMissing('aberto');

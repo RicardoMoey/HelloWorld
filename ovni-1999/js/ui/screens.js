@@ -517,6 +517,7 @@
       draw(ctx, view) { if (spec.backdrop !== false) Backdrop.draw(ctx, view, spec.backdrop); },
       onInput(ev) {
         if (ev.kind !== 'key') return false;
+        if (ev.repeat && (ev.key === 'Escape' || ev.key === 'Enter')) return true;
         if (spec.keys && spec.keys(ev, sc)) return true;
         if (sc.root && arrowNav(sc.root, ev)) return true;
         if (ev.key === 'Escape' && spec.back) { sfx('ui_click'); spec.back(sc); return true; }

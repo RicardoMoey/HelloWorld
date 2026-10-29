@@ -24,7 +24,7 @@
     'geo.pause.tip': 'Parar ou retomar o tempo',
 
     // ---- botões do painel
-    'geo.btn.intercept': 'Interceptar',
+    'geo.btn.intercept': 'Intercetar',
     'geo.btn.intercept.tip': 'Lançar uma nave contra um OVNI, um local de ataque, uma base alienígena ou um ponto do globo',
     'geo.btn.bases': 'Bases',
     'geo.btn.bases.tip': 'Gerir a base: instalações, investigação, fabrico, pessoal e naves',
@@ -132,7 +132,7 @@
     'geo.country.portugal': 'Portugal',
 
     // ---- ações
-    'geo.a.intercept': 'Interceptar',
+    'geo.a.intercept': 'Intercetar',
     'geo.a.sendTeam': 'Enviar equipa',
     'geo.a.centre': 'Centrar',
     'geo.a.recall': 'Regressar à base',
@@ -144,6 +144,9 @@
     'geo.a.openBase': 'Abrir base',
     'geo.a.goBase': 'Ir para a base',
     'geo.a.launch': 'Lançar',
+    'geo.a.launch.tip': 'Escolher o destino desta nave',
+    'geo.a.cydonia': 'Missão final: Cidónia',
+    'geo.a.cydoniaShort': 'Cidónia',
     'geo.a.select': 'Ver',
     'geo.a.back': 'Voltar',
     'geo.a.pickPoint': 'Escolher no globo',
@@ -157,6 +160,8 @@
     'geo.int.chooseBase': 'Escolha a base',
     'geo.int.chooseCraft': 'Escolha a nave',
     'geo.int.chooseCraftFor': 'Que nave envia contra {target}?',
+    'geo.int.kickerTeam': 'Enviar equipa',
+    'geo.int.chooseTeamFor': 'Que nave leva a equipa a {target}?',
     'geo.int.chooseTarget': 'Destino de {craft}',
     'geo.int.readyN': '{n} prontas',
     'geo.int.noCrafts': 'Não há naves disponíveis.',
@@ -182,6 +187,8 @@
     'geo.warn.noWeapons': 'Sem armas: só pode seguir o OVNI.',
     'geo.warn.tooSlow': 'O OVNI é mais rápido do que esta nave.',
     'geo.warn.tooFar': 'O combustível pode não chegar para ida e volta.',
+    'geo.warn.noTroops': 'Não leva soldados: só sobrevoa o local.',
+    'geo.warn.noTeam': 'Sem soldados aptos a bordo: não pode atacar.',
     'geo.err.mission.busy': 'Já há uma missão em curso.',
     'geo.err.mission.ended': 'A campanha terminou.',
     'geo.err.mission.noCraft': 'A nave já não existe.',
@@ -229,6 +236,13 @@
     'geo.ev.ufoLost.body': '{ufo} saiu do alcance dos radares. As naves que o seguiam patrulham a última posição conhecida.',
     'geo.ev.ufoLanded': 'OVNI aterrou',
     'geo.ev.ufoLanded.body': '{ufo} aterrou ({place}). Uma equipa no local pode tomá-lo de assalto antes de levantar voo.',
+    'geo.ev.team.eta.day': '{craft} chega em {t}, ainda de dia.',
+    'geo.ev.team.eta.dusk': '{craft} chega em {t}, ao crepúsculo.',
+    'geo.ev.team.eta.night': '{craft} chega em {t} — lá será noite: leve sinalizadores.',
+    'geo.ev.team.late': '{craft} demora {t}: os destroços desaparecem antes de a equipa chegar.',
+    'geo.ev.assault': 'Nave de assalto a caminho da base!',
+    'geo.ev.assault.body': '{ufo} dirige-se à {base} e chega em ≈ {t}.',
+    'geo.ev.assault.tips': 'Os intercetores podem atacá-la já. Quando chegar, as defesas disparam primeiro e as naves armadas prontas descolam para a enfrentar.',
     'geo.ev.ufoCrashed': 'OVNI abatido',
     'geo.ev.ufoCrashed.body': '{craft} abateu {ufo}, que se despenhou ({place}). A equipa de recuperação pode partir.',
     'geo.ev.ufoDestroyed': 'OVNI destruído',
@@ -249,6 +263,8 @@
     'geo.ev.craftLost.body.dogfight': 'Um {craft} foi abatido em combate.',
     'geo.ev.craftLost.body.mission': 'Um {craft} foi perdido na missão.',
     'geo.ev.craftLost.body.base': 'Um {craft} foi destruído na base.',
+    'geo.ev.craftLost.many.one': '{n} nave perdida',
+    'geo.ev.craftLost.many.other': '{n} naves perdidas',
     'geo.ev.craftLost.crew.one': 'Morreu {n} soldado a bordo.',
     'geo.ev.craftLost.crew.other': 'Morreram {n} soldados a bordo.',
     'geo.ev.craftLost.noTransport': 'Sem transporte de tropas não há missões no terreno: compre um Skyranger no Mercado da base (tecla 8, chega em 3 dias) e, se faltarem soldados, contrate-os no Pessoal (tecla 4).',
@@ -258,6 +274,9 @@
     'geo.ev.researchDone.body': '{topic} — investigação concluída ({base}).',
     'geo.ev.researchDone.unlocked': 'Novos projetos: {list}.',
     'geo.ev.researchDone.manufacture': 'Já pode fabricar: {list}.',
+    'geo.ev.cydonia': 'Cidónia ao alcance',
+    'geo.ev.cydonia.ready': '{craft} está pronto: a missão final pode partir já. Não há regresso.',
+    'geo.ev.cydonia.notYet': 'A missão final ainda não pode partir: {why}',
     'geo.ev.researchDone.idle.one': 'Há {n} cientista sem projeto — escolha «Novo projeto».',
     'geo.ev.researchDone.idle.other': 'Há {n} cientistas sem projeto — escolha «Novo projeto».',
     'geo.ev.productionDone': 'Fabrico concluído',
@@ -309,6 +328,8 @@
     'geo.ev.baseDefence.shots': 'Disparos das defesas: {hits} acertos em {n}.',
     'geo.ev.baseDefence.casualties.one': 'Baixas: {n} soldado.',
     'geo.ev.baseDefence.casualties.other': 'Baixas: {n} soldados.',
+    'geo.ev.baseDefence.craftsLost.one': 'Perdeu-se {n} nave no hangar.',
+    'geo.ev.baseDefence.craftsLost.other': 'Perderam-se {n} naves nos hangares.',
 
     // ---- toasts
     'geo.toast.ufoLiftOff': '{ufo} levantou voo.',
@@ -338,6 +359,26 @@
     'geo.toast.alienBaseBuilt': 'Depuração: {n} base(s) alienígena(s) construída(s).',
     'geo.toast.retaliation': 'Depuração: retaliação alienígena em {region}.',
     'geo.toast.generic': '{type} ×{n}',
+
+    // ---- interceção aberta por cima do Geoscape
+    'geo.dfBanner.title': 'Tempo parado: interceção em curso',
+    'geo.dfBanner.text': 'M abre a janela de combate.',
+
+    // ---- pessoal parado, primeiros passos e sugestão de velocidade
+    'geo.idle.sci.one': '{n} cientista sem projeto',
+    'geo.idle.sci.other': '{n} cientistas sem projeto',
+    'geo.idle.eng.one': '{n} engenheiro sem trabalho',
+    'geo.idle.eng.other': '{n} engenheiros sem trabalho',
+    'geo.idle.toast': 'Pessoal parado: {what}. Abra a base (B).',
+    'geo.steps.title': 'Próximos passos',
+    'geo.steps.hide': 'Esconder os próximos passos',
+    'geo.steps.research': 'Começar uma investigação na base (B)',
+    'geo.steps.hire': 'Contratar mais cientistas (base → Pessoal)',
+    'geo.steps.speed': 'Acelerar o tempo (teclas 1–6)',
+    'geo.steps.ufo': 'Esperar pelo primeiro OVNI no radar',
+    'geo.nudge.text': '{craft} chega em {t} — {k} acelera.',
+    'geo.nudge.go': 'Acelerar · {s}',
+    'geo.nudge.off': 'Não voltar a sugerir',
 
     // ---- interceção automática (sem a janela de combate)
     'geo.df.title': 'Interceção',
@@ -381,9 +422,9 @@
     'geo.end.council': 'O conselho perdeu a confiança na X-COM e cortou todo o financiamento.',
     'geo.end.debt': 'As dívidas da X-COM tornaram-se insustentáveis. O projeto foi encerrado.',
     'geo.end.baseLost': 'A última base da X-COM caiu. A Terra está indefesa.',
-    'geo.end.cydonia': 'A missão a Cydonia falhou. Já ninguém pode travar a invasão.',
+    'geo.end.cydonia': 'A missão a Cidónia falhou. Já ninguém pode travar a invasão.',
     'geo.end.victory': 'Vitória',
-    'geo.end.victory.body': 'O cérebro alienígena em Cydonia foi destruído. A Terra está a salvo.',
+    'geo.end.victory.body': 'O cérebro alienígena em Cidónia foi destruído. A Terra está a salvo.',
     'geo.end.menu': 'Menu principal',
 
     // ---- primeira entrada

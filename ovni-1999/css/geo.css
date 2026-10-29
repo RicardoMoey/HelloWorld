@@ -111,12 +111,42 @@
 .geo-banner.t-bad { border-color: #8f2a22; }
 .geo-banner.t-bad span { color: #ff8a7f; }
 #toasts { transition: transform 0.2s; }
+/* com o Geoscape visível os toasts centram-se no globo, fora do painel lateral (--geo-side vem de geo_ui.js) */
+body:has(#hud > .geo:not(.geo-off)) #toasts { left: calc((100vw - var(--geo-side, 0px)) / 2); }
+body:has(#hud > .geo:not(.geo-off)) .toast { max-width: calc(100vw - var(--geo-side, 0px) - 32px); }
+/* uma faixa no topo do globo (alvo, interceção, missão) empurra os toasts para baixo dela */
+body:has(#hud > .geo:not(.geo-off) .geo-banner:not(.hidden)) #toasts { top: calc(62px + env(safe-area-inset-top)); }
+.geo-card-acts .btn.cydonia { grid-column: 1 / -1; }
+.geo .btn.cydonia kbd, .bsc .btn.cydonia kbd { color: #ffd9d4; border-color: rgba(255, 220, 210, 0.45); background: rgba(0, 0, 0, 0.25); }
 .geo-hint {
   position: absolute; left: 50%; bottom: calc(14px + env(safe-area-inset-bottom)); transform: translateX(calc(-50% - var(--geo-side) / 2));
   max-width: calc(100vw - var(--geo-side) - 360px); padding: 6px 12px; font-size: 12px; color: #9db2c4; text-align: center; pointer-events: none !important;
   background: rgba(5, 10, 16, 0.7); border: 1px solid #1d3043; border-radius: 14px; transition: opacity 1.2s;
 }
 .geo-hint.fade { opacity: 0; }
+
+/* ---- ficha «pessoal parado», primeiros passos e sugestão de velocidade ------------------------------------------- */
+.geo .btn.geo-warnb { border-color: #8a6416; }
+.geo-badge { margin-left: 4px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; font: 800 10.5px/16px var(--sans); text-align: center; color: #1b1203; background: var(--amber); box-shadow: 0 0 8px rgba(255, 181, 61, 0.45); }
+.geo-badge.hidden { display: none; }
+.geo-steps { padding: 7px 8px 6px; background: rgba(5, 10, 16, 0.6); border: 1px solid #1d3043; border-left: 3px solid var(--teal); border-radius: 3px; }
+.geo-steps.hidden { display: none; }
+.geo-steps-h { display: flex; align-items: center; justify-content: space-between; font: 800 10.5px var(--sans); letter-spacing: 2.5px; text-transform: uppercase; color: var(--teal); }
+.geo-steps-h .geo-x { width: 24px; height: 24px; margin: -4px -4px -4px 0; font-size: 18px; }
+.geo-steps ol { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.geo-steps li { display: flex; align-items: center; gap: 7px; font-size: 12px; color: #c6d4de; }
+.geo-steps li i { flex: none; width: 13px; height: 13px; border: 1px solid #3d6a8e; border-radius: 2px; font: 800 10px/12px var(--sans); font-style: normal; text-align: center; color: #04110f; }
+.geo-steps li.done { color: var(--dim); text-decoration: line-through; }
+.geo-steps li.done i { background: var(--teal); border-color: var(--teal); }
+.geo-nudge { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 6px 7px; background: rgba(8, 40, 36, 0.55); border: 1px solid rgba(63, 215, 197, 0.45); border-radius: 3px; animation: geoIn 0.18s ease-out; }
+.geo-nudge.hidden { display: none; }
+.geo-nudge-t { flex: 1 1 100%; font-size: 12px; color: #c9f1ea; }
+.geo-nudge .btn { min-height: 30px; font: 700 12px var(--sans); text-transform: none; letter-spacing: 0.2px; }
+.geo-nudge .geo-nudge-x { margin-left: auto; width: 30px; padding: 0; font-size: 16px; }
+.geo .btn.cydonia { border-color: #b8442f; color: #fff; background: linear-gradient(180deg, #a0301f, #6a1a10); box-shadow: 0 0 14px rgba(255, 79, 67, 0.3); }
+.geo .btn.cydonia.disabled { opacity: 0.6; box-shadow: none; }
+.geo .btn.disabled { opacity: 0.55; cursor: not-allowed; }
+.geo-row.dim:not(:disabled) { opacity: 0.72; }
 
 /* ---- cartão da seleção ------------------------------------------------------------------------------------------- */
 .geo-card {
@@ -289,4 +319,9 @@
 }
 @media (max-width: 1340px) {
   .geo-acts .btn:not(.geo-int-b) kbd { display: none; }
+}
+@media (hover: none) {
+  .geo-steps-h .geo-x { width: 36px; height: 36px; margin: -8px -6px -8px 0; }
+  .geo-nudge .btn, .geo-nudge .geo-nudge-x { min-height: 36px; }
+  .geo-nudge .geo-nudge-x { width: 40px; }
 }

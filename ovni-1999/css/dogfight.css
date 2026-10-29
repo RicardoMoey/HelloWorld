@@ -200,3 +200,16 @@
 }
 /* o rótulo do dano não fica cortado pela marca tracejada de 50 % (queda) */
 .df-hbar.ufo span { text-align: left; padding-left: 7px; }
+
+/* ---- defesa da base, dica das posturas e aviso dos mísseis ------------------------------------------------- */
+.df-tag.df-tag-def { color: #ff8a7f; }
+.df-tip { font: 700 11px var(--sans); color: #1b1203; background: rgba(255, 181, 61, 0.92); padding: 2px 9px; border-radius: 2px; }
+.df-tip.hidden { display: none; }
+.df-hint { position: absolute; left: 10px; right: 10px; bottom: 10px; display: flex; align-items: flex-start; gap: 8px; padding: 8px 10px; pointer-events: auto;
+  background: rgba(3, 9, 16, 0.86); border: 1px solid rgba(63, 215, 197, 0.45); border-left: 3px solid var(--teal); border-radius: 3px; animation: dfIn 0.22s ease-out; }
+.df-hint > div { flex: 1; min-width: 0; }
+.df-hint p { margin: 0 0 3px; font-size: 12.5px; line-height: 1.4; color: #d2e6ee; }
+.df-hint p:last-child { margin-bottom: 0; }
+.df-hint-x { flex: none; width: 32px; min-height: 28px; padding: 0; font-size: 16px; }
+@media (hover: none) { .df-hint-x { min-height: 36px; width: 40px; } }
+

@@ -132,6 +132,9 @@ table.cp-tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 .cp-tbl td { padding: 5px 6px; border-bottom: 1px solid #132130; white-space: nowrap; }
 .cp-tbl .num { text-align: right; font-family: var(--mono); }
 .cp-tbl tfoot td { font-weight: 800; border-bottom: 0; border-top: 1px solid var(--line2); color: var(--amber); }
+/* relatório mensal: linhas compactas e totais sempre à vista no fundo da área com deslocação */
+.cp-fund td { padding-top: 3px; padding-bottom: 3px; }
+.cp-fund tfoot td { position: sticky; bottom: 0; z-index: 1; background: #0d1621; box-shadow: 0 -6px 10px rgba(5, 9, 14, 0.85); }
 .cp-tbl .muted { color: var(--dim); }
 .cp-fund tr.up td:first-child .cp-arrow { color: var(--green); }
 .cp-fund tr.down td:first-child .cp-arrow { color: var(--red); }
@@ -262,4 +265,12 @@ table.cp-tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 }
 .cp-ng-sbody, .cp-mr-body, .cp-end-body, .cp-sl-list, .cp-ng-body { touch-action: pan-y; }
 /* avisos por cima de um relatório/diálogo da campanha tapavam o título: descem para junto do rodapé */
-body:has(.cp-mr, .cp-sl, .cp-deb, .cp-brief) #toasts { top: auto; bottom: calc(92px + env(safe-area-inset-bottom)); }
+body:has(.cp-sl, .cp-deb, .cp-brief) #toasts { top: auto; bottom: calc(92px + env(safe-area-inset-bottom)); }
+/* relatório mensal: nada por cima da tabela do financiamento (os toasts voltam quando fecha) */
+body:has(.cp-mr) #toasts { display: none; }
+
+/* missão final (Cidónia) e projetos novos no relatório da missão */
+.modal.cp-cy-modal { border-top-color: var(--red); background: linear-gradient(180deg, #1a0d10, #0b131c 60%); }
+.cp-cy .cp-cy-warn { color: #ff8a7f; font-weight: 700; }
+.cp-newres { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 10px; }
+.cp-newres-act { display: flex; justify-content: flex-start; }

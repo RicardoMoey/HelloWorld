@@ -1,7 +1,7 @@
 /* Playtest da campanha inteira pela interface, como um jogador num Mac (rato/trackpad + teclado) ou num iPad (toques):
    menu → «Nova Campanha» → Veterano → base em Lisboa → «Fundar base» → Geoscape (gestos de trackpad) → base (B):
    contratar cientistas, «Armas Laser», laboratório, equipar o Skyranger → Esc → tempo (teclas 1–6) até um OVNI →
-   «Interceptar» → combate (só canhão contra batedor pequeno, Agressivo) → «Enviar equipa» → chegada → «Iniciar missão» →
+   «Intercetar» → combate (só canhão contra batedor pequeno, Agressivo) → «Enviar equipa» → chegada → «Iniciar missão» →
    briefing → «Equipar» → batalha jogada com cliques e teclas (turnos alienígenas acelerados com Espaço; > N turnos ⇒
    «Abortar» e fica registado) → relatório da missão → Geoscape → material recuperado no armazém → investigação
    concluída → Ufopédia → local de terror (deixado expirar ou respondido) → relatório mensal de janeiro → «Gravar» na
@@ -499,8 +499,8 @@ async function handlePopup(s) {
       if (u && u.status === 'flying' && !easy) { goal.skipped = (goal.skipped | 0) + 1; note('  ' + u.type + ': grande demais para a primeira missão, deixo passar'); }
       const want = u && easy && u.status === 'flying' && !u.chased && ready && !goal.dogfightWon && !goal.crashed && !goal.battle;
       if (want) {
-        note('  OVNI ' + u.id + ' (' + u.type + ', ' + Math.round(u.speed) + ' nós) → «Interceptar»');
-        await popBtn('Interceptar');
+        note('  OVNI ' + u.id + ' (' + u.type + ', ' + Math.round(u.speed) + ' nós) → «Intercetar»');
+        await popBtn('Intercetar');
         await until(() => OV.GeoUI.current() && OV.GeoUI.current().dialog === 'intercept', 4000, 'diálogo de interceção');
         if (goal.intercept === 0) await shot('intercept_dialog');
         const name = await pickCraftRow(/Intercetor/);
@@ -1183,6 +1183,44 @@ async function saveReload() {
   await shot('loaded_geoscape');
   await missingKeys('jogo carregado');
 }
+// missão final pela interface: a investigação de Cidónia levaria horas, por isso só o estado é preparado (bandeira e
+// um Vingador pronto com a equipa); a partida é feita como um jogador: base → Naves → «Missão final: Cidónia» → briefing
+async function finalMission() {
+  tag = 'cidónia';
+  await setPaused();
+  await page.evaluate(() => {
+    const G = OV.Game.G, b = G.bases[0];
+    G.flags.cydoniaUnlocked = true;
+    const av = OV.Campaign.addCraft(G, b.id, 'avenger');
+    av.status = 'ready';
+    for (const sid of b.soldiers.slice()) { const s = G.soldiers[sid]; if (s && !(s.woundDays > 0) && av.soldiers.length < 12) OV.BaseSim.assignSoldier(G, sid, av.id); }
+  });
+  if (TOUCH) await press(page.locator('.geo-acts .btn', { hasText: 'Bases' }));
+  else await key('b');
+  await until(() => OV.BaseUI.isOpen(), 6000, 'base');
+  await baseTab(6);
+  await press(page.locator('.bsc-craft', { hasText: 'Vingador' }));
+  await sleep(300);
+  await shot('cydonia_base_crafts');
+  if (TOUCH) await press(page.locator('[data-act="cydonia"]'));
+  else await key('x');
+  await until(() => !!document.querySelector('.modal.cp-cy-modal'), 4000, 'confirmação de Cidónia');
+  await shot('cydonia_confirm');
+  await press(page.locator('.modal.cp-cy-modal .btn', { hasText: 'Partir para Marte' }));
+  const ok = await until(() => OV.Scenes.top().id === 'cbriefing' && OV.Game.G.activeMission && OV.Game.G.activeMission.siteRef.kind === 'cydonia', 6000, 'briefing de Cidónia');
+  check(ok, 'missão final lançada pela interface (briefing de Cidónia)');
+  await sleep(500);
+  await shot('cydonia_briefing');
+  await missingKeys('briefing de Cidónia');
+  if (TOUCH) await press(page.locator('.cp-brief .btn', { hasText: 'Cancelar' }));
+  else await key('Escape');
+  await until(() => OV.Scenes.top().id === 'basescape', 5000, 'regresso à base');
+  check(await page.evaluate(() => !OV.Game.G.activeMission), 'cancelar o briefing de Cidónia não deixa missão ativa');
+  if (TOUCH) await press(page.locator('.bsc-topbtns .btn.primary'));
+  else await key('Escape');
+  await until(() => OV.Scenes.top().id === 'geoscape', 5000, 'regresso ao Geoscape');
+  tag = 'geo';
+}
 // ecrãs finais (só por depuração: uma campanha real leva horas até lá) para o dossiê de imprensa
 async function endings() {
   tag = 'fim';
@@ -1299,6 +1337,7 @@ try {
   if (await newCampaign()) {
     const ok = await geoLoop();
     if (ok) await saveReload();
+    if (ok) await finalMission();
     if (ok && !TOUCH) await endings();
     const G = await page.evaluate(() => { const G = OV.Game.G; return { date: OV.U.fmtDate(G.t), funds: G.funds, researched: G.researched, stats: G.stats, rating: G.reports.length ? G.reports[G.reports.length - 1].ratingKey : null }; });
     note('estado final: ' + JSON.stringify(G));

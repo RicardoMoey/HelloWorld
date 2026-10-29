@@ -10,6 +10,9 @@
      equip(G, craftId, onDone?) ; monthReport(G, report) → Promise ; gameOver(G, reason) ; victory(G)
      baseDefence(G, ev) → Promise (resultado de um ataque à base) ; saveDialog(G) ; loadDialog()
      autosave(G, {silent?}) → {ok, reason?} ; saveLabel(G) → texto ; errText(err) → texto
+     launchCydonia(G, craftId?) → Promise(bool)   confirmação «sem regresso» e briefing da missão final
+     cydoniaState(G, craftId) → {ok, reason} ; cydoniaPick(G, baseId?) → {ok, reason, craftId} ; cydoniaWhy(reason) → texto
+     cydoniaCapable(craft) → bool ; monthAlienSplit(G, report) → [{key, n?, pts}] ; fundingTotals(report) → {before, delta, after}
      debug.newgame() → {step, diff, chosen, name, view} | null   (QA) }
    Atalhos: ver as dicas de cada botão (tooltip com a tecla). */
 (function (OV) {
@@ -93,6 +96,8 @@
     return b;
   }
   const kv = (k, v, cls) => el('div', { class: 'cp-kv' + (cls ? ' ' + cls : '') }, el('span', { class: 'cp-k', text: k }), el('b', { class: 'cp-v', text: v }));
+  // ajuda com variante de toque (iPad): «Toque…» em vez de «Clique…»
+  const touchT = (k, p) => (((OV.Input && OV.Input.lastPointerType === 'touch') || (typeof matchMedia === 'function' && matchMedia('(hover: none) and (pointer: coarse)').matches)) && OV.T.has(k + '.touch') ? T(k + '.touch', p) : T(k, p));
   const activeIsButtonIn = (root) => {
     const a = document.activeElement;
     return !!a && a !== document.body && !!root && root.contains(a) && (a.tagName === 'BUTTON' || a.tagName === 'INPUT' || a.tagName === 'A');
@@ -147,6 +152,16 @@
     if (r.reason === 'quota' && !quotaOffered) { quotaOffered = true; offerExport(G, null); }
     else if (r.reason !== 'busy' && !opts.silent) OV.Dom.toast(writeText(r.reason), null, 'warn');
     return r;
+  }
+  // gravação automática de uma campanha ainda por acabar (a que uma nova campanha substituiria) → {obj, label}|null
+  function liveAuto() {
+    let obj = null;
+    try { obj = OV.Save && OV.Save.read ? OV.Save.read('auto') : null; } catch (e) { obj = null; }
+    const g = obj && obj.campaign;
+    if (!g || !g.flags || g.flags.won || g.flags.lost) return null;
+    let label = obj.label;
+    if (!label) { try { label = saveLabel(g); } catch (e) { label = T('cp.sl.slot.auto'); } }
+    return { obj, label };
   }
   // início de cada turno do jogador numa batalha da campanha (ranhura 'autoTurn')
   function autosaveTurn(G, B) {
@@ -308,9 +323,9 @@
     function buildPlace(root) {
       nameInp = el('input', { type: 'text', class: 'cp-name', maxlength: '32', 'aria-label': T('cp.ng.name') });
       nameInp.addEventListener('input', () => { st.nameEdited = nameInp.value.trim().length > 0; st.name = nameInp.value; refreshFound(); });
-      nameInp.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); found(); } });
+      nameInp.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); found(false); } });
       info = el('div', { class: 'cp-ng-info' });
-      foundBtn = btn(T('cp.ng.found'), { cls: 'primary scr-big', key: 'Enter', tip: T('cp.ng.found.tip'), sound: false, onClick: found });
+      foundBtn = btn(T('cp.ng.found'), { cls: 'primary scr-big', key: 'Enter', tip: T('cp.ng.found.tip'), sound: false, onClick: () => found(false) });
       const zoomRow = el('div', { class: 'cp-zoom' },
         btn('−', { cls: 'small ghost', key: '−', tip: T('cp.ng.zoomOut'), onClick: () => GR.zoomTo(view, OV.U.clamp(Math.round(view.zoom) - 1, 0, 5)) }),
         btn('+', { cls: 'small ghost', key: '+', tip: T('cp.ng.zoomIn'), onClick: () => GR.zoomTo(view, OV.U.clamp(Math.round(view.zoom) + 1, 0, 5)) }),
@@ -318,7 +333,7 @@
       panel = el('aside', { class: 'scr-panel cp-ng-side' },
         ui.header(T('cp.ng.kicker2'), T('cp.ng.title.place')),
         el('div', { class: 'cp-ng-sbody scr-scroll' },
-          el('p', { class: 'cp-help', text: T('cp.ng.help') }),
+          el('p', { class: 'cp-help', text: touchT('cp.ng.help') }),
           info,
           el('label', { class: 'cp-k cp-name-l', text: T('cp.ng.name') }), nameInp,
           zoomRow),
@@ -326,7 +341,7 @@
           el('div', { class: 'scr-foot-btns' },
             btn(T('scr.back'), { key: 'Esc', tip: T('cp.ng.back.diff'), onClick: back }),
             foundBtn)));
-      root.append(panel, el('div', { class: 'cp-globe-tip', text: T('cp.ng.gestures') }));
+      root.append(panel, el('div', { class: 'cp-globe-tip', text: touchT('cp.ng.gestures') }));
       refreshInfo();
       layoutDirty = true;
     }
@@ -350,7 +365,9 @@
     function refreshFound() {
       if (foundBtn) foundBtn.disabled = !OV.GMath.isLand(st.chosen.lon, st.chosen.lat);
     }
-    const fmtLL = (p) => T('cp.ng.ll', { lat: Math.abs(p.lat).toFixed(1), ns: T(p.lat >= 0 ? 'cp.ng.N' : 'cp.ng.S'), lon: Math.abs(p.lon).toFixed(1), ew: T(p.lon >= 0 ? 'cp.ng.E' : 'cp.ng.W') });
+    // vírgula decimal pt-PT, como no Geoscape («38,7° N · 9,1° O»)
+    const dec1 = (v) => Math.abs(v).toFixed(1).replace('.', ',');
+    const fmtLL = (p) => T('cp.ng.ll', { lat: dec1(p.lat), ns: T(p.lat >= 0 ? 'cp.ng.N' : 'cp.ng.S'), lon: dec1(p.lon), ew: T(p.lon >= 0 ? 'cp.ng.E' : 'cp.ng.W') });
     const countryName = (id) => (OV.T.has('country.' + id) ? T('country.' + id) : id);
 
     function render() {
@@ -389,9 +406,36 @@
       sfx('ui_select');
       refreshInfo();
     }
-    function found() {
-      if (st.step !== 'place') return;
+    // a gravação automática de uma campanha por acabar seria substituída sem aviso: pergunta-se (e oferece-se exportar)
+    let asking = false;
+    function found(confirmed) {
+      if (st.step !== 'place' || asking) return;
       if (!OV.GMath.isLand(st.chosen.lon, st.chosen.lat)) { sfx('ui_deny'); OV.Dom.toast(T('cp.ng.sea'), null, 'warn'); return; }
+      const old = confirmed ? null : liveAuto();
+      if (old) {
+        asking = true;
+        sfx('ui_select');
+        OV.Dom.modal({
+          title: T('cp.ng.auto.title'), cls: 'alert',
+          body: el('div', null, el('p', { class: 'modal-text', text: T('cp.ng.auto.body', { label: old.label }) }), el('p', { class: 'modal-text scr-muted', text: T('cp.ng.auto.hint') })),
+          buttons: [{ label: T('common.cancel'), value: false }, { label: T('cp.ng.auto.replace'), value: 'go', kind: 'danger' }, { label: T('cp.ng.auto.export'), value: 'export', kind: 'primary' }],
+        }).then((v) => {
+          asking = false;
+          if (!v) return;
+          if (v === 'export') {
+            try {
+              const f = OV.Save.exportFile(old.obj);
+              OV.Dom.download(f.filename, f.text, f.mime);
+              OV.Dom.toast(T('cp.sl.exported', { name: f.filename }), null, 'good');
+            } catch (e) {
+              OV.Dom.modal({ title: T('cp.sl.title.save'), body: esc(errText(e)), cls: 'alert' });
+              return;
+            }
+          }
+          found(true);
+        });
+        return;
+      }
       const name = String((nameInp && nameInp.value) || st.name || '').trim().slice(0, 32);
       const seed = st.seed !== '' ? (+st.seed >>> 0) || 1 : (uiRng.u32() >>> 0) || 1;
       let G;
@@ -405,6 +449,8 @@
       sfx('ui_confirm');
       OV.Game.G = G;
       OV.Game.B = null;
+      // o turno de batalha gravado era da campanha anterior: «Continuar» não o pode reabrir
+      try { if (OV.Save && OV.Save.remove) OV.Save.remove('autoTurn'); } catch (e) { /* armazenamento indisponível */ }
       autosave(G, { silent: true });
       openGeo(G);
       OV.Dom.toast(T('cp.ng.founded', { name: baseName(G.bases[0]) }), null, 'good');
@@ -422,7 +468,7 @@
           if (k === 'Enter') { if (!activeIsButtonIn(sc.root) || document.activeElement === nextBtn || document.activeElement.classList.contains('cp-diff')) { toPlace(); return true; } return false; }
           return false;
         }
-        if (k === 'Enter') { if (!activeIsButtonIn(sc.root) || document.activeElement === foundBtn) { found(); return true; } return false; }
+        if (k === 'Enter') { if (!activeIsButtonIn(sc.root) || document.activeElement === foundBtn) { found(false); return true; } return false; }
         if (k === 'c' || k === 'C') { GR.rotateTo(view, st.chosen.lon, st.chosen.lat); return true; }
         return cam.key(ev);
       },
@@ -494,6 +540,63 @@
     sfx('ui_confirm');
     OV.Scenes.push('cbriefing', { G, siteRef, craftId, mission });
     return true;
+  }
+
+  // ---- missão final (Cidónia): partida do hangar, sem regresso -------------------------------------------------
+  const AIRBORNE = { out: 1, patrol: 1, returning: 1 };
+  const cydoniaCapable = (c) => !!c && (c.type === 'avenger' || !!(D().crafts[c.type] && D().crafts[c.type].spacecraft));
+  const fitAboard = (G, c) => (c.soldiers || []).filter((id) => { const s = C().findSoldier(G, id); return s && !(s.woundDays > 0); }).length;
+  // {ok, reason}: as razões são as de Campaign.checkStart (campaign.err.*), pela ordem mais útil ao jogador
+  function cydoniaState(G, craftId) {
+    if (!G || !G.flags.cydoniaUnlocked) return { ok: false, reason: 'locked' };
+    if (G.flags.won || G.flags.lost) return { ok: false, reason: 'ended' };
+    if (G.activeMission) return { ok: false, reason: 'busy' };
+    const c = craftId ? C().findCraft(G, craftId) : null;
+    if (!c) return { ok: false, reason: 'noCraft' };
+    if (!cydoniaCapable(c)) return { ok: false, reason: 'craftType' };
+    if (c.dogfightId) return { ok: false, reason: 'inDogfight' };
+    const base = C().findBase(G, c.baseId);
+    if (c.status !== 'ready' || AIRBORNE[c.status] || !base || base.crafts.indexOf(c.id) < 0) return { ok: false, reason: 'notReady' };
+    if (!fitAboard(G, c)) return { ok: false, reason: 'noSoldiers' };
+    return { ok: true, reason: null };
+  }
+  // a nave que partiria (de uma base, ou de qualquer uma): a primeira pronta, senão a que está mais perto de estar
+  const PICK_ORDER = ['noSoldiers', 'notReady', 'inDogfight', 'busy', 'ended', 'locked'];
+  function cydoniaPick(G, baseId) {
+    let best = null;
+    for (const b of G.bases) {
+      if (baseId && b.id !== baseId) continue;
+      for (const id of b.crafts) {
+        const c = C().findCraft(G, id);
+        if (!cydoniaCapable(c)) continue;
+        const st = cydoniaState(G, id);
+        if (st.ok) return { ok: true, reason: null, craftId: id };
+        if (!best || PICK_ORDER.indexOf(st.reason) < PICK_ORDER.indexOf(best.reason)) best = { ok: false, reason: st.reason, craftId: id };
+      }
+    }
+    if (best) return best;
+    return { ok: false, reason: G.flags.cydoniaUnlocked ? 'noAvenger' : 'locked', craftId: null };
+  }
+  const cydoniaWhy = (reason) => (OV.T.has('cp.cy.err.' + reason) ? T('cp.cy.err.' + reason) : OV.T.has('campaign.err.' + reason) ? T('campaign.err.' + reason) : T('cp.err.generic', { msg: reason }));
+  // confirmação («não há regresso») e lançamento → briefing; Promise(bool)
+  function launchCydonia(G, craftId) {
+    const id = craftId || cydoniaPick(G, null).craftId;
+    const st = cydoniaState(G, id);
+    if (!st.ok) {
+      sfx('ui_deny');
+      OV.Dom.toast(cydoniaWhy(id ? st.reason : cydoniaPick(G, null).reason), null, 'warn');
+      return Promise.resolve(false);
+    }
+    const c = C().findCraft(G, id);
+    const body = el('div', { class: 'cp-cy' },
+      el('p', { class: 'modal-text', text: T('cp.cy.body', { craft: craftName(c), n: fitAboard(G, c) }) }),
+      el('p', { class: 'modal-text cp-cy-warn', text: T('cp.cy.noReturn') }),
+      el('p', { class: 'modal-text scr-muted', text: T('cp.cy.tip') }));
+    sfx('alien_spotted');
+    return OV.Dom.modal({
+      title: T('cp.cy.title'), body, cls: 'alert cp-cy-modal',
+      buttons: [{ label: T('cp.cy.stay'), value: false }, { label: T('cp.cy.go'), value: true, kind: 'danger' }],
+    }).then((v) => (v ? launchMission(G, { kind: 'cydonia' }, id) : false));
   }
 
   // ícones pequenos do equipamento de um soldado (arma grande + resto agrupado)
@@ -794,6 +897,11 @@
     const am = G.activeMission;
     const tg = am && am.siteRef && am.siteRef.kind !== 'cydonia' ? C().targetOf(G, am.siteRef) : null;
     const loc = tg ? { lon: tg.lon, lat: tg.lat } : null;
+    // projetos de investigação que o material recuperado abre (comparação antes/depois do fecho da missão)
+    const craft0 = am ? C().findCraft(G, am.craftId) : null;
+    const rBase = craft0 ? craft0.baseId : G.bases[0] ? G.bases[0].id : null;
+    let before = null;
+    try { before = rBase ? C().availableResearch(G, rBase) : null; } catch (e) { before = null; }
     try {
       model = OV.Battle.outcome(B) ? C().finishMission(G, B) : C().abortMission(G, B);
     } catch (e) {
@@ -808,7 +916,9 @@
     takeEvents(G, { victory: 1, gameOver: 1 });
     if (model.outcome === 'continue') autosave(G, { silent: true });
     if (model.outcome === 'victory') lastWin = { squad: (B.units || []).filter((u) => u.origSide === 'xcom' && u.type === 'soldier').map((u) => u.soldierId), t: G.t };
-    const p = { G, B, model, loc, result: result || null, onDone: () => afterDebrief(G, model) };
+    let newResearch = [];
+    try { if (before && C().findBase(G, rBase)) newResearch = C().availableResearch(G, rBase).filter((id) => before.indexOf(id) < 0); } catch (e) { newResearch = []; }
+    const p = { G, B, model, loc, result: result || null, research: { baseId: rBase, topics: newResearch }, onDone: () => afterDebrief(G, model) };
     const top = OV.Scenes.top();
     if (top && top.id === 'battlescape') OV.Scenes.replace('cdebrief', p);
     else OV.Scenes.push('cdebrief', p);
@@ -947,6 +1057,14 @@
         Object.keys(lost).length && !model.craftLost ? el('div', { class: 'cp-lost' }, el('div', { class: 'cp-k', text: T('bs.debrief.equipmentLost') }), itemsGrid(lost, 26)) : null,
         model.storage && model.storage.over ? el('p', { class: 'cp-note bad', text: T('cp.db.storageOver', { used: model.storage.used, cap: model.storage.cap }) }) : null);
 
+      // investigação que o material recuperado abriu (o momento «e agora?»)
+      const rs = p.research && p.research.topics.length && model.outcome === 'continue' && OV.BaseUI ? p.research : null;
+      const topicName = (id) => (OV.T.has('research.' + id) ? T('research.' + id) : id);
+      researchBtn = rs ? btn(T('cp.db.research.open'), { cls: 'small', key: 'I', tip: T('cp.db.research.tip'), onClick: openResearch }) : null;
+      const resSec = rs ? ui.panelSection(T('cp.db.research'),
+        el('div', { class: 'cp-newres' }, rs.topics.map((id) => el('span', { class: 'scr-tag good', text: topicName(id) }))),
+        el('div', { class: 'cp-newres-act' }, researchBtn)) : null;
+
       // progressão e promoções
       const prog = model.progression || [];
       const extraPromo = (model.promotions || []).filter((pr) => !prog.some((g) => g.soldierId === pr.id));
@@ -976,17 +1094,24 @@
           el('div', { class: 'scr-result-sub', text: [T('scr.db.sub.' + result), deb.turns ? Tn('scr.db.turns', deb.turns | 0) : null, where.join(' · ') || null].filter(Boolean).join(' · ') })),
         el('div', { class: 'scr-deb-body' },
           el('div', { class: 'scr-deb-col' }, scoreSec, alienSec),
-          el('div', { class: 'scr-deb-col' }, lossSec, woundSec, recSec),
+          el('div', { class: 'scr-deb-col' }, lossSec, woundSec, recSec, resSec),
           progSec ? el('div', { class: 'scr-deb-wide' }, progSec) : null),
         el('footer', { class: 'scr-foot' },
           el('span', { class: 'scr-hint', text: T('cp.db.hint', { date: dateText(G.t) }) }),
           el('div', { class: 'scr-foot-btns' }, contBtn))));
     }
-    let left = false;
+    let left = false, researchBtn = null;
     function cont() {
       if (left) return;
       left = true;
       if (typeof p.onDone === 'function') p.onDone(model);
+    }
+    // continuar e abrir logo a investigação da base (com a escolha de projeto, se houver cientistas livres)
+    function openResearch() {
+      if (left) return;
+      const baseId = p.research && p.research.baseId;
+      cont();
+      if (baseId && OV.BaseUI && OV.BaseUI.open && OV.Scenes.top() && OV.Scenes.top().id === 'geoscape') OV.BaseUI.open(G, baseId, 'research');
     }
     sc = ui.makeScreen('cdebrief', {
       cls: 'scr-debrief',
@@ -995,6 +1120,7 @@
       focus: () => contBtn,
       keys(ev) {
         if (ev.key === 'Enter') { if (!activeIsButtonIn(sc.root) || document.activeElement === contBtn) { sfx('ui_confirm'); cont(); return true; } }
+        if ((ev.key === 'i' || ev.key === 'I') && researchBtn) { sfx('ui_click'); openResearch(); return true; }
         return false;
       },
     });
@@ -1018,6 +1144,21 @@
       el('b', { class: 'cp-bar-v', text: signed(v) }));
   }
 
+  // parcela dos ataques sem resposta nos pontos alienígenas do mês (registo do Geoscape em G.ui.terrorLog)
+  function monthAlienSplit(G, R) {
+    const alien = R.alien | 0;
+    const log = G && G.ui && G.ui.terrorLog ? G.ui.terrorLog[R.month] : null;
+    const pts = log ? Math.min(alien, log.pts | 0) : 0;
+    if (!log || !log.n || pts <= 0) return [{ key: 'cp.mr.alien', pts: alien }];
+    return [{ key: 'cp.mr.alienTerror', n: log.n, pts }, { key: 'cp.mr.alienOther', pts: Math.max(0, alien - pts) }];
+  }
+  // totais da tabela do financiamento: antes, variação e depois (= receita do próximo mês)
+  function fundingTotals(R) {
+    const out = { before: 0, delta: 0, after: 0 };
+    for (const c of R.countries || []) { out.before += c.before | 0; out.delta += c.delta | 0; out.after += c.after | 0; }
+    return out;
+  }
+
   OV.SceneDefs.monthReport = function (params) {
     const ui = SUI();
     const p = params || {};
@@ -1036,11 +1177,12 @@
       if (!R) { root.append(el('div', { class: 'scr-panel cp-mr' }, ui.header(T('cp.mr.kicker'), '—'))); return; }
       const thr = tune('RATING_THRESHOLD', [-900, -700, -500])[G.difficulty | 0];
       const max = Math.max(1, Math.abs(R.xcom | 0), Math.abs(R.alien | 0), Math.abs(R.research | 0), Math.abs(R.councilBonus | 0));
+      const split = monthAlienSplit(G, R);
       const scoreSec = ui.panelSection(T('cp.mr.score'),
         barRow(T('cp.mr.xcom'), R.xcom | 0, max, 'good'),
         barRow(T('cp.mr.research'), R.research | 0, max, 'good'),
         (R.councilBonus | 0) ? barRow(T('cp.mr.bonus'), R.councilBonus | 0, max, 'good') : null,
-        barRow(T('cp.mr.alien'), -(R.alien | 0), max, 'bad'),
+        split.map((x) => barRow(x.n ? Tn(x.key, x.n) : T(x.key), -x.pts, max, 'bad')),
         el('div', { class: 'scr-total ' + ratingCls(R.ratingKey) },
           el('span', { text: T('cp.mr.rating') }), el('b', { text: signed(R.rating) }),
           el('span', { class: 'scr-rating' }, el('i', { text: T('cp.mr.threshold', { n: OV.U.fmtInt(thr) }) }), T(R.ratingKey))));
@@ -1059,6 +1201,7 @@
               el('td', null, el('span', { class: 'cp-mini bad' }, el('i', { style: { width: (100 * Math.abs(r.a) / rmax).toFixed(0) + '%' } })), el('b', { class: 'bad', text: OV.U.fmtInt(r.a) })))))));
       }
       // financiamento por país
+      const tot = fundingTotals(R);
       const crows = (R.countries || []).map((c) => {
         const def = D().countries[c.id];
         const d = c.delta | 0;
@@ -1073,7 +1216,9 @@
         el('table', { class: 'cp-tbl cp-fund' },
           el('thead', null, el('tr', null, el('th', { text: T('cp.mr.country') }), el('th', { class: 'num', text: T('cp.mr.before') }), el('th', { class: 'num', text: T('cp.mr.change') }), el('th', { class: 'num', text: T('cp.mr.after') }))),
           el('tbody', null, crows),
-          el('tfoot', null, el('tr', null, el('td', { text: T('cp.mr.income') }), el('td'), el('td'), el('td', { class: 'num', text: money(R.income) })))));
+          el('tfoot', null, el('tr', null, el('td', { text: T('cp.mr.total') }), el('td', { class: 'num', text: money(tot.before) }),
+            el('td', { class: 'num ' + (tot.delta > 0 ? 'good' : tot.delta < 0 ? 'bad' : 'muted'), text: tot.delta ? (tot.delta > 0 ? '+' : '−') + money(Math.abs(tot.delta)).replace('−', '') : '—' }),
+            el('td', { class: 'num', text: money(tot.after) })))));
       // contas do mês
       const up = R.upkeep || {};
       const net = (R.income | 0) - (up.total | 0);
@@ -1084,13 +1229,14 @@
           kv(T('cp.mr.upkeep.salaries'), '−' + money(up.salaries | 0)),
           kv(T('cp.mr.upkeep.crafts'), '−' + money(up.crafts | 0)),
           kv(T('cp.mr.net'), (net >= 0 ? '+' : '') + money(net), net >= 0 ? 'good' : 'bad'),
-          kv(T('cp.mr.funds'), money(R.fundsBefore) + ' → ' + money(R.fundsAfter), (R.fundsAfter | 0) < 0 ? 'bad' : '')));
+          kv(T('cp.mr.funds'), money(R.fundsBefore) + ' → ' + money(R.fundsAfter), (R.fundsAfter | 0) < 0 ? 'bad' : ''),
+          kv(T('cp.mr.nextIncome'), money(tot.after), tot.delta < 0 ? 'bad' : 'good')));
       // avisos
       const warns = [];
       if (R.defeat) warns.push({ cls: 'bad', text: T('cp.mr.warn.defeat.' + R.defeat) });
       if (R.debtWarning) warns.push({ cls: 'bad', text: T('cp.mr.warn.debt', { limit: money(tune('DEBT_LIMIT', -1000000)) }) });
       else if ((R.fundsAfter | 0) < 0 && !R.defeat) warns.push({ cls: 'warn', text: T('cp.mr.warn.negative') });
-      if ((R.badMonths | 0) === 1 && !R.defeat) warns.push({ cls: 'bad', text: T('cp.mr.warn.badMonth') });
+      if ((R.badMonths | 0) === 1 && !R.defeat) warns.push({ cls: 'bad', text: T('cp.mr.warn.badMonth') + ' ' + T(split.length > 1 ? 'cp.mr.advice.terror' : 'cp.mr.advice') });
       const pacts = (R.countries || []).filter((c) => c.newPact);
       if (pacts.length) warns.push({ cls: 'bad', text: T('cp.mr.warn.pacts', { list: pacts.map((c) => (D().countries[c.id] ? T(D().countries[c.id].nameKey) : c.id)).join(', ') }) });
       if (R.alienBaseRevealed) {
@@ -1558,6 +1704,7 @@
     debug,
     newGame: () => OV.Scenes.push('newgame', {}),
     launchMission, startBattle, afterBattle, resume, openGeo, popToGeo, equip,
+    cydoniaState, cydoniaPick, cydoniaWhy, cydoniaCapable, launchCydonia, monthAlienSplit, fundingTotals,
     monthReport, gameOver, victory, baseDefence, saveDialog, loadDialog, autosave, saveLabel, errText,
   });
 })(globalThis.OV || (globalThis.OV = {}));

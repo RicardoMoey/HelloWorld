@@ -153,9 +153,9 @@ module.exports = function (OV, t) {
     t.eq(M.placeName(-30, 40), OV.T('region.north_atlantic'));
     const G = newG(5);
     const rows = M.fundingRows(G);
-    t.eq(rows.length, 16);
+    t.eq(rows.length, G.countries.length);
     t.eq(rows.reduce((s, r) => s + r.funding, 0), OV.Economy.income(G));
-    t.ok(rows[0].funding >= rows[15].funding, 'ordenado');
+    t.ok(rows[0].funding >= rows[rows.length - 1].funding, 'ordenado');
     t.eq(M.craftName(G, G.crafts.c2), 'Intercetor-1');
     t.eq(M.craftStatusKey(G.crafts.c2), 'geo.cst.ready');
   });

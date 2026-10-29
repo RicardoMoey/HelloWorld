@@ -25,6 +25,8 @@
               shots, hits, dealt, taken, ufoShots, ufoHits, ticks, seconds, craftHp, craftMaxHp, ufoDmgPct, events}
    Ao sair, a cena faz OV.Scenes.pop({dogfight: summaries}) — a cena de baixo recebe-o em resume(result).
    Com tudo minimizado, os gestos de câmara (arrastar, pinça, roda, setas, +/−) passam para a cena de baixo.
+   Abre na última postura de ataque do jogador (G.ui.dfMode) ou em Normal; uma dica das posturas aparece no primeiro
+   combate da campanha (G.ui.dfHintSeen). Com tudo minimizado, Esc reabre e o Geoscape por baixo é atualizado (peek).
    Teclas: 1–5 posturas, Q/E ligar/desligar arma 1/2, M ou Esc minimizar, Tab outra interceção, P/Espaço pausa,
    Enter fecha o resultado. Sons: OV.audio (ambiente «interception» e efeito «dogfight_engine» se existirem). */
 (function (OV) {
@@ -38,6 +40,9 @@
   const MAX_TICKS = 8; // ticks por fotograma (§6.4)
   const OUTCOME_MS = 2400; // resultado visível antes de fechar sozinho
   const RETREAT_SHOW_TICKS = 110; // aviso do recuo automático (~3 s)
+  const HINT_MS = 12000; // dica das posturas (uma vez por campanha) visível durante o combate
+  const PEEK_MS = 250; // o Geoscape por baixo atualiza o painel a este ritmo (sem avançar o tempo)
+  const GEO_KEYS = /^[1-6bufsicrhBUFSICRH]$/;
   const SLOT_KEYS = ['Q', 'E'];
   const MODE_KEYS = ['1', '2', '3', '4', '5'];
   const CAMERA_KINDS = { hover: 1, leave: 1, pan: 1, zoom: 1, wheelnotch: 1, dragstart: 1, drag: 1, dragend: 1, down: 1, dblclick: 1 };
@@ -86,8 +91,11 @@
       try { phase = OV.GMath.dayPhase(G, ufo.lon, ufo.lat) || 'day'; } catch (e) { phase = 'day'; }
       try { sea = !OV.GMath.isLand(ufo.lon, ufo.lat); } catch (e) { sea = false; }
     }
+    // ours: nave de assalto da retaliação a caminho de uma base; scramble = nave dessa base que descolou para a defender
+    const assault = !!(ufo && ufo.targetBaseId);
     return {
-      id: d.id, craftId: d.craftId, ufoId: d.ufoId,
+      id: d.id, craftId: d.craftId, ufoId: d.ufoId, assault, scramble: assault && !!craft && craft.baseId === ufo.targetBaseId,
+      ufoSize: udef ? udef.size | 0 : 0,
       craftType: craft ? craft.type : null, ufoType: ufo ? ufo.type : null,
       craftLabel: craftLabel(G, craft), ufoLabel: ufoLabel(G, ufo),
       craftMaxHp: cdef ? cdef.hp : 1, craftHp: craft ? craft.hp : 0, craftHp0: craft ? craft.hp : 0,
@@ -206,6 +214,26 @@
     };
   }
 
+  // postura de abertura: a última que o jogador escolheu (G.ui.dfMode) ou Normal; nunca «Distância» com armas carregadas
+  const FIRE_MODES = { cautious: 1, standard: 1, aggressive: 1 };
+  function startMode(G, d) {
+    const craft = C().findCraft(G, d.craftId);
+    if (!craft || !craft.weapons.some(hasAmmo)) return null;
+    const last = G.ui && G.ui.dfMode;
+    return FIRE_MODES[last] ? last : 'standard';
+  }
+  // dica fixa: OVNI muito pequeno com mísseis ligados (desintegram-no: não há destroços para recuperar)
+  function missileTip(G, d, track) {
+    if (track.outcome || track.ufoSize > 0 || track.assault) return false;
+    const craft = C().findCraft(G, d.craftId);
+    if (!craft) return false;
+    return d.weapons.some((ws) => {
+      const w = craft.weapons[ws.slot];
+      const wd = w && D().craftWeapons[w.type];
+      return ws.enabled && hasAmmo(w) && wd && wd.projectile === 'missile';
+    });
+  }
+
   function outcomeTone(track) {
     switch (track.outcome) {
       case 'crashed': case 'destroyed': return 'good';
@@ -223,6 +251,10 @@
     if (o === 'crashed' && track.seaCrash) {
       titleKey = 'df.end.seaCrash';
       subs.push({ key: 'df.sub.seaCrash' });
+    } else if (track.assault && (o === 'disengaged' || o === 'escaped')) {
+      // a nave de assalto não foge: passa e segue para a base, onde as defesas e a guarnição a esperam
+      titleKey = 'df.end.assaultPassed';
+      subs.push({ key: 'df.sub.assaultPassed' });
     } else subs.push({ key: 'df.sub.' + o });
     const survived = o !== 'craftDestroyed';
     if (survived && track.taken > 0 && hpPct <= 50 && (o === 'escaped' || o === 'disengaged' || o === 'craftRetreated')) {
@@ -319,6 +351,11 @@
     if (!S || panelOf(id)) return null;
     const d = C().findDogfight(S.G, id);
     if (!d) return null;
+    // abre já a atacar (Normal ou a última postura): em «Distância» o OVNI ganhava tempo para fugir
+    if (d.mode === 'standoff' && !d.ticks) {
+      const m = startMode(S.G, d);
+      if (m) DFS().setMode(S.G, id, m);
+    }
     const track = newTrack(S.G, d);
     const p = {
       id, d, track, opts: opts || {}, minimised: true, endVt: null, bannerVt: null, closeVt: null, bannerShown: false,
@@ -327,6 +364,10 @@
     S.panels.push(p);
     buildPanel(p);
     buildChip(p);
+    if (p.el.hint) {
+      p.hintUntil = S.vt + HINT_MS;
+      if (S.G.ui) S.G.ui.dfHintSeen = true;
+    }
     if (!focused()) restore(id, true);
     else flashChip(p);
     sfx('reaction_alert');
@@ -360,7 +401,7 @@
     E.clock = el('span', { class: 'df-clock mono', text: '00:00' });
     tip(E.clock, T('df.elapsed'));
     const head = el('header', { class: 'df-head' },
-      el('span', { class: 'df-tag', html: icon('jet') + '<span>' + esc(T('df.title')) + '</span>' }),
+      el('span', { class: 'df-tag' + (tr.scramble ? ' df-tag-def' : ''), html: icon('jet') + '<span>' + esc(T(tr.scramble ? 'df.title.scramble' : 'df.title')) + '</span>' }),
       el('span', { class: 'df-names' },
         el('b', { class: 'df-craft', text: tr.craftLabel }),
         el('span', { class: 'df-vs', text: T('df.vs') }),
@@ -375,7 +416,20 @@
     E.alt = el('span', { class: 'df-alt', text: T('df.alt', { alt: T('alt.' + (D().altitudes[tr.alt] || 'low')) }) });
     E.pauseTag = el('div', { class: 'df-pausetag', text: T('df.hud.paused') });
     E.banner = el('div', { class: 'df-banner hidden', role: 'status', 'aria-live': 'polite' });
-    const view = el('div', { class: 'df-view' }, E.canvas, el('div', { class: 'df-status', 'aria-live': 'polite' }, E.st, E.warn), E.alt, E.pauseTag, E.banner);
+    E.tip = el('div', { class: 'df-tip hidden', text: T('df.tip.smallUfo') });
+    const hintLines = [];
+    if (tr.scramble) hintLines.push(T(tr.ufoType === 'battleship' ? 'df.hint.scrambleBig' : 'df.hint.scramble'));
+    if (S.G.ui && !S.G.ui.dfHintSeen) {
+      hintLines.push(T('df.hint.modes'));
+      if (tr.ufoSize === 0) hintLines.push(T('df.hint.small'));
+    }
+    if (hintLines.length) {
+      const x = el('button', { type: 'button', class: 'btn small ghost df-hint-x', text: '×', onclick: () => hideHint(p) });
+      tip(x, T('df.hint.close'));
+      E.hint = el('div', { class: 'df-hint', role: 'note' }, el('div', null, hintLines.map((l) => el('p', { text: l }))), x);
+      p.hintUntil = null;
+    }
+    const view = el('div', { class: 'df-view' }, E.canvas, el('div', { class: 'df-status', 'aria-live': 'polite' }, E.st, E.warn, E.tip), E.alt, E.pauseTag, E.hint || null, E.banner);
 
     // barra de distância: nave à esquerda (0), OVNI no marcador; zonas e marcas de alcance
     const DF = D().dogfight;
@@ -475,6 +529,7 @@
     if (p.d.mode === mode) return true;
     const ok = DFS().setMode(S.G, p.id, mode);
     if (ok) {
+      if (FIRE_MODES[mode] && S.G.ui) S.G.ui.dfMode = mode;
       sfx('ui_select');
       p.vis.rollV += mode === 'disengage' ? 0.0006 : (DFTargetDelta(p) > 0 ? -0.00035 : 0.00035);
     } else {
@@ -494,6 +549,12 @@
     sfx(ok ? 'ui_click' : 'ui_deny');
     refreshPanel(p);
     return ok;
+  }
+  function hideHint(p) {
+    if (!p.el.hint) return;
+    p.el.hint.remove();
+    p.el.hint = null;
+    OV.Dom.hideTooltip();
   }
   function togglePause() { setPaused(!(S && S.paused)); }
   // quiet: pausa sem aviso nem som (capturas, popups do Geoscape por cima)
@@ -577,10 +638,17 @@
       engineHum();
     }
     for (const p of S.panels.slice()) {
+      if (p.el.hint && p.hintUntil !== null && (S.vt >= p.hintUntil || p.track.outcome)) hideHint(p);
       if (p.bannerVt !== null && !p.bannerShown && S.vt >= p.bannerVt) showBanner(p);
       if (p.closeVt !== null && S.vt >= p.closeVt) closePanel(p);
     }
     if (S) for (const p of S.panels) refreshPanel(p);
+    // o Geoscape por baixo não pensa: mostra combustível, casco e listas atuais da nave em combate
+    if (S && (S.peekT = (S.peekT || 0) + dt) >= PEEK_MS) {
+      S.peekT = 0;
+      const b = below();
+      if (b && typeof b.peek === 'function') { try { b.peek(); } catch (e) { console.error(e); } }
+    }
   }
 
   function engineHum() {
@@ -797,6 +865,7 @@
     setText(E.st, mainTxt);
     E.st.dataset.tone = mainTone;
     setText(E.warn, st.warn ? T(st.warn.key) : '');
+    setCls(E.tip, 'hidden', !missileTip(G, d, tr));
     E.warn.dataset.tone = st.warn ? st.warn.tone : '';
     setCls(E.pauseTag, 'on', !!paused && !tr.outcome);
     setCls(E.root, 'paused', !!paused);
@@ -1548,8 +1617,18 @@
     if (k === ' ' || k === 'p' || k === 'P') { if (!ev.repeat) togglePause(); return true; }
     if (k === 'Tab') { cycle(); return true; }
     if (k === 'm' || k === 'M') { if (!ev.repeat) toggle(); return true; }
-    if (!f) return CAMERA_KEYS[k] ? forward(ev) : false;
-    if (k === 'Escape') { minimise(f.id); return true; }
+    if (!f) {
+      if (CAMERA_KEYS[k]) return forward(ev);
+      // tudo minimizado: Esc reabre a interceção; as teclas do Geoscape explicam porque não respondem
+      if (k === 'Escape') { if (!ev.repeat) restore(); return true; }
+      if (GEO_KEYS.test(k) || k === 'Enter') {
+        const t = Date.now();
+        if (!ev.repeat && t - (S.keyToastT || 0) > 1500) { S.keyToastT = t; OV.Dom.toast(T('df.minimisedKeys'), null, 'info'); }
+        return true;
+      }
+      return false;
+    }
+    if (k === 'Escape') { if (!ev.repeat) minimise(f.id); return true; }
     if (k === 'Enter') {
       if (f.track.outcome && f.bannerShown && !ev.repeat) closePanel(f);
       return true;
@@ -1662,6 +1741,6 @@
     open, close, minimise, restore, toggle, active, isOpen,
     isPaused: () => !!(S && S.paused),
     setPaused,
-    model: { ticksFor, newTrack, absorb, absorbGeo, status, weaponInfo, summary, outcomeTone, apparentR, depthK, craftLabel, ufoLabel, SHAPES, MAX_TICKS, OUTCOME_MS },
+    model: { ticksFor, newTrack, absorb, absorbGeo, status, weaponInfo, summary, outcomeTone, apparentR, depthK, craftLabel, ufoLabel, startMode, missileTip, SHAPES, MAX_TICKS, OUTCOME_MS },
   };
 })(globalThis.OV || (globalThis.OV = {}));

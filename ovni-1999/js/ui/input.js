@@ -247,6 +247,8 @@
       // (pré-visualização do tiro forçado)
       if (e.metaKey && e.key !== 'Meta') return;
       I.keysDown.add(e.code);
+      // Esc/Enter mantidos premidos não atravessam vários ecrãs (Equipar → briefing → Geoscape): só a 1.ª pressão conta
+      if (e.repeat && (e.key === 'Escape' || e.key === 'Enter')) { e.preventDefault(); return; }
       const handled = emit({ kind: 'key', key: e.key, code: e.code, mods: mods(e), repeat: e.repeat });
       if (handled) e.preventDefault();
     });

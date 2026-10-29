@@ -15,7 +15,7 @@
      setSpeed(i) ; togglePause() ; select(ref|null)                 controlo programático da cena aberta
      model                           funções puras (sem DOM; testadas em Node)
    }
-   Teclas: 1–6 velocidades, P/Espaço pausa, I interceptar, B bases, U Ufopédia, F financiamento, S gravar, Esc opções
+   Teclas: 1–6 velocidades, P/Espaço pausa, I intercetar, B bases, U Ufopédia, F financiamento, S gravar, Esc opções
    (ou fecha a janela aberta), C centrar na seleção, H centrar na base, R radares, Tab próximo OVNI/local,
    setas rodam, +/− ampliam. */
 (function (OV) {
@@ -112,10 +112,14 @@
   const raceName = (r) => (r && has('race.' + r) ? T('race.' + r) : T('geo.unknown'));
 
   // ---- estados ----------------------------------------------------------------------------------------------------
-  function craftStatusKey(c) {
+  function craftStatusKey(c, G) {
     if (c.dogfightId) return 'geo.cst.dogfight';
     if (c.status === 'patrol' && !c.patrol) return 'geo.cst.waiting';
-    if (c.status === 'out' && c.dest && c.dest.kind === 'ufo') return 'geo.cst.chasing';
+    if (c.status === 'out' && c.dest && c.dest.kind === 'ufo') {
+      // a caminho de um OVNI pousado ou despenhado não é uma perseguição
+      const u = G ? C().findUfo(G, c.dest.id) : null;
+      return u && u.status !== 'flying' ? 'geo.cst.out' : 'geo.cst.chasing';
+    }
     return 'geo.cst.' + c.status;
   }
   const isAir = (c) => !!AIR[c.status];
@@ -161,7 +165,7 @@
   }
   function craftRows(G, c) {
     const def = D().crafts[c.type] || { fuel: 1, hp: 1 };
-    const rows = [['geo.i.status', T(craftStatusKey(c))]];
+    const rows = [['geo.i.status', T(craftStatusKey(c, G))]];
     if (c.dest && isAir(c)) {
       rows.push(['geo.i.dest', targetName(G, c.dest)]);
       const e = etaHours(G, c, c.dest);
@@ -215,8 +219,18 @@
   function launchState(G, c) {
     return W().canOrder(G, c.id, { kind: 'point', lon: GM().wrapLon(c.lon + 1), lat: c.lat });
   }
+  // alvo em terra (missão com soldados): local de terror, base alienígena, OVNI aterrado ou despenhado
+  function groundTarget(G, ref) {
+    if (!ref || ref === 'home' || !ref.kind) return false;
+    if (ref.kind === 'site' || ref.kind === 'alienBase') return true;
+    if (ref.kind !== 'ufo') return false;
+    const u = C().findUfo(G, ref.id);
+    return !!u && (u.status === 'landed' || u.status === 'crashed');
+  }
+  const fitCount = (G, c) => (c.soldiers || []).filter((id) => { const s = C().findSoldier(G, id); return s && !(s.woundDays > 0); }).length;
   function craftsFor(G, baseId, target) {
     const out = [];
+    const ground = groundTarget(G, target);
     for (const b of G.bases) {
       if (baseId && b.id !== baseId) continue;
       for (const id of b.crafts) {
@@ -224,11 +238,15 @@
         if (!c) continue;
         const r = target ? W().canOrder(G, id, target) : launchState(G, c);
         const e = target ? etaHours(G, c, target) : null;
-        out.push({ craftId: id, baseId: b.id, ok: !!r.ok, reason: r.reason || null, warn: r.warn || null, eta: e });
+        const def = D().crafts[c.type] || {};
+        const team = !!def.transport && fitCount(G, c) > 0;
+        // ours: um intercetor num alvo em terra só sobrevoa — a ordem é válida, mas avisa-se
+        const warn = r.warn || (ground && r.ok && !team ? (def.transport ? 'noTeam' : 'noTroops') : null);
+        out.push({ craftId: id, baseId: b.id, ok: !!r.ok, reason: r.reason || null, warn, eta: e, team });
       }
     }
-    // com alvo: primeiro as que podem ir, depois as mais rápidas a chegar
-    if (target) out.sort((a, b) => (b.ok - a.ok) || ((a.eta ? a.eta.h : 1e9) - (b.eta ? b.eta.h : 1e9)));
+    // com alvo: primeiro as que podem ir; em terra, primeiro os transportes com equipa; depois as mais rápidas
+    if (target) out.sort((a, b) => (b.ok - a.ok) || (ground ? b.team - a.team : 0) || ((a.eta ? a.eta.h : 1e9) - (b.eta ? b.eta.h : 1e9)));
     return out;
   }
   function targetsFor(G, craftId) {
@@ -261,6 +279,76 @@
     rows.sort((a, b) => b.funding - a.funding || (a.name < b.name ? -1 : 1));
     return rows;
   }
+
+  // ---- equipa a caminho: quem chega primeiro e com que luz ---------------------------------------------------------
+  // transporte com soldados aptos que pode partir agora e chega antes; phase = dia/crepúsculo/noite à chegada
+  function teamEta(G, ref) {
+    const rows = craftsFor(G, null, ref).filter((r) => r.ok && r.team && r.eta);
+    if (!rows.length) return null;
+    const r = rows[0];
+    const tg = C().targetOf(G, ref);
+    let phase = null;
+    try { phase = tg ? GM().dayPhase({ t: G.t + Math.round(r.eta.h * 3600) }, tg.lon, tg.lat) : null; } catch (e) { phase = null; }
+    return { craftId: r.craftId, h: r.eta.h, phase };
+  }
+  // linha dos avisos de OVNI aterrado/despenhado: «Skyranger-1 chega em 2 h — lá será noite»
+  function teamEtaLine(G, ref, leftS) {
+    const e = teamEta(G, ref);
+    if (!e) return T('geo.ev.terrorSite.noTeam');
+    const p = { craft: craftName(G, G.crafts[e.craftId]), t: fmtDur(e.h) };
+    if (leftS > 0 && e.h * 3600 > leftS) return T('geo.ev.team.late', p);
+    return T('geo.ev.team.eta.' + (e.phase || 'day'), p);
+  }
+
+  // ---- pessoal parado (mesma regra das fichas da base) --------------------------------------------------------------
+  // cientistas livres com laboratório e projeto possível; engenheiros livres com oficina e algo para fabricar
+  function idleStaff(G) {
+    const out = { sci: 0, eng: 0, baseId: null };
+    const BS = OV.BaseSim;
+    if (!BS || !BS.staff || !BS.capacities) return out;
+    for (const b of G.bases) {
+      let st = null, caps = null;
+      try { st = BS.staff(G, b.id); caps = BS.capacities(G, b.id); } catch (e) { st = null; }
+      if (!st || !caps) continue;
+      let s = 0, e = 0;
+      if (st.scientists.free > 0 && caps.labs.used < caps.labs.cap && (b.research.length || C().availableResearch(G, b.id).length)) s = st.scientists.free;
+      if (st.engineers.free > 0 && caps.workshops.used < caps.workshops.cap && (b.production.length || (C().availableManufacture && C().availableManufacture(G, b.id).length))) e = st.engineers.free;
+      if ((s || e) && !out.baseId) out.baseId = b.id;
+      out.sci += s;
+      out.eng += e;
+    }
+    return out;
+  }
+
+  // ---- primeiros passos (só no primeiro mês; G.ui.geo.stepsOff esconde) ---------------------------------------------
+  const STEP_IDS = ['research', 'hire', 'speed', 'ufo'];
+  function nextSteps(G) {
+    const geo = (G.ui && G.ui.geo) || {};
+    const sci0 = Number.isFinite(geo.sci0) ? geo.sci0 : 10;
+    const done = {
+      research: G.researched.length > 0 || G.bases.some((b) => b.research.length > 0),
+      hire: G.bases.reduce((s, b) => s + (b.scientists | 0), 0) > sci0 || G.bases.some((b) => b.deliveries.some((d) => d.kind === 'scientist')),
+      speed: !!geo.sped,
+      ufo: ((G.stats && G.stats.ufosDetected) | 0) > 0,
+    };
+    const steps = STEP_IDS.map((id) => ({ id, done: !!done[id] }));
+    return { steps, show: (G.month | 0) === 0 && !geo.stepsOff && steps.some((s) => !s.done) };
+  }
+  // ataques sem resposta por mês (G.ui.terrorLog) para o relatório mensal separar essa parcela dos pontos alienígenas;
+  // um evento na fronteira do mês conta para o mês que acabou (os pontos entram antes do fecho, §3.1)
+  function logTerror(G, ev) {
+    if (!G.ui) return null;
+    const t = Number.isFinite(ev.at) ? ev.at : G.t;
+    const mi = OV.Clock && OV.Clock.monthIndex ? OV.Clock.monthIndex(Math.max(0, t - 1)) : G.month | 0;
+    const log = (G.ui.terrorLog = G.ui.terrorLog || {});
+    const e = (log[mi] = log[mi] || { n: 0, pts: 0 });
+    e.n++;
+    e.pts += Math.abs(ev.points | 0);
+    for (const k of Object.keys(log)) if (+k < mi - 12) delete log[k];
+    return e;
+  }
+  // velocidade sugerida para uma viagem de h horas (índice 0..5): 5 min até 1 h, 30 min até 6 h, depois 1 hora
+  const suggestSpeed = (h) => (h <= 1 ? 2 : h <= 6 ? 3 : 4);
 
   // ---- relógio (contrato §6.3) --------------------------------------------------------------------------------------
   // st = {speed:0..5, paused, acc}; handle(events) recebe cada lote escoado de G.events
@@ -325,7 +413,15 @@
     return m;
   }
   // tipos de janela que se juntam numa só quando ficam em fila (mesmo tipo)
-  const MERGE = { facilityDone: 1, productionDone: 1, deliveryArrived: 1 };
+  const MERGE = { facilityDone: 1, productionDone: 1, deliveryArrived: 1, craftLost: 1 };
+  // base perdida: as naves destruídas com ela entram no aviso «Defesa da base» em vez de uma janela cada
+  function dropBaseLosses(evs) {
+    const lost = evs.filter((e) => e.t === 'baseDefence' && e.result === 'lost');
+    if (!lost.length) return evs;
+    const n = evs.filter((e) => e.t === 'craftLost' && e.reason === 'base').length;
+    if (n) lost[0].craftsLost = (lost[0].craftsLost | 0) + n;
+    return evs.filter((e) => !(e.t === 'craftLost' && e.reason === 'base'));
+  }
 
   // texto de um toast para n eventos do mesmo tipo
   function toastFor(G, type, evs) {
@@ -397,11 +493,14 @@
     for (const r of ['council', 'debt', 'baseLost', 'cydonia']) k.push('geo.end.' + r);
     for (const r of ['busy', 'quota', 'unavailable', 'slot']) k.push('geo.save.err.' + r);
     k.push('geo.ev.researchDone.idle.one', 'geo.ev.researchDone.idle.other', 'geo.ev.craftLost.noTransport', 'geo.ev.terrorSite.eta', 'geo.ev.terrorSite.late', 'geo.ev.terrorSite.noTeam');
+    for (const p of ['day', 'dusk', 'night']) k.push('geo.ev.team.eta.' + p);
+    for (const id of STEP_IDS) k.push('geo.steps.' + id);
+    for (const r of ['sci', 'eng']) k.push('geo.idle.' + r + '.one', 'geo.idle.' + r + '.other');
     return k;
   }
   // razões que o sim pode devolver à interface (World.canOrder/order, Campaign.startMission)
   const WORLD_REASONS = ['noCraft', 'notReady', 'inDogfight', 'noTarget', 'noSoldiers', 'noFuel'];
-  const WORLD_WARNS = ['noWeapons', 'tooSlow', 'tooFar'];
+  const WORLD_WARNS = ['noWeapons', 'tooSlow', 'tooFar', 'noTroops', 'noTeam'];
   const MISSION_REASONS = ['busy', 'ended', 'noCraft', 'notTransport', 'inDogfight', 'noSoldiers', 'noTarget', 'locked', 'craftType', 'notReady', 'notAtSite', 'noBattle', 'generic'];
 
   const model = {
@@ -409,6 +508,7 @@
     targetName, craftStatusKey, ufoRows, craftRows, baseRows, siteRows, alienBaseRows, cityRows, weaponsText, etaHours,
     launchState, craftsFor, targetsFor, reasonText, warnText, fundingRows, runClock, REACT, MERGE, classify, toastFor,
     prodName, itemName, researchName, textKeys, ufoVisible, WORLD_REASONS, WORLD_WARNS, MISSION_REASONS,
+    groundTarget, teamEta, teamEtaLine, idleStaff, nextSteps, suggestSpeed, dropBaseLosses, logTerror,
   };
 
   // =================================================================================================================
@@ -490,11 +590,13 @@
       if (label) b.appendChild(el('span', { class: 'geo-bl', text: label }));
       if (o.key) b.appendChild(el('kbd', { text: o.key }));
       b.addEventListener('click', (e) => {
-        if (b.disabled) return;
+        if (b.disabled || !isTop()) return; // outra cena por cima (interceção, relatório): o painel não responde
         if (e.detail > 0) b.blur(); // clique de rato não deixa foco (Espaço/Enter não repetem a ação)
+        if (o.why) { sfx('ui_deny'); OV.Dom.toast(o.why, null, 'warn'); return; }
         if (o.sound !== false) sfx(o.sound || 'ui_click');
         o.onClick && o.onClick(e);
       });
+      if (o.why) { b.classList.add('disabled'); b.setAttribute('aria-disabled', 'true'); }
       if (o.tip) OV.Dom.tooltip(b, o.tip);
       return b;
     }
@@ -580,7 +682,7 @@
       const runDot = el('i', { class: 'geo-run', 'aria-hidden': 'true' });
       const funds = el('b', { class: 'geo-funds-v' });
       const fundsRow = el('button', { type: 'button', class: 'geo-funds' }, icon('coin'), el('span', { class: 'geo-funds-l', text: T('geo.funds') }), funds);
-      fundsRow.addEventListener('click', (e) => { if (e.detail > 0) fundsRow.blur(); sfx('ui_click'); openFunding(); });
+      fundsRow.addEventListener('click', (e) => { if (!isTop()) return; if (e.detail > 0) fundsRow.blur(); sfx('ui_click'); openFunding(); });
       OV.Dom.tooltip(fundsRow, tip(T('geo.funds.tip'), 'F'));
       const pauseB = btn(T('geo.pause'), { cls: 'geo-pause', icon: null, key: 'P', tip: tip(T('geo.pause.tip'), 'P · Espaço'), onClick: () => togglePause() });
       const speeds = [];
@@ -591,9 +693,14 @@
         speeds.push(b);
         speedBox.appendChild(b);
       }
+      const basesB = btn(T('geo.btn.bases'), { icon: 'base', key: 'B', tip: () => basesTip(), onClick: () => openBases() });
+      const basesBadge = el('span', { class: 'geo-badge hidden', 'aria-hidden': 'true', text: '!' });
+      basesB.appendChild(basesBadge);
+      const steps = el('div', { class: 'geo-steps hidden', role: 'status' });
+      const nudge = el('div', { class: 'geo-nudge hidden', role: 'status' });
       const acts = el('div', { class: 'geo-acts' },
         btn(T('geo.btn.intercept'), { cls: 'primary geo-int-b', icon: 'craft', key: 'I', tip: tip(T('geo.btn.intercept.tip'), 'I'), onClick: () => openIntercept({}) }),
-        btn(T('geo.btn.bases'), { icon: 'base', key: 'B', tip: tip(T('geo.btn.bases.tip'), 'B'), onClick: () => openBases() }),
+        basesB,
         btn(T('geo.btn.ufopaedia'), { icon: 'alien', key: 'U', tip: tip(T('geo.btn.ufopaedia.tip'), 'U'), onClick: () => openUfopaedia() }),
         btn(T('geo.btn.funding'), { cls: 'geo-wide', icon: 'coin', key: 'F', tip: tip(T('geo.btn.funding.tip'), 'F'), onClick: () => openFunding() }),
         btn(T('geo.btn.save'), { icon: 'box', key: 'S', tip: tip(T('geo.btn.save.tip'), 'S'), onClick: () => saveGame() }),
@@ -603,7 +710,9 @@
         el('div', { class: 'geo-clock' }, el('div', { class: 'geo-kicker' }, runDot, el('span', { text: T('geo.title') })), date, time),
         fundsRow,
         el('div', { class: 'geo-timebox' }, pauseB, speedBox),
+        nudge,
         acts,
+        steps,
         lists);
       // ferramentas do globo (canto superior esquerdo)
       const radarB = btn('', { cls: 'geo-tool', icon: 'radar', aria: T('geo.tool.radar'), tip: tip(T('geo.tool.radar'), 'R'), onClick: () => toggleRadar() });
@@ -620,17 +729,18 @@
       const card = el('section', { class: 'geo-card hidden', 'aria-live': 'polite' });
       const banner = el('div', { class: 'geo-banner hidden', role: 'status' });
       const layer = el('div', { class: 'geo-layer' });
-      const hint = el('div', { class: 'geo-hint', text: T(OV.Input && OV.Input.lastPointerType === 'touch' ? 'geo.hint.touch' : 'geo.hint') });
+      const hint = el('div', { class: 'geo-hint', text: T((OV.Input && OV.Input.lastPointerType === 'touch') || (typeof matchMedia === 'function' && matchMedia('(hover: none) and (pointer: coarse)').matches) ? 'geo.hint.touch' : 'geo.hint') });
       root.append(side, tools, card, banner, layer, hint);
       OV.Dom.$('hud').appendChild(root);
       S.side = side;
-      S.els = { date, time, funds, runDot, pauseB, speeds, lists, card, banner, layer, hint, radarB, zoomInd, fundsRow };
+      S.els = { date, time, funds, runDot, pauseB, speeds, lists, card, banner, layer, hint, radarB, zoomInd, fundsRow, basesB, basesBadge, steps, nudge };
       if (hintSeen) hint.classList.add('hidden');
       hintSeen = true;
       setTimeout(() => { if (S.els.hint) S.els.hint.classList.add('fade'); }, 14000);
       measure();
       refreshTime(true);
       refreshLists(true);
+      refreshAux(true);
     }
     function measure() {
       const V = OV.View;
@@ -638,6 +748,8 @@
       const narrow = V.w < 760;
       S.sideW = r && !narrow ? Math.round(V.w - r.left) : 0;
       if (S.root) S.root.style.setProperty('--geo-side', S.sideW + 'px');
+      // os toasts centram-se no globo (css/geo.css), fora do painel lateral
+      document.documentElement.style.setProperty('--geo-side', S.sideW + 'px');
       dirty();
     }
 
@@ -685,6 +797,7 @@
       const b = el('button', { type: 'button', class: 'geo-li ' + cls }, icon(ic), el('span', { class: 'geo-li-t' }, el('b', { text: title }), el('small', { text: sub })), right ? el('span', { class: 'geo-li-r', text: right }) : null);
       if (view.selection && ref && view.selection.kind === ref.kind && view.selection.id === ref.id) b.classList.add('sel');
       b.addEventListener('click', (e) => {
+        if (!isTop()) return;
         if (e.detail > 0) b.blur();
         select(ref);
         centre(ref);
@@ -698,7 +811,7 @@
       const selK = view.selection ? view.selection.kind + view.selection.id : '';
       const sig = [selK, ufos.map((u) => u.id + u.status + (u.hyper ? 'h' : '')).join(','), G.sites.map((s) => s.id + Math.ceil(s.leftS / 3600)).join(','),
         abs.map((a) => a.id).join(','), ufos.map((u) => Math.round(u.speed / 50)).join(','),
-        crafts.map((c) => c.id + craftStatusKey(c) + (c.dest ? c.dest.kind + (c.dest.id || '') : '') + pct(c.fuel, D().crafts[c.type].fuel)).join(',')].join('|');
+        crafts.map((c) => c.id + craftStatusKey(c, G) + (c.dest ? c.dest.kind + (c.dest.id || '') : '') + pct(c.fuel, D().crafts[c.type].fuel)).join(',')].join('|');
       if (!force && sig === S.sigs.lists) return;
       S.sigs.lists = sig;
       const box = S.els.lists;
@@ -714,12 +827,93 @@
         .concat(abs.map((a) => listRow('k-abase', 'alien', T('geo.alienBase.short'), placeName(a.lon, a.lat), '', refOf('alienBase', a.id))));
       sec(T('geo.list.sites'), siteRowsEl.length, siteRowsEl, T('geo.list.sites.none'));
       sec(T('geo.list.crafts'), crafts.length, crafts.map((c) => listRow('k-craft' + (D().crafts[c.type] && D().crafts[c.type].transport ? ' k-transport' : ''), 'craft', craftName(G, c),
-        T(craftStatusKey(c)) + (c.dest && c.status !== 'returning' ? ' · ' + targetName(G, c.dest) : ''), pct(c.fuel, D().crafts[c.type].fuel) + ' %', refOf('craft', c.id))), T('geo.list.crafts.none'));
+        T(craftStatusKey(c, G)) + (c.dest && c.status !== 'returning' ? ' · ' + targetName(G, c.dest) : ''), pct(c.fuel, D().crafts[c.type].fuel) + ' %', refOf('craft', c.id))), T('geo.list.crafts.none'));
+    }
+
+    // ---- pessoal parado (ficha no botão «Bases») e primeiros passos -------------------------------------------------
+    function basesTip() {
+      const idle = S.idle || { sci: 0, eng: 0 };
+      const lines = [];
+      if (idle.sci) lines.push(Tn('geo.idle.sci', idle.sci));
+      if (idle.eng) lines.push(Tn('geo.idle.eng', idle.eng));
+      return tip(T('geo.btn.bases.tip'), 'B') + (lines.length ? '<br><span class="warn">' + OV.U.esc(lines.join(' · ')) + '</span>' : '');
+    }
+    function refreshAux(force) {
+      const hour = Math.floor(G.t / 3600);
+      if (force || S.sigs.auxHour !== hour) {
+        S.sigs.auxHour = hour;
+        S.idle = idleStaff(G);
+        const on = S.idle.sci > 0 || S.idle.eng > 0;
+        S.els.basesBadge.classList.toggle('hidden', !on);
+        S.els.basesB.classList.toggle('geo-warnb', on);
+      }
+      const ns = nextSteps(G);
+      const sig = ns.show ? ns.steps.map((x) => x.id + (x.done ? 1 : 0)).join(',') : '';
+      if (!force && sig === S.sigs.steps) return;
+      S.sigs.steps = sig;
+      const box = S.els.steps;
+      OV.Dom.clear(box);
+      box.classList.toggle('hidden', !ns.show);
+      if (!ns.show) return;
+      const x = el('button', { type: 'button', class: 'geo-x small', 'aria-label': T('geo.steps.hide'), text: '×' });
+      x.addEventListener('click', () => { if (!isTop()) return; sfx('ui_click'); ui.stepsOff = true; refreshAux(true); });
+      OV.Dom.tooltip(x, tip(T('geo.steps.hide')));
+      box.append(el('div', { class: 'geo-steps-h' }, el('span', { text: T('geo.steps.title') }), x),
+        el('ol', null, ns.steps.map((st) => el('li', { class: st.done ? 'done' : '' }, el('i', { 'aria-hidden': 'true', text: st.done ? '✓' : '' }), el('span', { text: T('geo.steps.' + st.id) })))));
+    }
+    // lembrete do pessoal parado: um toast por dia de jogo, só com o tempo a correr (nunca uma janela)
+    function idleReminder() {
+      if (clk.paused || blocked() || G.t < 86400 - 43200) return;
+      const day = Math.floor((G.t + 43200) / 86400);
+      if (ui.idleDay === day) return;
+      // a «1 dia» os dias passam em segundos: também nunca mais do que um lembrete por 90 s de tempo real
+      const now = nowMs();
+      if (S.idleToastT && now - S.idleToastT < 90000) return;
+      ui.idleDay = day;
+      const idle = S.idle || idleStaff(G);
+      if (!idle.sci && !idle.eng) return;
+      const parts = [];
+      if (idle.sci) parts.push(Tn('geo.idle.sci', idle.sci));
+      if (idle.eng) parts.push(Tn('geo.idle.eng', idle.eng));
+      S.idleToastT = now;
+      OV.Dom.toast(T('geo.idle.toast', { what: parts.join(' · ') }), null, 'warn');
+    }
+    // sugestão discreta de acelerar o tempo depois de lançar uma nave (some sozinha; «não mostrar» fica em G.ui)
+    function showNudge(craftId, h) {
+      if (ui.nudgeOff || clk.speed >= suggestSpeed(h) || !(h > 0.15)) return;
+      const box = S.els.nudge;
+      const sp = suggestSpeed(h);
+      OV.Dom.clear(box);
+      const go = btn(T('geo.nudge.go', { s: T('geo.speed.' + sp) }), { cls: 'small primary', key: String(sp + 1), tip: tip(T('geo.speed.tip', { s: T('geo.speed.' + sp) }), String(sp + 1)), onClick: () => setSpeed(sp) });
+      const off = btn('', { cls: 'small ghost geo-nudge-x', aria: T('geo.nudge.off'), tip: tip(T('geo.nudge.off')), onClick: () => { ui.nudgeOff = true; hideNudge(); } });
+      off.prepend(el('b', { text: '×' }));
+      box.append(el('span', { class: 'geo-nudge-t', text: T('geo.nudge.text', { craft: craftName(G, G.crafts[craftId]), t: fmtDur(h), k: String(sp + 1) }) }), go, off);
+      box.classList.remove('hidden');
+      S.nudgeT = nowMs();
+    }
+    function hideNudge() {
+      if (!S.els.nudge || S.els.nudge.classList.contains('hidden')) return;
+      S.els.nudge.classList.add('hidden');
+      OV.Dom.clear(S.els.nudge);
+      OV.Dom.hideTooltip();
     }
 
     // ---------------------------------------------------------------------------------------------------------------
     // cartão da seleção
     // ---------------------------------------------------------------------------------------------------------------
+    // ---- missão final (Cidónia): botões nos cartões da base e no aviso da investigação ------------------------------
+    const CU = () => (OV.CampaignUI && typeof OV.CampaignUI.launchCydonia === 'function' ? OV.CampaignUI : null);
+    function cydoniaAct(baseId) {
+      if (!G.flags.cydoniaUnlocked || !CU()) return null;
+      const pick = CU().cydoniaPick(G, baseId);
+      return { label: T('geo.a.cydonia'), key: 'X', cls: 'primary cydonia', why: pick.ok ? null : CU().cydoniaWhy(pick.reason), act: () => CU().launchCydonia(G, pick.craftId) };
+    }
+    function cydoniaRowAct(c) {
+      if (!G.flags.cydoniaUnlocked || !CU() || !CU().cydoniaCapable(c)) return null;
+      const st = CU().cydoniaState(G, c.id);
+      return { why: st.ok ? null : CU().cydoniaWhy(st.reason), act: () => CU().launchCydonia(G, c.id) };
+    }
+
     function cardSpec(ref) {
       if (!ref) return null;
       if (ref.kind === 'city') {
@@ -746,10 +940,12 @@
       }
       if (ref.kind === 'base') {
         const acts = [{ label: T('geo.a.openBase'), key: 'B', cls: 'primary', act: () => openBase(o.id) }];
+        const cy = cydoniaAct(o.id);
+        if (cy) { acts[0].cls = ''; acts.unshift(cy); }
         const crafts = (o.crafts || []).map((id) => G.crafts[id]).filter(Boolean);
         return {
           kind: T('geo.k.base'), title: baseName(o), icon: 'base', tone: 'base', rows: baseRows(G, o), acts,
-          extra: crafts.length ? crafts.map((c) => ({ c, st: launchState(G, c) })) : null,
+          extra: crafts.length ? crafts.map((c) => ({ c, st: launchState(G, c), cy: cydoniaRowAct(c) })) : null,
         };
       }
       if (ref.kind === 'site') {
@@ -776,7 +972,7 @@
         S.sigs.card = null;
         return;
       }
-      const sig = JSON.stringify([spec.title, spec.sub, spec.rows, spec.acts.map((a) => a.label), spec.extra ? spec.extra.map((x) => x.c.id + x.c.status + x.st.ok) : 0]);
+      const sig = JSON.stringify([spec.title, spec.sub, spec.rows, spec.acts.map((a) => a.label + (a.why || '')), spec.extra ? spec.extra.map((x) => x.c.id + x.c.status + x.st.ok + (x.cy ? x.cy.why || 'ok' : '')) : 0]);
       if (!force && sig === S.sigs.card) return;
       S.sigs.card = sig;
       OV.Dom.clear(box);
@@ -789,11 +985,11 @@
         for (const x of spec.extra) {
           const c = x.c, def = D().crafts[c.type];
           const row = el('div', { class: 'geo-cc' + (x.st.ok ? '' : ' off') },
-            el('span', { class: 'geo-cc-n' }, el('b', { text: craftName(G, c) }), el('small', { text: T(craftStatusKey(c)) + ' · ' + T('geo.i.fuel') + ' ' + pct(c.fuel, def.fuel) + ' %' })));
+            el('span', { class: 'geo-cc-n' }, el('b', { text: craftName(G, c) }), el('small', { text: T(craftStatusKey(c, G)) + ' · ' + T('geo.i.fuel') + ' ' + pct(c.fuel, def.fuel) + ' %' })));
           if (!isAir(c)) {
-            const lb = btn(T('geo.a.launch'), { cls: 'small', onClick: () => openIntercept({ craftId: c.id }) });
+            if (x.cy) row.appendChild(btn(T('geo.a.cydoniaShort'), { cls: 'small cydonia', why: x.cy.why, tip: tip(T('geo.a.cydonia') + (x.cy.why ? ' — ' + x.cy.why : ''), 'X'), onClick: x.cy.act }));
+            const lb = btn(T('geo.a.launch'), { cls: 'small', tip: tip(x.st.ok ? T('geo.a.launch.tip') : reasonText(x.st.reason)), onClick: () => openIntercept({ craftId: c.id }) });
             lb.disabled = !x.st.ok;
-            if (!x.st.ok) lb.title = reasonText(x.st.reason);
             row.appendChild(lb);
           } else row.appendChild(btn(T('geo.a.select'), { cls: 'small ghost', onClick: () => { select(refOf('craft', c.id)); centre(refOf('craft', c.id)); } }));
           list.appendChild(row);
@@ -802,7 +998,7 @@
       }
       if (spec.acts.length) {
         const ab = el('div', { class: 'geo-card-acts' });
-        for (const a of spec.acts) ab.appendChild(btn(a.label, { cls: 'small ' + (a.cls || ''), key: a.key, tip: a.key ? tip(a.label, a.key) : null, onClick: a.act }));
+        for (const a of spec.acts) ab.appendChild(btn(a.label, { cls: 'small ' + (a.cls || ''), key: a.key, why: a.why || null, tip: a.key ? tip(a.label + (a.why ? ' — ' + a.why : ''), a.key) : null, onClick: a.act }));
         ab.appendChild(btn(T('geo.a.centre'), { cls: 'small ghost', key: 'C', tip: tip(T('geo.a.centre'), 'C'), onClick: () => centre(ref) }));
         box.appendChild(ab);
       }
@@ -812,6 +1008,7 @@
       if (!view.selection || !S.cardActs) return false;
       const a = S.cardActs.find((x) => x.key && x.key.toLowerCase() === k.toLowerCase());
       if (!a) return false;
+      if (a.why) { sfx('ui_deny'); OV.Dom.toast(a.why, null, 'warn'); return true; }
       sfx('ui_click');
       a.act();
       return true;
@@ -845,6 +1042,8 @@
       OV.Dom.toast(T(wasReady ? 'geo.int.launched' : 'geo.int.redirected', { craft: craftName(G, c), target: name }) + (r.warn ? ' — ' + warnText(r.warn) : ''), null, r.warn ? 'warn' : 'good');
       select(refOf('craft', craftId));
       afterOrder();
+      const e = ref && ref.kind !== 'point' && ref !== 'home' ? etaHours(G, c, ref) : null;
+      if (e) showNudge(craftId, e.h);
       return r;
     }
     function afterOrder() {
@@ -882,7 +1081,8 @@
     function openIntercept(o) {
       if (!G.crafts || !Object.keys(G.crafts).length) { sfx('ui_deny'); OV.Dom.toast(T('geo.int.noCrafts'), null, 'warn'); return; }
       closeDlg();
-      const st = { baseId: o.baseId || null, craftId: o.craftId || null, target: o.target || null, step: null, err: null };
+      // send: «Enviar equipa» (alvo em terra) — título próprio e transportes com soldados no topo da lista
+      const st = { baseId: o.baseId || null, craftId: o.craftId || null, target: o.target || null, step: null, err: null, send: !!o.send || (!!o.target && groundTarget(G, o.target)) };
       if (st.target) st.step = 'craft';
       else if (st.craftId) st.step = 'target';
       else st.step = G.bases.length > 1 && !st.baseId ? 'base' : 'craft';
@@ -892,7 +1092,7 @@
     }
     function interceptTitle(st) {
       if (st.step === 'base') return T('geo.int.chooseBase');
-      if (st.step === 'craft') return st.target ? T('geo.int.chooseCraftFor', { target: targetName(G, st.target) }) : T('geo.int.chooseCraft');
+      if (st.step === 'craft') return st.target ? T(st.send ? 'geo.int.chooseTeamFor' : 'geo.int.chooseCraftFor', { target: targetName(G, st.target) }) : T('geo.int.chooseCraft');
       return T('geo.int.chooseTarget', { craft: craftName(G, G.crafts[st.craftId]) });
     }
     function renderIntercept() {
@@ -900,7 +1100,7 @@
       if (!d || d.kind !== 'intercept') return;
       const st = d.st;
       const old = d.node;
-      const shell = dlgShell('geo-int', T('geo.int.kicker'), interceptTitle(st), () => closeDlg());
+      const shell = dlgShell('geo-int', T(st.send && st.step === 'craft' ? 'geo.int.kickerTeam' : 'geo.int.kicker'), interceptTitle(st), () => closeDlg());
       d.node = shell.node;
       const list = el('div', { class: 'geo-rows scroll', 'data-scroll': '' });
       if (st.step === 'base') {
@@ -913,14 +1113,15 @@
         if (!rows.length) list.appendChild(el('p', { class: 'geo-empty', text: T('geo.int.noCrafts') }));
         for (const r of rows) {
           const c = G.crafts[r.craftId], def = D().crafts[c.type];
-          const sub = T(craftStatusKey(c)) + ' · ' + T('geo.i.fuel') + ' ' + pct(c.fuel, def.fuel) + ' % · ' + T('geo.i.hull') + ' ' + pct(c.hp, def.hp) + ' %'
+          const sub = T(craftStatusKey(c, G)) + ' · ' + T('geo.i.fuel') + ' ' + pct(c.fuel, def.fuel) + ' % · ' + T('geo.i.hull') + ' ' + pct(c.hp, def.hp) + ' %'
             + (def.transport ? ' · ' + T('geo.i.crewN', { n: (c.soldiers || []).length, max: def.seatsUI || def.seats }) : def.weapons ? ' · ' + weaponsText(c) : '');
           let right = '', note = null;
           if (!r.ok) note = { text: reasonText(r.reason), tone: 'bad' };
           else if (r.warn) note = { text: warnText(r.warn), tone: 'warn' };
           if (r.eta) right = fmtDur(r.eta.h);
           if (G.bases.length > 1) right = baseName(C().findBase(G, r.baseId)) + (right ? ' · ' + right : '');
-          list.appendChild(rowBtn('craft' + (def.transport ? ' transport' : ''), craftName(G, c), sub, right, r.ok, note, () => {
+          const dim = st.send && r.ok && !r.team ? ' dim' : '';
+          list.appendChild(rowBtn('craft' + (def.transport ? ' transport' : '') + dim, craftName(G, c), sub, right, r.ok, note, () => {
             if (st.target) {
               const res = commitOrder(c.id, st.target);
               if (res.ok) closeDlg();
@@ -1244,13 +1445,26 @@
       S.els.banner.classList.add('hidden');
       OV.Dom.clear(S.els.banner);
     }
+    // interceção aberta por cima: o tempo está parado e o painel não responde — diz-se porquê
+    function dfBanner(on) {
+      if (on) {
+        if (S.target || S.blockedBattle) return;
+        S.dfBanner = true;
+        showBanner(T('geo.dfBanner.title'), T('geo.dfBanner.text'), 'warn');
+      } else if (S.dfBanner) {
+        S.dfBanner = false;
+        if (!S.target && !S.blockedBattle) hideBanner();
+      }
+    }
 
     // ---------------------------------------------------------------------------------------------------------------
     // eventos: fila de janelas, toasts agrupados, cenas de outros módulos
     // ---------------------------------------------------------------------------------------------------------------
-    function handle(evs) {
+    function handle(evs0) {
+      const evs = dropBaseLosses(evs0);
       for (const ev of evs) {
         const mode = classify(ev);
+        if (ev.t === 'terrorSiteExpired') logTerror(G, ev);
         if (ev.t === 'ufoDetected') highlight(refOf('ufo', ev.ufoId), 8000);
         if (ev.t === 'terrorSite') highlight(refOf('site', ev.siteId), 12000);
         if (ev.t === 'alienBaseFound') highlight(refOf('alienBase', ev.alienBaseId), 12000);
@@ -1352,7 +1566,7 @@
       const craftOf = (e) => (e.craftId ? G.crafts[e.craftId] : null);
       const ok = { label: T('common.ok'), key: 'Enter', def: true, esc: true, act: () => {} };
       const centreBtn = (ref) => ({ label: T('geo.a.centre'), key: 'C', act: () => { select(ref); centre(ref); } });
-      const sendBtn = (ref, primary) => ({ label: T('geo.a.sendTeam'), key: 'E', cls: primary ? 'primary' : '', act: () => openIntercept({ target: ref }) });
+      const sendBtn = (ref, primary) => ({ label: T('geo.a.sendTeam'), key: 'E', cls: primary ? 'primary' : '', act: () => openIntercept({ target: ref, send: true }) });
       const baseBtn = (baseId, tab) => ({ label: T('geo.a.goBase'), key: 'B', disabled: !fn('BaseUI', 'open'), act: () => openBase(baseId, tab) });
       const b = (e) => baseName(C().findBase(G, e.baseId));
       switch (ev.t) {
@@ -1360,6 +1574,17 @@
           const u = C().findUfo(G, ev.ufoId);
           if (!u || !ufoVisible(G, u)) return null;
           const ref = refOf('ufo', u.id);
+          const home = u.targetBaseId ? C().findBase(G, u.targetBaseId) : null;
+          if (home && u.status === 'flying') {
+            // ours: a nave de assalto da retaliação vem direita à base — interceta-se sem aviso de velocidade
+            const h = GM().distNm(u, home) / Math.max(1, u.speed);
+            return {
+              tone: 'terror', icon: 'base', title: T('geo.ev.assault'), sound: 'siren', focus: ref, kicker: T('geo.ev.terrorSite.kicker'),
+              text: T('geo.ev.assault.body', { ufo: ufoName(u), base: baseName(home), t: fmtDur(h) }),
+              lines: [T('geo.ev.assault.tips')], rows: ufoRows(G, u),
+              buttons: [{ label: T('geo.a.intercept'), key: 'I', cls: 'primary', act: () => openIntercept({ target: ref }) }, baseBtn(home.id, 'crafts'), ok],
+            };
+          }
           return {
             tone: 'alert', icon: 'ufo', title: T('geo.ev.ufoDetected'), sound: 'ufo_detected', focus: ref,
             text: T(u.status === 'flying' ? 'geo.ev.ufoDetected.body' : 'geo.ev.ufoDetected.bodyGround', { ufo: ufoName(u), place: placeName(u.lon, u.lat) }),
@@ -1381,6 +1606,7 @@
           return {
             tone: 'warn', icon: 'ufo', title: T('geo.ev.ufoLanded'), sound: 'radar_ping', focus: ref,
             text: T('geo.ev.ufoLanded.body', { ufo: ufoName(u), place: placeName(u.lon, u.lat) }), rows: ufoRows(G, u),
+            lines: [teamEtaLine(G, ref, 0)],
             buttons: [sendBtn(ref, true), centreBtn(ref), ok],
           };
         }
@@ -1392,6 +1618,7 @@
             tone: 'good', icon: 'ufo', title: T('geo.ev.ufoCrashed'), sound: 'ui_confirm', focus: ref,
             text: T('geo.ev.ufoCrashed.body', { ufo: ufoName(u), place: placeName(u.lon, u.lat), craft: craftName(G, craftOf(ev)) }),
             rows: [['geo.i.type', ufoKnown(u) ? T(ufoDef(u).nameKey) : T(ufoDef(u).sizeKey)], ['geo.i.crashLeft', T('geo.approx', { t: fmtDur(u.crashLeftS / 3600) })]],
+            lines: [teamEtaLine(G, ref, u.crashLeftS)],
             buttons: [sendBtn(ref, true), centreBtn(ref), ok],
           };
         }
@@ -1439,15 +1666,16 @@
           return { tone: 'warn', icon: 'fuel', title: T('geo.ev.craftLowFuel'), sound: 'ui_deny', focus: refOf('craft', c.id), text: T('geo.ev.craftLowFuel.body', { craft: craftName(G, c) }), buttons: [ok] };
         }
         case 'craftLost': {
-          const n = (ev.soldiers || []).length;
-          const def = D().crafts[ev.type];
+          const n = evs.reduce((sum, e) => sum + (e.soldiers || []).length, 0);
+          const body = (e) => T('geo.ev.craftLost.body.' + (e.reason || 'dogfight'), { craft: D().crafts[e.type] ? T(D().crafts[e.type].nameKey) : e.type });
           // sem transporte a base não consegue responder a nada: diz-se já onde comprar outro
           const noTransport = !Object.keys(G.crafts).some((id) => D().crafts[G.crafts[id].type] && D().crafts[G.crafts[id].type].transport);
-          const lines = n ? [Tn('geo.ev.craftLost.crew', n)] : [];
+          const lines = evs.length > 1 ? evs.map(body) : [];
+          if (n) lines.push(Tn('geo.ev.craftLost.crew', n));
           if (noTransport) lines.push(T('geo.ev.craftLost.noTransport'));
           return {
-            tone: 'alert', icon: 'alert', title: T('geo.ev.craftLost'), sound: 'ui_deny',
-            text: T('geo.ev.craftLost.body.' + (ev.reason || 'dogfight'), { craft: def ? T(def.nameKey) : ev.type }),
+            tone: 'alert', icon: 'alert', title: evs.length > 1 ? Tn('geo.ev.craftLost.many', evs.length) : T('geo.ev.craftLost'), sound: 'ui_deny',
+            text: evs.length > 1 ? '' : body(ev),
             lines, buttons: noTransport && G.bases[0] ? [baseBtn(G.bases[0].id, 'market'), ok] : [ok],
           };
         }
@@ -1470,12 +1698,20 @@
           let idle = 0;
           try { idle = OV.BaseSim.staff(G, ev.baseId).scientists.free | 0; } catch (e) { idle = 0; }
           if (idle > 0 && C().availableResearch(G, ev.baseId).length) lines.push(Tn('geo.ev.researchDone.idle', idle));
+          // a investigação que abre Cidónia: a missão final parte daqui (ou do cartão da base, ou do hangar)
+          const final = evs.some((e) => (e.flags || []).indexOf('cydoniaUnlocked') >= 0) && G.flags.cydoniaUnlocked && CU();
+          let cyBtn = null;
+          if (final) {
+            const pick = CU().cydoniaPick(G, null);
+            lines.unshift(pick.ok ? T('geo.ev.cydonia.ready', { craft: craftName(G, G.crafts[pick.craftId]) }) : T('geo.ev.cydonia.notYet', { why: CU().cydoniaWhy(pick.reason) }));
+            cyBtn = { label: T('geo.a.cydonia'), key: 'X', cls: 'primary cydonia', disabled: !pick.ok, act: () => CU().launchCydonia(G, pick.craftId) };
+          }
           return {
-            tone: 'good', icon: 'lab', title: T('geo.ev.researchDone'), sound: 'research_done', stinger: 'research',
+            tone: 'good', icon: final ? 'star' : 'lab', title: T(final ? 'geo.ev.cydonia' : 'geo.ev.researchDone'), sound: 'research_done', stinger: 'research',
             text: T('geo.ev.researchDone.body', { topic: researchName(ev.topic), base: b(ev) }), lines,
-            buttons: [
-              { label: T('geo.a.viewUfopaedia'), key: 'U', cls: 'primary', disabled: !fn('Ufopaedia', 'open'), act: () => openUfopaedia(ev.article || ev.topic) },
-              { label: T('geo.a.newProject'), key: 'N', disabled: !fn('BaseUI', 'open'), act: () => openBase(ev.baseId, 'research') }, ok],
+            buttons: [cyBtn,
+              { label: T('geo.a.viewUfopaedia'), key: 'U', cls: final ? '' : 'primary', disabled: !fn('Ufopaedia', 'open'), act: () => openUfopaedia(ev.article || ev.topic) },
+              { label: T('geo.a.newProject'), key: 'N', disabled: !fn('BaseUI', 'open'), act: () => openBase(ev.baseId, 'research') }, ok].filter(Boolean),
           };
         }
         case 'productionDone':
@@ -1558,6 +1794,7 @@
           const lines = [];
           if (shots.length) lines.push(T('geo.ev.baseDefence.shots', { hits, n: shots.length }));
           if ((ev.soldiersLost || []).length) lines.push(Tn('geo.ev.baseDefence.casualties', ev.soldiersLost.length));
+          if (ev.craftsLost) lines.push(Tn('geo.ev.baseDefence.craftsLost', ev.craftsLost));
           return {
             tone: ev.result === 'lost' ? 'terror' : 'good', icon: 'base', title: T('geo.ev.baseDefence'), sound: ev.result === 'lost' ? 'ui_deny' : 'ui_confirm',
             text: T('geo.ev.baseDefence.' + ev.result, { base: baseName(C().findBase(G, ev.baseId)) }), lines, buttons: [ok],
@@ -1796,13 +2033,16 @@
     // tempo
     // ---------------------------------------------------------------------------------------------------------------
     function blocked() {
-      return !!(S.popup || S.dlg || S.fallbackDf || S.target || S.queue.length || S.waiting || (OV.Dom.anyModalOpen && OV.Dom.anyModalOpen()));
+      return !!(S.popup || S.dlg || S.fallbackDf || S.target || S.queue.length || S.waiting || !isTop() || (OV.Dom.anyModalOpen && OV.Dom.anyModalOpen()));
     }
     function setSpeed(i) {
       clk.speed = Math.max(0, Math.min(SPEED_N - 1, i | 0));
       clk.paused = false;
       ui.speed = clk.speed;
+      if (clk.speed > 0) ui.sped = true;
+      hideNudge();
       refreshTime();
+      refreshAux();
     }
     function togglePause() {
       clk.paused = !clk.paused;
@@ -1962,6 +2202,18 @@
       // um botão com foco trata Enter/Espaço sozinho
       const a = document.activeElement;
       if ((k === 'Enter' || k === ' ') && a && a.tagName === 'BUTTON' && S.root && S.root.contains(a)) return false;
+      // ↑/↓ escolhem a linha de um diálogo (naves, alvos, bases), como no diálogo de gravações
+      if (S.dlg && S.dlg.node && !S.target && !S.popup && (k === 'ArrowDown' || k === 'ArrowUp')) {
+        const rows = [...S.dlg.node.querySelectorAll('.geo-row:not(:disabled)')];
+        if (rows.length) {
+          const i = rows.indexOf(a);
+          const n = i < 0 ? rows[k === 'ArrowDown' ? 0 : rows.length - 1] : rows[(i + (k === 'ArrowDown' ? 1 : -1) + rows.length) % rows.length];
+          n.focus({ preventScroll: true });
+          n.scrollIntoView({ block: 'nearest' });
+          sfx('ui_select');
+          return true;
+        }
+      }
       if (CAMERA_KEYS[k]) {
         if (k === '+' || k === '=') { if (!ev.repeat) zoomStep(1); }
         else if (k === '-' || k === '_') { if (!ev.repeat) zoomStep(-1); }
@@ -2066,8 +2318,9 @@
         if (r.stopped) onStopped(r.reason);
         if (r.stopped || r.ticks) ui.speed = clk.speed;
       } else clk.acc = 0;
-      flushToasts();
+      // a janela seguinte (relatório mensal, interceção) abre antes dos toasts do mesmo lote: nada fica por cima dela
       pump();
+      if (isTop()) flushToasts();
       const t = nowMs();
       if (t - S.lastRefresh > 220) {
         S.lastRefresh = t;
@@ -2076,6 +2329,9 @@
         refreshTime();
         refreshLists();
         renderCard();
+        refreshAux();
+        idleReminder();
+        if (S.nudgeT && t - S.nudgeT > 16000) { S.nudgeT = 0; hideNudge(); }
         updateMood();
         if (S.dlg && S.dlg.kind === 'intercept' && !S.target && t - (S.dlg.t || 0) > 600) {
           S.dlg.t = t;
@@ -2122,11 +2378,13 @@
         // eventos deixados por outras cenas (fim de batalha, base, interceção)
         if (Array.isArray(G.events) && G.events.length) handle(G.events.splice(0));
         if (G.t === 0 && !G.ui.geoIntro) { G.ui.geoIntro = true; S.queue.unshift({ kind: 'popup', type: 'intro', evs: [{ t: 'intro' }] }); }
+        if (!Number.isFinite(ui.sci0)) ui.sci0 = G.bases.reduce((n, b) => n + (b.scientists | 0), 0);
         if (G.flags.won || G.flags.lost) endFlow(null);
         dirty();
       },
       exit() {
         if (cur === ctl) cur = null;
+        document.documentElement.style.removeProperty('--geo-side');
         ui.lon = view.lon; ui.lat = view.lat; ui.zoom = view.zoom; ui.speed = clk.speed;
         setCursor('');
         OV.Dom.hideTooltip();
@@ -2136,17 +2394,22 @@
       },
       pause() {
         OV.Dom.hideTooltip();
+        // com outra cena por cima (interceção, relatório, gravações) o painel fica visível mas não responde
+        if (S.root) S.root.inert = true;
         // só esconde o painel se a cena de cima ocupar o ecrã (base, Ufopédia, briefing…)
         Promise.resolve().then(() => {
           const top = OV.Scenes.top();
           if (top && top !== sc && top.isScreen && S.root) { S.root.classList.add('geo-off'); S.hidden = true; }
+          if (top && top.id === 'dogfight' && S.root) dfBanner(true);
+          if (S.root) refreshTime(true);
         });
         setCursor('');
       },
       resume() {
         S.hidden = false;
         S.waiting = false;
-        if (S.root) S.root.classList.remove('geo-off');
+        if (S.root) { S.root.classList.remove('geo-off'); S.root.inert = false; }
+        dfBanner(false);
         setCursor(S.target ? 'crosshair' : 'grab');
         S.mood = null;
         updateMood();
@@ -2161,6 +2424,13 @@
       think,
       draw,
       onInput,
+      // a interceção por cima chama isto: o painel mostra combustível, casco e listas atuais sem avançar o tempo
+      peek() {
+        if (!S.root || S.hidden) return;
+        refreshTime();
+        refreshLists();
+        renderCard();
+      },
       onResize() { measure(); dirty(); },
       onHidden() { /* rAF pára sozinho; nada a fazer */ },
     };

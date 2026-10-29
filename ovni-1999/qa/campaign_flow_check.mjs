@@ -209,7 +209,9 @@ try {
   await page.evaluate((s) => OV.CampaignUI.launchMission(OV.Game.G, { kind: 'ufo', id: s.ufo }, s.craft), site1);
   check(await waitTop('cbriefing'), 'briefing da campanha');
   await page.waitForSelector('.cp-brief .scr-soldier');
-  check((await page.locator('.cp-brief .scr-soldier').count()) === 8, 'briefing: 8 soldados');
+  // equipa inicial por dificuldade (Data.startingBase): todos os soldados aptos do Skyranger
+  const nSquad = await page.evaluate((s) => OV.Game.G.crafts[s.craft].soldiers.length, site1);
+  check(nSquad >= 8 && (await page.locator('.cp-brief .scr-soldier').count()) === nSquad, 'briefing: ' + nSquad + ' soldados');
   const brTxt = await page.locator('.cp-brief').innerText();
   check(/Portugal/.test(brTxt) && /Europa/.test(brTxt), 'briefing: local (Portugal · Europa)');
   check(await page.evaluate(() => !!OV.Game.G.activeMission), 'startMission marcou a missão ativa');
@@ -218,7 +220,7 @@ try {
   await key('e');
   check(await waitTop('equip'), '«E» abre Equipar');
   await page.waitForSelector('.cp-eq .inv-equip');
-  check((await page.locator('.cp-eq .eq-sol').count()) === 8, 'equipar: 8 soldados');
+  check((await page.locator('.cp-eq .eq-sol').count()) === nSquad, 'equipar: ' + nSquad + ' soldados');
   await key('Tab');
   await noMissing('equipar');
   await shot('06-equip');
@@ -263,6 +265,7 @@ try {
   await shot('08-load-dialog');
   await page.locator('.cp-sl-row[data-slot="autoTurn"] .btn.primary').click();
   check(await waitTop('battlescape', 15000), 'gravação de combate retoma a batalha');
+  await page.evaluate(() => { const G = OV.Game.G; window.__avail0 = OV.Campaign.availableResearch(G, G.bases[0].id); });
   check(await page.evaluate(() => !!(OV.Game.G && OV.Game.G.activeMission && OV.Game.B)), 'G e B carregados com a missão ativa');
   await sleep(1500);
   const forceWin = async () => {
@@ -282,6 +285,12 @@ try {
   check(afterWin.am === null && afterWin.won === 1, 'finishMission aplicado (missão terminada, 1 vitória)');
   const newItems = Object.keys(afterWin.stores).filter((k) => (afterWin.stores[k] | 0) > (site1.stores[k] | 0));
   check(newItems.length >= 1, 'material recuperado no armazém: ' + newItems.join(', '));
+  // projetos novos abertos pelo material recuperado: secção «Novos projetos de investigação» com o botão
+  const fresh = await page.evaluate(() => { const G = OV.Game.G; return OV.Campaign.availableResearch(G, G.bases[0].id).filter((id) => window.__avail0.indexOf(id) < 0).length; });
+  if (fresh) {
+    check((await page.locator('.cp-deb .cp-newres .scr-tag').count()) === fresh, 'relatório: ' + fresh + ' projetos novos de investigação');
+    check((await page.locator('.cp-deb .btn', { hasText: /Abrir investigação/i }).count()) === 1, 'relatório: botão «Abrir investigação»');
+  } else log('  (o material desta missão não abriu projetos novos)');
   await noMissing('relatório');
   await shot('09-debrief');
   await page.locator('.cp-deb .btn.primary').click();
@@ -313,6 +322,44 @@ try {
   check(await page.evaluate(() => OV.Game.G.stats.missionsWon === 2 && OV.Game.B === null), 'duas vitórias aplicadas uma só vez cada');
 
   // ---------------------------------------------------------------------------------------------
+  log('missão final pela interface: base → Naves → «Missão final: Cidónia» → briefing → batalha → vitória');
+  await page.evaluate(() => {
+    const G = OV.Game.G;
+    const sky = Object.keys(G.crafts).map((id) => G.crafts[id]).find((c) => c.type === 'skyranger');
+    let n = 0;
+    while (sky.status !== 'ready' && n++ < 400) { OV.World.step(G, 720); G.events.splice(0); }
+    G.flags.cydoniaUnlocked = true;
+    const av = OV.Campaign.addCraft(G, G.bases[0].id, 'avenger');
+    av.status = 'ready';
+    for (const sid of sky.soldiers.slice()) OV.BaseSim.assignSoldier(G, sid, av.id);
+    OV.BaseUI.open(G, G.bases[0].id, 'crafts');
+  });
+  check(await waitTop('basescape'), 'base aberta no separador Naves');
+  await page.locator('.bsc-craft', { hasText: 'Vingador' }).click();
+  await page.waitForSelector('[data-act="cydonia"]');
+  await shot('09b-base-cydonia');
+  await page.locator('[data-act="cydonia"]').click();
+  await page.waitForSelector('.modal.cp-cy-modal');
+  check(/Não há regresso/.test(await page.locator('.modal.cp-cy-modal').innerText()), 'confirmação sem regresso');
+  await page.locator('.modal.cp-cy-modal .btn.danger').click();
+  check(await waitTop('cbriefing'), 'briefing de Cidónia');
+  check(await page.evaluate(() => OV.Game.G.activeMission.siteRef.kind === 'cydonia'), 'missão ativa: Cidónia');
+  await noMissing('briefing de Cidónia');
+  await shot('09c-cydonia-briefing');
+  await page.keyboard.press('Enter');
+  check(await waitTop('battlescape', 30000), 'batalha em Marte');
+  check(await page.evaluate(() => OV.Game.B.mission.kind === 'cydonia' && OV.Game.B.mission.terrain === 'MARS'), 'missão de Cidónia no terreno de Marte');
+  await sleep(2500);
+  check(await forceWin(), 'vitória em Cidónia → relatório');
+  await page.locator('.cp-deb .btn.primary').click();
+  check(await waitTop('victory', 8000), 'relatório → ecrã de vitória (sem a entrada de depuração)');
+  await page.waitForSelector('.cp-vic .cp-hero');
+  await noMissing('vitória pela interface');
+  await shot('09d-victory-ui');
+  await page.locator('.cp-vic .btn.primary').click();
+  check(await waitTop('menu', 4000), 'vitória → menu principal');
+
+  // ---------------------------------------------------------------------------------------------
   // ecrãs de fim (campanha à parte para não estragar a principal)
   const endScreens = async (p, tag) => {
     await p.evaluate(() => {
@@ -339,7 +386,8 @@ try {
       OV.CampaignUI.monthReport(G2, rep);
     });
     await p.waitForSelector('.cp-mr .cp-fund');
-    check((await p.locator('.cp-mr .cp-fund tbody tr').count()) === 16, tag + ' relatório mensal: 16 países');
+    const nC = await p.evaluate(() => window.__G2.countries.length);
+    check((await p.locator('.cp-mr .cp-fund tbody tr').count()) === nC, tag + ' relatório mensal: ' + nC + ' países');
     check((await p.locator('.cp-mr .cp-reg tbody tr').count()) >= 2, tag + ' relatório mensal: regiões');
     check((await p.locator('.cp-mr .cp-warns li').count()) >= 2, tag + ' relatório mensal: avisos');
     await noMissing(tag + ' relatório mensal', p);
