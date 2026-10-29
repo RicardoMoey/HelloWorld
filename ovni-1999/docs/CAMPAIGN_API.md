@@ -151,14 +151,16 @@ base = { id, name: string|null /* null ⇒ T('base.defaultName') */, lon, lat,
   production:[{id, item, engineers, qty, done, spent, paid, stalled}],
   deliveries:[{id, kind, itemId, n, etaT}],
   transfers:[{id, fromBaseId, kind, itemId, n, etaT}],             // P1 (multi-base); always [] in the MVP
-  spotted:bool }                           // aliens know where it is (Missions)
+  spotted:bool,                            // aliens know where it is (Missions)
+  rentDue:int }                            // $ of prorated rent of crafts sold this month (BaseSim.sellCraft, §11.7)
 ```
 - `research[i]`: `topic` is a topic id (including synthesised `interrogate_<unit>`). `cost` is fixed at start as
   `max(1, floor(topic.cost × RNG(80..120)/100))` (geo; `Data.researchRules.costRandPct`). Each day
   `spent += scientists`. The topic is done when `spent ≥ cost`.
 - `production[i]`: `item` is a `Data.manufacture` id. `qty` is the order size (0 = «contínuo»). `done` counts units
   finished. `spent` is engineer-hours on the current unit. `paid` is true once the current unit's money and
-  materials were taken. `stalled` is `null | 'funds' | 'materials' | 'hangar' | 'space'`.
+  materials were taken. `stalled` is `null | 'funds' | 'materials' | 'hangar' | 'space' | 'storage'` (`storage`: the
+  next unit would not fit in the stores, counting the materials it consumes; §11.7).
 - `deliveries[i].kind`: `'item' | 'craft' | 'soldier' | 'scientist' | 'engineer'`. `itemId` holds the item id or the
   craft type, or null for personnel. `etaT` is the absolute arrival time.
 - Free scientists = `scientists − Σ research.scientists`. Free engineers = `engineers − Σ production.engineers`.
@@ -194,7 +196,8 @@ craft = { id, type, num, name:string|null, baseId,
   weapons:[{type, ammo}|null],   // length = def.weapons; ammo null for beams (ammoMax null)
   soldiers:[soldierId],          // seat order
   equipment:{itemId:int},        // everything aboard for the ground team, ⊇ Σ templates of its soldiers
-  dogfightId:string|null, lowFuel:bool, missionT:int|null /* t of launch */ }
+  dogfightId:string|null, lowFuel:bool, missionT:int|null /* t of launch */,
+  acquiredT:int|null /* t the craft joined the base (addCraft); null in old saves ⇒ month start; §11.7 rent */ }
 ```
 - Status meanings: `ready` = in the hangar and launchable. `out` = flying to `dest`, including chasing a UFO.
   `patrol` = holding at a point or waiting over a site. `returning` = flying home. `repair` / `rearm` / `refuel` =
@@ -567,10 +570,12 @@ hire(G, baseId, kind:'soldier'|'scientist'|'engineer', n) → {ok,reason}   pays
 sack(G, baseId, kind, nOrSoldierId) → {ok,reason}     free staff only; a sacked soldier's armour/items return to stores
 buy(G, baseId, itemIdOrCraftType, n) → {ok,reason}    Data.items[id].buy or Data.crafts[type].buy; ETA item.deliveryH ‖ DELIVERY_ITEMS_H ‖ def.deliveryH
 sell(G, baseId, itemId, n) → {ok,reason}              immediate, Data.items[id].sell; live aliens never (Data.liveAliensSellable)
-canSellCraft(G, craftId) → reason|null ; sellCraft(G, craftId) → {ok, price}|{ok:false, reason}
+canSellCraft(G, craftId) → reason|null ; sellCraft(G, craftId) → {ok, price, rent}|{ok:false, reason}
                                                      'noCraft'|'away' (not in its hangar, in a dogfight or on a mission)|'crew'
                                                      (soldiers aboard); +Data.crafts[type].sell; fitted weapons, their loaded ammo
-                                                     (whole items) and the cargo go to stores; the rent stops, the hangar frees
+                                                     (whole items) and the cargo go to stores; the rent stops, the hangar frees;
+                                                     `rent` = craftRentDue, added to base.rentDue (charged at month end, §11.7)
+craftRentDue(G, craftId) → $                          rent × time held this month (since max(month start, acquiredT)) / month length
 moveCargo(G, craftId, itemId, n) → {ok,reason}        n > 0 stores→craft.equipment, n < 0 back (craft at its base)
 setArmour(G, soldierId, armourId) → {ok,reason} ; assignSoldier(G, soldierId, craftId|null) → {ok,reason}
 fitWeapon(G, craftId, slot, weaponType|null) → {ok,reason}   launcher items from/to stores; ammo starts 0 → 'rearm'
@@ -578,7 +583,8 @@ startResearch(G, baseId, topic, scientists) → {ok,reason}   'unavailable'|'lab
 setScientists(G, baseId, topic, n) ; cancelResearch(G, baseId, topic) → {ok, returned:unitType|null}
                                                      (a consumed item is not returned, orig; ours: the live alien of an
                                                      interrogation goes back to containment, even over capacity)
-startProduction(G, baseId, item, engineers, qty) → {ok,reason}   'unavailable'|'workshops'|'engineers'|'hangar'
+startProduction(G, baseId, item, engineers, qty) → {ok,reason}   'unavailable'|'workshops'|'engineers'|'hangar' (an order whose
+                                                     first unit cannot be paid or stored starts stalled, §1.8)
 setEngineers(G, baseId, productionId, n) ; setQty(G, baseId, productionId, qty) ; cancelProduction(G, baseId, productionId)
 halfHourly(G) ; hourly(G) ; daily(G)                 §3.1 steps 7, 11, 12
 completeResearch(G, baseId, topic)                   exported for tests/debug: same path as daily completion
@@ -593,7 +599,8 @@ completeResearch(G, baseId, topic)                   exported for tests/debug: s
   5. Push `researchDone` with `unlocked` = topics newly in `Campaign.availableResearch`, and `manufacture` = ids newly
      in `availableManufacture`.
 - **Production**: workshop use = Σ (engineers + `Data.manufacture[item].space`). Each hour, if not `paid`, pay
-  `cost` and the materials; if that is impossible, set `stalled` and push `productionStalled` once. Otherwise
+  `cost` and the materials; if that is impossible (funds, materials, hangar for a craft, or stores: the product must
+  fit after the materials leave — `stalled:'storage'`), set `stalled` and push `productionStalled` once. Otherwise
   `spent += engineers`. A unit is done when `spent ≥ hours`; then `spent −= hours`, `paid = false`, and the product
   goes in. Items and armour go to `stores`. A craft goes through `Campaign.addCraft` and needs a free hangar (else
   `stalled:'hangar'`). The order is complete at `done == qty` (never if `qty == 0`).
@@ -612,7 +619,8 @@ completeResearch(G, baseId, topic)                   exported for tests/debug: s
 ```
 addScore(G, side:'xcom'|'alien'|'research', pts, lon?, lat?)   region/country via GMath (research: no position)
 ufoActivity30m(G) ; daily(G)                                    §3.1 steps 9, 14
-upkeep(G) → {facilities, salaries, crafts, total}               Data.monthlyUpkeep over all bases (completed facilities only)
+upkeep(G) → {facilities, salaries, crafts, total}               Data.monthlyUpkeep over all bases (completed facilities only);
+                                                                crafts includes base.rentDue (reset to 0 by monthEnd)
 income(G) → int                                                 Σ funding of countries without pact
 rating(G) → int                                                 current month: xcom.total + research + bonus − alien.total
 ratingKey(G, rating?) → 'rating.*'                              Data.ratingKey(rating, G.difficulty)
@@ -1181,3 +1189,52 @@ Not met, and why:
 - **Battles** (median ≈ 22.5–24 against 14–18). Two optional battles a month plus the story exceptions; one a
   month from month 2 brought the median to 19.5 but cost 2–3 Recruta victories (fewer alloys), so it was not kept. The
   count includes the bot's retries after failed alien-base assaults and its alloy hunts.
+
+### 11.7 Persona round 1 (sim/data fixer)
+Verified persona findings, fixed at the root. Tests: `tools/tests/sim_persona_r1.test.js` (plus the pinned values updated
+in `geo_base` and `geo_wave4fix`). **rule** = contract-level change; DESIGN §22 lists every deviation. New reason codes:
+`bs.noRoute` (Act) and the production stall `storage` (§1.8); new state: `base.rentDue`, `craft.acquiredT`,
+`B.flashes` (battle, JSON, in `hash`).
+
+| Change | Where | Before → after | Why / measured |
+|---|---|---|---|
+| Kneel reserve while walking | `Act.reserveTU(B, u, {standing})`, `V.walk`, `P.walk`, `walkPreview` | a soldier who started the walk kneeling reserved only the shot (`!u.kneel`), walked into it and could not kneel again (`reserved`) | a walk always stands the soldier up: the 4 TU count (`standing: true`); preview marks and the walk agree |
+| **rule** Blaster Launcher route | `V.shoot` (guided weapons) | refused with `noLOF` without a straight line of fire | validated by `Path.flyRoute(B, from, target)`; fails only with **`noRoute`**; `validate` returns `route` (tile list, null for other weapons) for the preview. The alien AI still fires it only with a line of fire (`AI.explosivePlan`): with routes, the month-3 Veterano alien base fell 54 % → 38 % (24 seeds) |
+| **rule** Power-source deaths | `Battle.beginBattle` | aliens killed by the crashed UFO's power sources counted as X-COM kills (debrief line and points) | marked `crashDead` like the crew killed in the crash (`stats.aliensKilled` not incremented) |
+| **rule** Muzzle flash | `Act` (shoot), `LOS.computeLight`, `Battle.sideStart`, `TUNE.MUZZLE_FLASH_LIGHT` 6 | at night aliens shot from the dark: 78 % of alien shots came from shooters X-COM could not see | a shot from a dark tile lights that tile (`B.flashes [{i, side}]`, power 6 = the tile only) until the shooter's side starts its next turn; LOS is refreshed, so X-COM sees (and can react to) the shooter |
+| Recruta alien grenades | `AI.explosivePlan`, `TUNE.AI_GRENADE_FUSE` [1, 0, 0] | a clumped beginner squad lost 34 soldiers to 4 alien grenades (24 landed Medium Scouts, day) | on Recruta the grenade is primed with fuse 1: it lands in the alien turn and explodes at the end of the X-COM turn (10 soldiers lost) |
+| Manufacture profit | `Data.manufacture[*].cost` (`costOrig` kept), `TUNE.MANUFACTURE_PROFIT_CAP_H` 100 | Laser Cannon 483 $/engineer-hour, Motion Scanner 258, Medi-Kit 231 (original 97 / 53 / 44): ×0.2 hours with original sale prices | `cost = max(costOrig, sale − materials at sale − 100 × hours)` rounded to $500: 14 items (Laser Pistol 14 000, Laser Rifle 29 000, Heavy Laser 47 000, Medi-Kit 38 500, Motion Scanner 41 500, Plasma Pistol 65 500, Plasma Rifle 104 000, Heavy Plasma 145 500, Small Launcher 95 500, Blaster Launcher 113 500, Personal Armour 25 000, Laser Cannon 205 000, Plasma Beam 227 500, UFO Power Source 162 500). Persona script (10 engineers on scanners, 90 days): +6.0 M$ → +2.7 M$ over doing nothing |
+| **rule** Prorated craft rent | `BaseSim.sellCraft` → `{ok, price, rent}`, `BaseSim.craftRentDue`, `base.rentDue`, `Economy.baseUpkeep` / `monthEnd`, `craft.acquiredT` (purchase time for bought crafts) | selling both Interceptors 2 h before each month end and buying them back saved ≈ 450 k$ per Interceptor per month (persona: 14.58 → 17.28 M$ by day 95) | the sold craft pays rent for the time held this month (from the month start or its purchase), charged with the upkeep at month end; the same cycle now ends at 13.71 M$ (loses ≈ 0.9 M$) |
+| **rule** Manufacture vs stores | `BaseSim` `payBlock` | production delivered over capacity (72/50 with 101 Heavy Lasers) | the next unit is not paid while its product would not fit after its materials leave: `stalled:'storage'`, `productionStalled {reason:'storage'}` once; resumes when there is room |
+
+Battle sweep, month 0, 10 rookies, the headless playerBot (`node ovni-1999/tools/sim.js battle --ufo U --month 0 --diff D
+--night 1 --landed L --seeds 24 --squad 10`), wins / X-COM losses per battle, before → after:
+
+| Night, month 0 | Recruta crash | Recruta landed | Veterano crash | Veterano landed |
+|---|---|---|---|---|
+| Small Scout | 100 % / 0.58 → 100 % / 0.29 | 96 % / 0.71 → 100 % / 0.25 | 96 % / 1.21 → 100 % / 0.46 | 100 % / 0.79 → 100 % / 0.50 |
+| Medium Scout | 92 % / 3.00 → 96 % / 1.88 | 75 % / 4.25 → 100 % / 1.75 | 75 % / 4.58 → 100 % / 2.04 | 75 % / 5.63 → 96 % / 3.04 |
+| Large Scout | 79 % / 4.17 → 100 % / 1.25 | 75 % / 5.21 → 100 % / 2.17 | 83 % / 4.21 → 92 % / 3.04 | 58 % / 6.00 → 92 % / 3.54 |
+
+Daylight month-0 battles are unchanged (Recruta 92–100 %). With `--novice` (new: a beginner X-COM — clumped squad, no
+kneeling, smoke, grenades or very-lights), Recruta month 0: Medium Scout night 67–75 % → 92 %, Large Scout night
+54–63 % → 79–83 %, day 92–96 % → 92–96 % with 2.0–3.1 → 1.9–2.7 losses. The standard day sweep
+(`--ufo all --diff 1 --seeds 12`) is identical before and after; at night (`--night 1 --squad 10`) Large Scout 42 → 92 %,
+Abductor 42 → 92 %, Supply Ship 17 → 50 %, Terror Ship 33 → 50 %, Battleship 33 → 75 %, terror 58 → 67 %; alien base and
+Cydonia are not dark (shade 8) and do not change.
+
+Campaign bot, `node ovni-1999/tools/sim.js campaign --seeds 6 --diff 0,1 --days 240 --det` (exit 0 both), before → after:
+
+| | Recruta before | Recruta after | Veterano before | Veterano after |
+|---|---|---|---|---|
+| Victories | 4/6 (67 %) | 5/6 (83 %) | 3/6 (50 %) | 4/6 (67 %) |
+| Other endings | 1 Cydonia lost, 1 timeout | 1 timeout | 2 Cydonia lost, 1 timeout | 2 timeouts |
+| Median victory day | 138 | 135.5 | 154.5 | 160 |
+| Battle wins crash / landed / terror / alien base / Cydonia | 100 / 95 / 87 / 75 / 80 % | 100 / 100 / 89 / 90 / 100 % | 99 / 90 / 90 / 80 / 60 % | 97 / 86 / 79 / 80 / 100 % |
+| Soldiers lost (median) | 44.5 | 40.5 | 71.5 | 73 |
+| Council defeats | 0 | 0 | 0 | 0 |
+
+Six seeds are noisy (any change re-rolls every later battle); the Veterano terror rate moved 90 → 79 % on the same 29
+battles while the battle sweep shows no terror change by day or at month 2/4.
+
+`tools/sim.js` gained `--landed 1`, `--novice` and `runBattle({onEvent})` (per-event observer for statistics).

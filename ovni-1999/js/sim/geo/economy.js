@@ -64,7 +64,7 @@
   }
 
   // manutenção mensal de uma base: instalações concluídas, salários (incluindo pessoal a caminho), aluguer das naves
-  // (incluindo naves compradas a caminho) — Base::getMonthlyMaintenace orig
+  // (incluindo naves compradas a caminho) — Base::getMonthlyMaintenace orig — mais base.rentDue (naves vendidas no mês)
   function baseUpkeep(G, base) {
     const spec = { facilities: [], soldiers: base.soldiers.length, scientists: base.scientists | 0, engineers: base.engineers | 0, crafts: [] };
     for (const f of base.grid) if ((f.daysLeft | 0) === 0) spec.facilities.push(f.type);
@@ -78,7 +78,14 @@
       else if (dl.kind === 'engineer') spec.engineers += dl.n;
       else if (dl.kind === 'craft') for (let k = 0; k < dl.n; k++) spec.crafts.push(dl.itemId);
     }
-    return D().monthlyUpkeep(spec);
+    const u = D().monthlyUpkeep(spec);
+    // aluguer proporcional das naves vendidas neste mês (BaseSim.sellCraft)
+    const due = base.rentDue | 0;
+    if (due > 0) {
+      u.crafts += due;
+      u.total += due;
+    }
+    return u;
   }
   function upkeep(G) {
     const out = { facilities: 0, salaries: 0, crafts: 0, total: 0 };
@@ -177,6 +184,7 @@
     const up = upkeep(G);
     const fundsBefore = G.funds;
     G.funds = fundsBefore + inc - up.total;
+    for (const b of G.bases) b.rentDue = 0;
 
     const geo = C().rng(G, 'geo');
     const countries = [];

@@ -136,26 +136,29 @@
   }
   const ORDER = Object.keys(R).filter((id) => !R[id].template);
 
-  // fabrico: hours = horas-engenheiro ours; cost $ orig por unidade; materials ours (≈ orig × 0,35); space orig
+  // fabrico: hours = horas-engenheiro ours (≈ orig × 0,2); cost $ por unidade; materials ours (≈ orig × 0,35); space orig.
+  // Com as horas a 1/5 e os preços de venda orig, fabricar para vender rendia ~5× o original por hora de engenheiro:
+  // cost = max(costOrig, venda − materiais à venda − MANUFACTURE_PROFIT_CAP_H × hours), arredondado a 500 $, para que nada
+  // renda mais de 100 $/h-eng (o melhor do original: canhão laser, 97). costOrig fica como referência.
   const M = {
-    laser_pistol: { hours: 60, hoursOrig: 300, cost: 8000, space: 2, requires: 'laser_pistol', cat: 'weapon' },
-    laser_rifle: { hours: 80, hoursOrig: 400, cost: 20000, space: 3, requires: 'laser_rifle', cat: 'weapon' },
-    heavy_laser: { hours: 140, hoursOrig: 700, cost: 32000, space: 4, requires: 'heavy_laser', cat: 'weapon' },
-    medikit: { hours: 80, hoursOrig: 420, cost: 28000, space: 4, requires: 'medikit', cat: 'equipment' },
-    motion_scanner: { hours: 45, hoursOrig: 220, cost: 34000, space: 4, requires: 'motion_scanner', cat: 'equipment' },
-    plasma_pistol: { hours: 120, hoursOrig: 600, cost: 56000, materials: { alien_alloys: 1 }, space: 3, requires: 'plasma_pistol', cat: 'weapon' },
+    laser_pistol: { hours: 60, hoursOrig: 300, cost: 14000, costOrig: 8000, space: 2, requires: 'laser_pistol', cat: 'weapon' },
+    laser_rifle: { hours: 80, hoursOrig: 400, cost: 29000, costOrig: 20000, space: 3, requires: 'laser_rifle', cat: 'weapon' },
+    heavy_laser: { hours: 140, hoursOrig: 700, cost: 47000, costOrig: 32000, space: 4, requires: 'heavy_laser', cat: 'weapon' },
+    medikit: { hours: 80, hoursOrig: 420, cost: 38500, costOrig: 28000, space: 4, requires: 'medikit', cat: 'equipment' },
+    motion_scanner: { hours: 45, hoursOrig: 220, cost: 41500, costOrig: 34000, space: 4, requires: 'motion_scanner', cat: 'equipment' },
+    plasma_pistol: { hours: 120, hoursOrig: 600, cost: 65500, costOrig: 56000, materials: { alien_alloys: 1 }, space: 3, requires: 'plasma_pistol', cat: 'weapon' },
     plasma_pistol_clip: { hours: 12, hoursOrig: 60, cost: 2000, materials: { elerium_115: 1 }, space: 4, requires: 'plasma_pistol', cat: 'ammo' },
-    plasma_rifle: { hours: 160, hoursOrig: 820, cost: 88000, materials: { alien_alloys: 1 }, space: 4, requires: 'plasma_rifle', cat: 'weapon' },
+    plasma_rifle: { hours: 160, hoursOrig: 820, cost: 104000, costOrig: 88000, materials: { alien_alloys: 1 }, space: 4, requires: 'plasma_rifle', cat: 'weapon' },
     plasma_rifle_clip: { hours: 16, hoursOrig: 80, cost: 3000, materials: { elerium_115: 1 }, space: 4, requires: 'plasma_rifle', cat: 'ammo' },
-    heavy_plasma: { hours: 200, hoursOrig: 1000, cost: 122000, materials: { alien_alloys: 1 }, space: 4, requires: 'heavy_plasma', cat: 'weapon' },
+    heavy_plasma: { hours: 200, hoursOrig: 1000, cost: 145500, costOrig: 122000, materials: { alien_alloys: 1 }, space: 4, requires: 'heavy_plasma', cat: 'weapon' },
     heavy_plasma_clip: { hours: 16, hoursOrig: 80, cost: 6000, materials: { elerium_115: 1 }, space: 4, requires: 'heavy_plasma', cat: 'ammo' },
-    small_launcher: { hours: 180, hoursOrig: 900, cost: 78000, materials: { alien_alloys: 1 }, space: 3, requires: 'small_launcher', cat: 'weapon' },
+    small_launcher: { hours: 180, hoursOrig: 900, cost: 95500, costOrig: 78000, materials: { alien_alloys: 1 }, space: 3, requires: 'small_launcher', cat: 'weapon' },
     stun_bomb: { hours: 40, hoursOrig: 200, cost: 7000, materials: { elerium_115: 1 }, space: 2, requires: 'small_launcher', cat: 'ammo' },
-    blaster_launcher: { hours: 240, hoursOrig: 1200, cost: 90000, materials: { alien_alloys: 1 }, space: 5, requires: 'blaster_launcher', cat: 'weapon' },
+    blaster_launcher: { hours: 240, hoursOrig: 1200, cost: 113500, costOrig: 90000, materials: { alien_alloys: 1 }, space: 5, requires: 'blaster_launcher', cat: 'weapon' },
     blaster_bomb: { hours: 45, hoursOrig: 220, cost: 8000, materials: { elerium_115: 2 }, space: 3, requires: 'blaster_launcher', cat: 'ammo' },
     alien_grenade: { hours: 40, hoursOrig: 200, cost: 6700, materials: { elerium_115: 1 }, space: 2, requires: 'alien_grenade', cat: 'weapon' },
     personal_armour: {
-      hours: 160, hoursOrig: 800, cost: 22000, materials: { alien_alloys: 2 }, space: 12, requires: 'personal_armour',
+      hours: 160, hoursOrig: 800, cost: 25000, costOrig: 22000, materials: { alien_alloys: 2 }, space: 12, requires: 'personal_armour',
       produces: { item: 'personal_armour', armour: 'personal_armour', n: 1 }, cat: 'armour',
     },
     power_suit: {
@@ -166,10 +169,10 @@
       hours: 280, hoursOrig: 1400, cost: 58000, materials: { alien_alloys: 3, elerium_115: 6 }, space: 16, requires: 'flying_suit',
       produces: { item: 'flying_suit', armour: 'flying_suit', n: 1 }, cat: 'armour',
     },
-    laser_cannon: { hours: 60, hoursOrig: 300, cost: 182000, space: 6, requires: 'laser_cannon', cat: 'craft_weapon' },
-    plasma_beam: { hours: 100, hoursOrig: 500, cost: 226000, materials: { elerium_115: 6 }, space: 8, requires: 'plasma_cannon', cat: 'craft_weapon' },
+    laser_cannon: { hours: 60, hoursOrig: 300, cost: 205000, costOrig: 182000, space: 6, requires: 'laser_cannon', cat: 'craft_weapon' },
+    plasma_beam: { hours: 100, hoursOrig: 500, cost: 227500, costOrig: 226000, materials: { elerium_115: 6 }, space: 8, requires: 'plasma_cannon', cat: 'craft_weapon' },
     ufo_power_source: {
-      hours: 280, hoursOrig: 1400, cost: 130000, materials: { alien_alloys: 3, elerium_115: 8 }, space: 22, requires: 'power_source',
+      hours: 280, hoursOrig: 1400, cost: 162500, costOrig: 130000, materials: { alien_alloys: 3, elerium_115: 8 }, space: 22, requires: 'power_source',
       cat: 'ufo_component',
     },
     ufo_navigation: { hours: 320, hoursOrig: 1600, cost: 150000, materials: { alien_alloys: 2 }, space: 18, requires: 'ufo_navigation', cat: 'ufo_component' },

@@ -62,6 +62,7 @@
     SHADE_DAY: 0, SHADE_DUSK: 6, SHADE_NIGHT: 13,
     SHADE_ALIEN_BASE: 8, SHADE_MARS: 8, SHADE_XBASE: 5, // ours: base e Marte na penumbra (≤ DARK_SHADE: a X-COM vê)
     LIGHT_FIRE: 15, LIGHT_FLARE: 15, LIGHT_BURNING_UNIT: 15, LIGHT_LAMP: 12, LIGHT_UFO: 10,
+    MUZZLE_FLASH_LIGHT: 6, // ours: o tile de quem dispara no escuro fica iluminado até ao próximo turno do seu lado (6 = só o tile)
     ROOF_DAY_DARKEN: 2,
 
     // ---- fumo e fogo (orig)
@@ -100,6 +101,7 @@
     AI_MAX_ACTIONS: 3,
     AI_PASSES: 2,
     AI_GRENADE_FROM_TURN: 3,
+    AI_GRENADE_FUSE: [1, 0, 0], // ours: espoleta das granadas alienígenas por dificuldade (Recruta: rebenta no fim do turno X-COM)
     AI_BURNING_PATH_COST: 32,
 
     // ---- soldados (orig; quotas ours)
@@ -107,6 +109,7 @@
     SOLDIER_HIRE: 40000, SOLDIER_SALARY: 20000,
     SCIENTIST_HIRE: 30000, SCIENTIST_SALARY: 30000,
     ENGINEER_HIRE: 25000, ENGINEER_SALARY: 25000,
+    MANUFACTURE_PROFIT_CAP_H: 100, // $ por hora-engenheiro: teto do lucro de fabricar para vender (data/research.js)
     WOUND_RECOVERY_MIN: 25, WOUND_RECOVERY_MAX: 75, // % do HP perdido em dias (ours)
     SQUAD_MAX_UI: 10,
 

@@ -298,18 +298,19 @@ module.exports = function (OV, t) {
     t.eq(B.startProduction(G, 'b1', 'laser_rifle', 10, 1), { ok: false, reason: 'unavailable' });
     t.eq(B.startProduction(G, 'b1', 'laser_pistol', 11, 1), { ok: false, reason: 'engineers' });
     const r = B.startProduction(G, 'b1', 'laser_pistol', 10, 2);
+    const cost = OV.Data.manufacture.laser_pistol.cost;
     t.eq(r.ok, true);
-    t.eq(G.funds, f0 - 8000, 'primeira unidade paga ao começar');
+    t.eq(G.funds, f0 - cost, 'primeira unidade paga ao começar');
     t.eq(B.capacities(G, 'b1').workshops.used, 12, 'engenheiros + espaço');
     hours(G, 5);
     t.eq(r.production.done, 0);
     hours(G, 1);
-    t.eq([r.production.done, G.bases[0].stores.laser_pistol, G.funds], [1, 1, f0 - 16000]);
+    t.eq([r.production.done, G.bases[0].stores.laser_pistol, G.funds], [1, 1, f0 - 2 * cost]);
     hours(G, 6);
     t.eq(G.bases[0].stores.laser_pistol, 2);
     t.eq(G.bases[0].production, []);
     t.eq(evs(G, 'productionDone').map((e) => [e.item, e.qty]), [['laser_pistol', 2]]);
-    t.eq(G.funds, f0 - 16000);
+    t.eq(G.funds, f0 - 2 * cost);
   });
 
   t.test('fabrico: oficinas, contínuo (qty 0), vários por hora, hangar para naves', () => {

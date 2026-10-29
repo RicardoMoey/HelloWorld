@@ -1273,3 +1273,30 @@ Scope (25k lines) vs one session; iso art legibility of procedural sprites; LOS/
 - **A won mission recovers the armour of the soldiers killed in it** (back to the base stores and the debrief's
   recovered list; missing-in-action soldiers and lost battles still lose it). We believe OpenXcom does the same; in our
   economy each death otherwise cost 2–3 Alien Alloys and starved the Veterano endgame.
+
+**Persona round 1 deviations (ours; sim/data fixer, numbers in `docs/CAMPAIGN_API.md` §11.7)**:
+- **Muzzle flash**: a unit that fires from a dark tile lights that tile (`TUNE.MUZZLE_FLASH_LIGHT` 6 = the tile only,
+  `B.flashes`) until its side's next turn starts. The original has no such rule (aliens see 20 tiles in the dark, X-COM
+  9), and night battles were the worst moments of every persona run: 78 % of alien shots came from shooters X-COM could
+  not see, and squads died without a target. Now the shooter is lit, can be seen and shot back, and the night stays
+  harder than the day (the aliens still see in the dark and X-COM still needs very-lights to find them).
+- **Recruta alien grenades are primed with fuse 1** (`TUNE.AI_GRENADE_FUSE` [1, 0, 0]): on Recruta the grenade lands in
+  the alien turn and explodes at the end of the next X-COM turn, so a beginner sees it at the squad's feet and can
+  scatter. A clumped beginner squad lost 34 soldiers to 4 alien grenades in 24 landed Medium Scouts; now 10.
+- **Kneel reserve counts for walking from a kneel**: a walk always stands the soldier up, so «reserve to kneel» keeps the
+  4 TU even when the walk starts kneeling (the kneel → advance → kneel cycle works as in OpenXcom).
+- **Blaster Launcher validated by its flight route** (`Path.flyRoute`), not by a line of fire: it only refuses with
+  `noRoute` when no route exists; `validate` returns the route for the preview (DESIGN §3.6 table: auto-routed).
+- **Crashed power-source blasts before turn 1 count as crash deaths** (no kill lines or points for X-COM), like the
+  crew killed in the crash.
+- **Manufacture for profit capped at 100 $/engineer-hour** (`TUNE.MANUFACTURE_PROFIT_CAP_H`; the original's best is the
+  Laser Cannon at 97): with our ×0.2 hours and the original sale prices manufacturing paid ≈ 5× the original. The cost of
+  14 items went up (`cost = max(costOrig, sale − materials at sale − 100 × hours)`, rounded to $500; e.g. Laser Rifle
+  20 000 → 29 000, Motion Scanner 34 000 → 41 500, Personal Armour 22 000 → 25 000); sale prices (and alien loot) are
+  unchanged.
+- **Prorated rent for sold crafts**: a sold craft pays the rent for the time it was held this month (from the month
+  start or its purchase), added to `base.rentDue` and charged with the month's upkeep. The original charged nothing for a
+  craft sold before the month end, so selling the Interceptors 2 h before the month end and buying them back saved
+  ≈ $450 000 per Interceptor per month; the cycle now loses money.
+- **Manufacture respects the stores**: the next unit is not paid (stall `storage`) while its product would not fit after
+  its materials leave; it resumes on its own when there is room.

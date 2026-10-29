@@ -7,7 +7,8 @@
      da postura (de pé / ajoelhado). Olhos a altura−2; amostras do alvo: olhos−2, meio, base+4 (+ meio ±lateral).
 
    OV.LOS.computeLight(B) → B._.light (Uint8Array(n), 0..15): ambiente 15−shade (de dia −2 sob telhado),
-       fontes pontuais (fogo, very-lights no chão, unidades a arder, partes com tileDefs.light) com queda
+       fontes pontuais (fogo, very-lights no chão, unidades a arder, partes com tileDefs.light, clarões dos disparos
+       B.flashes com MUZZLE_FLASH_LIGHT) com queda
        power − isqrt(dx²+dy²) em todos os níveis. shadeAt(B,i) = 15 − luz.
    OV.LOS.eyeVoxel(B,u) → [vx,vy,vz] ; originVoxel(B,u,toVoxel) → olho + 4 voxels na direção do alvo (boca da arma)
    OV.LOS.fov(B,u) → {spotted:[ids hostis que o lado de u passou a ver], discovered:[i com bits de descoberta novos]}
@@ -323,6 +324,7 @@
       if (def && def.light) h = Math.imul(Math.imul(h ^ it.at, 16777619) ^ def.light, 16777619);
     }
     for (const u of B.units || []) if (u.burn > 0 && u.onMap && u.x >= 0) h = Math.imul(Math.imul(h ^ u.id, 16777619) ^ ((u.z * m.h + u.y) * m.w + u.x), 16777619);
+    for (const f of B.flashes || []) h = Math.imul(h ^ (f.i + 1), 16777619);
     return h >>> 0;
   }
 
@@ -361,6 +363,8 @@
     }
     const LB = tune('LIGHT_BURNING_UNIT', 15);
     for (const u of B.units || []) if (u.burn > 0 && u.onMap && u.x >= 0) put((u.z * hgt + u.y) * w + u.x, LB);
+    const LM = tune('MUZZLE_FLASH_LIGHT', 0) | 0;
+    if (LM > 0) for (const f of B.flashes || []) if (f.i >= 0 && f.i < n) put(f.i, LM);
     // queda inteira power − isqrt(dx²+dy²)
     const col = S.col;
     col.fill(0);

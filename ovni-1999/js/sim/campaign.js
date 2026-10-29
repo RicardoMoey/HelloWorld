@@ -206,7 +206,7 @@
     const c = {
       id: nextId(G, ID_PREFIX.craft), type, num: craftNumber(G, type), name: null, baseId, status: 'ready',
       lon: b.lon, lat: b.lat, dest: null, patrol: false, speed: 0, fuel: def.fuel, hp: def.hp, weapons, soldiers: [],
-      equipment: U.clone(o.equipment || {}), dogfightId: null, lowFuel: false, missionT: null,
+      equipment: U.clone(o.equipment || {}), dogfightId: null, lowFuel: false, missionT: null, acquiredT: G.t | 0,
     };
     G.crafts[c.id] = c;
     b.crafts.push(c.id);
@@ -337,7 +337,7 @@
       lon, lat, region: OV.GMath.regionAt(lon, lat), country: OV.GMath.countryAt(lon, lat),
       grid, scientists: sb.scientists | 0, engineers: sb.engineers | 0,
       soldiers: [], crafts: [], stores: U.clone(sb.stores), aliens: {},
-      research: [], production: [], deliveries: [], transfers: [], spotted: false,
+      research: [], production: [], deliveries: [], transfers: [], spotted: false, rentDue: 0,
     };
     G.bases.push(base);
 

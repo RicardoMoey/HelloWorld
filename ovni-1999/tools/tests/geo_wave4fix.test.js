@@ -69,7 +69,7 @@ module.exports = function (OV, t) {
     const rent = OV.Economy.upkeep(G).crafts;
     const st = Object.assign({}, b.stores);
     t.eq(BS.canBuy(G, b.id, 'interceptor', 1), 'hangar', 'os 3 hangares estão ocupados');
-    t.eq(BS.sellCraft(G, ic.id), { ok: true, price: 450000 });
+    t.eq(BS.sellCraft(G, ic.id), { ok: true, price: 450000, rent: 0 }, 'no instante 0 do mês não há aluguer proporcional');
     t.eq(G.funds - funds, D.crafts.interceptor.sell);
     t.eq(C.findCraft(G, ic.id), null);
     t.eq(b.crafts.indexOf(ic.id), -1);

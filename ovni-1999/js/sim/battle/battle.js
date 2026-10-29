@@ -258,7 +258,7 @@
       rng: { map: streams.map, combat: streams.combat, ai: streams.ai },
       units: [], items: [],
       stats: { civSaved: 0, civKilledByAliens: 0, civKilledByXcom: 0, aliensKilled: 0, aliensStunned: 0, xcomKilled: 0, crashDead: 0 },
-      log: [], pendingExplosions: [], nextId: 1,
+      log: [], pendingExplosions: [], flashes: [], nextId: 1,
       // opções da batalha (Granadas instantâneas) e tópicos investigados (equipamento alienígena utilizável)
       settings: Object.assign({ instantGrenades: !!tune('INSTANT_GRENADES_DEFAULT', true) }, mission.settings || {}),
       researched: Array.isArray(mission.researched) ? mission.researched.slice() : null,
@@ -506,7 +506,7 @@
     h = fnvStr(h, JSON.stringify(B.units));
     h = fnvStr(h, JSON.stringify(B.items));
     h = fnvStr(h, JSON.stringify(rngStates(B)));
-    h = fnvStr(h, JSON.stringify([B.turn, B.side, B.pendingExplosions]));
+    h = fnvStr(h, JSON.stringify([B.turn, B.side, B.pendingExplosions, B.flashes || []]));
     // estado que decide resultados fora do mapa/unidades (pontuação, memória da IA, fogo novo, berserk, opções)
     h = fnvStr(h, JSON.stringify([B.stats, B.aiMem || null, B.freshFire || [], B.pendingBerserk || [], !!B.cheat, B.phase,
       B.result || null, B.reserve || 'none', !!B.reserveKneel, B.settings || null, !!B.aborted]));
@@ -591,6 +591,8 @@
       if (side === 'xcom' && u.side !== 'alien' && u.status !== 'dead') u.turnsSinceSpotted = Math.min(255, (u.turnsSinceSpotted | 0) + 1);
     }
     if (OV.Combat && B.pendingExplosions && B.pendingExplosions.length) for (const e of OV.Combat.resolvePendingExplosions(B)) yield e;
+    // clarões dos disparos deste lado (Act, MUZZLE_FLASH_LIGHT) apagam-se quando ele volta a jogar
+    if (Array.isArray(B.flashes) && B.flashes.length) B.flashes = B.flashes.filter((f) => f.side !== side);
     if (OV.LOS) {
       OV.LOS.resetSide(B, side);
       const res = OV.LOS.refreshAll(B);
@@ -629,7 +631,15 @@
     // fontes de energia do OVNI caído: como em create(), a missão não acaba antes de começar (o último alienígena
     // consciente sobrevive às explosões da queda)
     if (OV.Combat && B.pendingExplosions && B.pendingExplosions.length) {
+      const alive = new Set(B.units.filter((u) => u.origSide === 'alien' && u.status !== 'dead').map((u) => u.id));
       for (const e of OV.Combat.resolvePendingExplosions(B, null, { keepLast: 'alien' })) yield e;
+      // mortos pelas fontes de energia antes do turno 1 contam como mortos na queda (nem abates nem pontos da X-COM)
+      for (const u of B.units) {
+        if (!alive.has(u.id) || u.status !== 'dead' || u.crashDead) continue;
+        u.crashDead = true;
+        B.stats.crashDead = (B.stats.crashDead | 0) + 1;
+        if (B.stats.aliensKilled > 0) B.stats.aliensKilled--;
+      }
     }
     let res = null;
     if (OV.LOS) {

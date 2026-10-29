@@ -158,6 +158,7 @@
       if (!Array.isArray(b.transfers)) b.transfers = [];
       if (!isObj(b.aliens)) b.aliens = {};
       if (typeof b.spotted !== 'boolean') b.spotted = false;
+      if (!isInt(b.rentDue) || b.rentDue < 0) b.rentDue = 0;
       for (const f of b.grid) need(isObj(f) && !!Data.facilities[f.type] && isInt(f.x) && isInt(f.y) && isInt(f.daysLeft));
       for (const bag of [b.stores, b.aliens]) for (const k in bag) need(isInt(bag[k]));
       for (const p of b.research) need(isObj(p) && isStr(p.topic) && isInt(p.cost) && isInt(p.spent) && isInt(p.scientists));
@@ -176,6 +177,7 @@
       for (const w of c.weapons) need(w === null || (isObj(w) && !!Data.craftWeapons[w.type] && (w.ammo === null || isInt(w.ammo))));
       need(Array.isArray(c.soldiers));
       if (!isObj(c.equipment)) c.equipment = {};
+      if (!isInt(c.acquiredT)) c.acquiredT = null;
       c.dogfightId = null;
       if (c.dest !== null && c.dest !== undefined) need(isObj(c.dest) && isStr(c.dest.kind));
       else c.dest = null;

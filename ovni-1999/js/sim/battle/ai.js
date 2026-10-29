@@ -10,7 +10,7 @@
      knownEnemies, attackTU, recordSightings, cheatNow, MODES, PROFILES,
      patrolReserve(B, u, c, modes?) → UT guardadas (sem modes: 1/2, 2/5 ou 1/3 das UT base pela agressividade),
      explosivePlan(B, u, c, ctx) → ação (granada: inv/prime/throw em ctx.queue; bomba do blaster) | null.
-   TUNE lidas: CHEAT_TURN, AI_MAX_ACTIONS, AI_PASSES, AI_GRENADE_FROM_TURN, TU_PSI, TU_KNEEL, TU_STAND, DARK_SHADE e
+   TUNE lidas: CHEAT_TURN, AI_MAX_ACTIONS, AI_PASSES, AI_GRENADE_FROM_TURN, AI_GRENADE_FUSE (espoleta por dificuldade), TU_PSI, TU_KNEEL, TU_STAND, DARK_SHADE e
      AI_MIND_CONTROL (omissão false: no MVP a IA só usa Pânico; true ativa o Controlo Mental com controlOdds).
      AI_MELEE_HEAR (8): distância a que Crisálidas/Ceifadores/Zombies «ouvem» um alvo conhecido do lado mas não visto.
    Conhecimento dos alienígenas: só o que o lado viu (turnsSinceSpotted ≤ inteligência) até ao turno de batota; as
@@ -531,6 +531,9 @@
       for (const i of targets) {
         const e = grenadeEfficacy(B, u, i, R, ctx);
         if (e.eff <= 0 || e.self || (best && e.eff <= best.eff)) continue;
+        // a bomba guiada voa por uma rota (Act.validate); os alienígenas continuam a só a disparar com linha de tiro
+        // (com rotas à volta das esquinas a base alienígena do mês 3 em Veterano caía de 54 % para 38 % de vitórias)
+        if (u.side === 'alien' && !OV.LOS.targetVoxel(B, u, i)) continue;
         const a = { type: 'shoot', unitId: u.id, hand: c.arms.gun.hand, mode: 'aimed', target: { i } };
         if (valid(B, a)) best = { eff: e.eff, a, i };
       }
@@ -567,11 +570,19 @@
     ctx.grenaded.add(best.i);
     const steps = [];
     if (!inHand) steps.push({ type: 'inv', unitId: u.id, itemId: g.id, to: free });
-    steps.push({ type: 'prime', unitId: u.id, itemId: g.id, fuse: 0 });
+    steps.push({ type: 'prime', unitId: u.id, itemId: g.id, fuse: alienFuse(B, u) });
     steps.push({ type: 'throw', unitId: u.id, itemId: g.id, toI: best.i });
     const first = steps.shift();
     ctx.queue[u.id] = steps;
     return first;
+  }
+  /* ours: espoleta das granadas alienígenas por dificuldade (AI_GRENADE_FUSE). Em Recruta (1) a granada cai no fim do
+     turno alienígena e só rebenta no fim do turno X-COM seguinte: o jogador vê-a e pode afastar a equipa. */
+  function alienFuse(B, u) {
+    if (u.side !== 'alien') return 0;
+    const f = tune('AI_GRENADE_FUSE', [0, 0, 0]);
+    const d = U.clamp((B.mission && B.mission.difficulty) | 0, 0, 2);
+    return Array.isArray(f) ? f[d] | 0 : f | 0;
   }
 
   // ataque psiónico (DESIGN §11.2a): pânico; controlo mental com as probabilidades originais se TUNE.AI_MIND_CONTROL

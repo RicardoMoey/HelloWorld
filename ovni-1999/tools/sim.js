@@ -10,6 +10,8 @@
      --vet            equipa veterana para o mês (ganhos de atributos de ~2 missões por mês de campanha)
      --heavy          meses 0–2: Canhão Pesado (HE) e Lança-Foguetes do equipamento inicial em dois soldados
      --race R         raça fixa (sectoid, floater, snakeman, muton, ethereal); sem ela, terror usa raceSchedule
+     --novice         o X-COM joga como um principiante (equipa junta, sem ajoelhar, sem fumo/granadas/very-lights)
+     --landed 1       OVNI aterrado (tripulação completa, sem danos de queda) em vez de despenhado
      --squad N        soldados (omissão 8; base alienígena e Cidónia: a nave cheia — Skyranger 10, Avenger 12)
      --gear N         equipamento X-COM do mês N (independente do --month dos alienígenas)
    Locais de terror: raça pelo calendário da campanha (Data.raceSchedule.alien_terror); missões escuras (base alienígena,
@@ -91,6 +93,7 @@ function drain(gen, B, st) {
   let r;
   while (!(r = gen.next()).done) {
     st.events++;
+    if (st.onEvent) st.onEvent(B, r.value);
     if (st.check) {
       const errs = checkInvariants(B, r.value, st);
       if (errs.length) {
@@ -172,7 +175,7 @@ function missionFor(o) {
   const kind = o.kind || null;
   const terrain = kind === 'terror' ? 'URBAN' : kind === 'alienBase' ? 'ALIENBASE' : kind === 'cydonia' ? 'MARS' : o.terrain || 'FARM';
   const mission = OV.Battle.quickMission({
-    ufoType: kind ? undefined : o.ufo || 'small_scout', terrain, kind: kind || undefined, night: !!o.night,
+    ufoType: kind ? undefined : o.ufo || 'small_scout', terrain, kind: kind || undefined, night: !!o.night, landed: !!o.landed,
     difficulty: o.diff === undefined ? 1 : o.diff, month: o.month | 0, squadSize: o.squad || defaultSquad(kind), seed: o.seed >>> 0,
     race: o.race || undefined, // terror: Battle.quickMission usa o calendário da campanha (raceSchedule.alien_terror)
   });
@@ -204,10 +207,19 @@ function nowMs() {
   return t[0] * 1e3 + t[1] / 1e6;
 }
 
+/* --novice: o X-COM joga como um principiante (persona ronda 1): equipa junta (sem afastamento nem lanços), não se
+   ajoelha, não usa fumo, granadas nem very-lights e sai toda da nave no turno 1. */
+function noviceProfile() {
+  return Object.assign({}, OV.AI.profile, {
+    spacing: 0, crowdWeight: 0, cohesion: 2, bound: false, kneelAimed: false, smoke: false, grenades: false, flares: false,
+    exitFirst: 10, siege: 0, coverWeight: 0,
+  });
+}
+
 /* Uma batalha completa → {outcome, turns, xcomDead, aliensKilled, aliensStunned, crashDead, aliens, hash, msPerTurn, events}.
-   o.saveAt: grava/recarrega no início desse turno X-COM. */
+   o.saveAt: grava/recarrega no início desse turno X-COM; o.onEvent(B, ev): observa cada evento (estatísticas). */
 function runBattle(o) {
-  const st = { ended: false, events: 0, check: o.check !== false };
+  const st = { ended: false, events: 0, check: o.check !== false, onEvent: typeof o.onEvent === 'function' ? o.onEvent : null };
   const mission = missionFor(o);
   let B = OV.Battle.create(mission);
   const cap = o.turns || 40;
@@ -222,7 +234,7 @@ function runBattle(o) {
       OV.LOS.refreshAll(B);
     }
     const t0 = nowMs();
-    drain(OV.AI.turn(B, 'xcom'), B, st);
+    drain(OV.AI.turn(B, 'xcom', o.novice ? noviceProfile() : undefined), B, st);
     if (B.phase !== 'over') drain(OV.Battle.endPlayerTurn(B), B, st);
     ms += nowMs() - t0;
     rounds++;
@@ -434,7 +446,7 @@ function main() {
     return;
   }
   if (cmd !== 'battle' && cmd !== 'battles') {
-    console.log('uso: node ovni-1999/tools/sim.js battle [--ufo tipo|all] [--kind terror|alienBase|cydonia] [--terrain T] [--night 0|1] [--diff 0..2] [--month n] [--seeds n] [--squad n] [--gear n] [--det] [--save-at turno]');
+    console.log('uso: node ovni-1999/tools/sim.js battle [--ufo tipo|all] [--kind terror|alienBase|cydonia] [--terrain T] [--night 0|1] [--landed 0|1] [--novice] [--diff 0..2] [--month n] [--seeds n] [--squad n] [--gear n] [--det] [--save-at turno]');
     console.log('     node ovni-1999/tools/sim.js campaign [--seeds n] [--seed0 n] [--diff 1|0,1|0..2] [--days n] [--verbose] [--det] [--save-mid [dia]] [--json]');
     process.exit(2);
   }
@@ -445,6 +457,7 @@ function main() {
     diff: args.diff === undefined ? 1 : +args.diff, squad: args.squad === undefined ? 0 : +args.squad,
     race: args.race && args.race !== true ? args.race : undefined,
     turns: args.turns === undefined ? 40 : +args.turns, vet: !!args.vet, heavy: !!args.heavy,
+    landed: args.landed === true || +args.landed === 1, novice: !!args.novice,
     gear: args.gear === undefined || args.gear === true ? null : +args.gear,
   };
   const failures = [];

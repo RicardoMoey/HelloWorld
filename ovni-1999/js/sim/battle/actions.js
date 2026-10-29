@@ -4,9 +4,12 @@
 
    OV.Act:
      validate(B, action) → {ok, tu, energy, reason, …}      sem efeitos; reason ∈ REASONS (chave i18n 'bs.' + reason)
+                                                              shoot com arma guiada: route [tile…] (Path.flyRoute) ou
+                                                              reason 'noRoute'; outras armas: route null
      perform(B, action) → Generator<Event>                  devolve {ok, reason?, …} no fim
      reactions(B, mover|moverId) → Generator<Event>          ciclo de fogo de reação (§3.10); devolve n.º de reações
-     reserveTU(B, u, opts?) → int                            UT reservadas (só X-COM; Auto→Snap→Aimed; +4 joelho)
+     reserveTU(B, u, opts?) → int                            UT reservadas (só X-COM; Auto→Snap→Aimed; +4 joelho;
+                                                              opts {mode, noKneel, standing: conta o joelho mesmo ajoelhado})
      walkPreview(B, u, toI, opts?) → {steps, tiles, tus, tu, energy, reserve, marks[0|1|2]} | null
      reactionScore(u) ; turnSteps(from, to) ; scannerBlips(B, u) ; reasonKey(reason) ; noteSpotted(B, u) → n.º de novos
      planArc(B, u, toI) → {curve, origin, target, goal}|null ; traceArc(B, u, fromVoxel, toVoxel, curve) → {arc, land, landVoxel}
@@ -31,7 +34,7 @@
   const RESERVE_CHECKED = { walk: 1, turn: 1, kneel: 1, door: 1 };
   const REASONS = ['noTU', 'reserved', 'noLOF', 'noAmmo', 'noEnergy', 'blocked', 'tooFar', 'notVisible', 'invalid',
     'tooHeavy', 'spotted', 'noWeapon', 'noMode', 'noTarget', 'noArc', 'notInHand', 'alreadyPrimed', 'loaded', 'slotFull', 'noRoom',
-    'noCharges', 'noWound', 'cantKneel', 'notYourTurn', 'panicking', 'battleOver', 'notResearched', 'noDoor', 'noPsi'];
+    'noCharges', 'noWound', 'cantKneel', 'notYourTurn', 'panicking', 'battleOver', 'notResearched', 'noDoor', 'noPsi', 'noRoute'];
   // eventos que mudam o que se vê (⇒ LOS.refreshAll)
   const CHANGES = { tile: 1, explosion: 1, death: 1, stun: 1, door: 1, fire: 1, smoke: 1, fall: 1, wake: 1, spawn: 1, zombify: 1, burnout: 1, itemsDestroyed: 1 };
   const ARC_CURVES = [3, 2, 1, 0]; // altura do arco = distância × c / 8 (do lançamento alto ao rasteiro)
@@ -245,11 +248,13 @@
         r = cost(m);
       }
     }
-    if (!o.noKneel && B.reserveKneel && !u.kneel && BU().canKneel(u)) r += tune('TU_KNEEL', 4);
+    // standing: a ação levanta a unidade (andar), por isso o joelho conta mesmo que ela esteja ajoelhada agora
+    if (!o.noKneel && B.reserveKneel && (o.standing || !u.kneel) && BU().canKneel(u)) r += tune('TU_KNEEL', 4);
     return r;
   }
   function reserveFor(B, u, a) {
     if (!RESERVE_CHECKED[a.type] || a.desperate || a.panic || a.free) return 0;
+    if (a.type === 'walk') return reserveTU(B, u, { standing: true });
     return reserveTU(B, u, a.type === 'kneel' && !u.kneel ? { noKneel: true } : null);
   }
   // a reserva só conta enquanto ainda se pode pagar (BattlescapeGame::checkReservedTU): com menos UT que a
@@ -510,7 +515,7 @@
   P.walk = function* (B, u, a, v) {
     const run = !!a.run;
     const desperate = !!(a.desperate || a.panic);
-    const reserve = desperate ? 0 : reserveTU(B, u);
+    const reserve = desperate ? 0 : reserveTU(B, u, { standing: true });
     newSpots(B, u); // quem já vê agora não interrompe
     if (u.kneel) {
       const c = tune('TU_STAND', 8);
@@ -629,6 +634,20 @@
     return { ok: true };
   };
 
+  /* ours: o clarão do disparo ilumina o tile do atirador (MUZZLE_FLASH_LIGHT) até ao início do próximo turno do seu lado,
+     se lá estiver escuro: quem dispara de noite deixa de ser um atirador invisível. B.flashes = [{i, side}].
+     → true se acendeu uma luz nova (a visão tem de ser refeita) */
+  function muzzleFlash(B, u) {
+    const p = tune('MUZZLE_FLASH_LIGHT', 0) | 0;
+    const i = tileOf(B, u);
+    if (p <= 0 || i < 0 || !OV.LOS || OV.LOS.shadeAt(B, i) <= tune('DARK_SHADE', 9)) return false;
+    if (!Array.isArray(B.flashes)) B.flashes = [];
+    if (B.flashes.some((f) => f.i === i)) return false;
+    B.flashes.push({ i, side: u.side });
+    if (B._ && B._.dirty) B._.dirty.light = true;
+    return true;
+  }
+
   // -- disparar
   V.shoot = function (B, u, a) {
     const hand = a.hand === 'L' ? 'L' : a.hand === 'R' ? 'R' : (mainFirearm(B, u) || { hand: 'R' }).hand;
@@ -655,9 +674,14 @@
     const tu = action + turn;
     const r = tuReason(u, a, tu, 0);
     if (r) return fail(r, { tu });
-    if (!a.force && !tg.voxel && OV.LOS && !OV.LOS.targetVoxel(B, u, tg.unit || tg.i)) return fail('noLOF', { tu });
+    // bomba guiada (Lançador Blaster): voa pela rota de Path.flyRoute, por isso só falha sem rota, não sem linha de tiro
+    let route = null;
+    if (def.guided) {
+      route = OV.Path && OV.Path.flyRoute ? OV.Path.flyRoute(B, tileOf(B, u), tg.i) : null;
+      if (!route && !a.force) return fail('noRoute', { tu });
+    } else if (!a.force && !tg.voxel && OV.LOS && !OV.LOS.targetVoxel(B, u, tg.unit || tg.i)) return fail('noLOF', { tu });
     return {
-      ok: true, tu, energy: 0, actionTU: action, turnTU: turn, dir, hand, itemId: it.id, mode,
+      ok: true, tu, energy: 0, actionTU: action, turnTU: turn, dir, hand, itemId: it.id, mode, route,
       accuracy: OV.Combat ? OV.Combat.accuracy(B, u, it.id, mode, { berserk: !!a.berserk }) : 0,
     };
   };
@@ -669,7 +693,7 @@
     if (!a.free) u.tu -= v.actionTU;
     const evs = OV.Combat.resolveShot(B, u, v.itemId, v.mode, combatTarget(tg), B.rng.combat, { berserk: !!a.berserk });
     for (const e of evs) yield e;
-    yield* settle(B, evs);
+    yield* settle(B, evs, muzzleFlash(B, u));
     if (!a.reaction) yield* reactions(B, u);
     return { ok: true };
   };
@@ -1132,7 +1156,7 @@
     const path = OV.Path.find(B, u, toI, null, { run: !!o.run });
     if (!path) return null;
     const stand = u.kneel ? tune('TU_STAND', 8) : 0;
-    const reserve = reserveTU(B, u, o.reserveMode ? { mode: o.reserveMode } : null);
+    const reserve = reserveTU(B, u, { mode: o.reserveMode || null, standing: true });
     const live = liveReserve(u, reserve);
     const marks = [];
     for (let k = 0; k < path.steps.length; k++) {

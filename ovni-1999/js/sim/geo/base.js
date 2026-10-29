@@ -7,7 +7,8 @@
      canDismantle(G, baseId, x, y) → reason|null ; dismantle(G, baseId, x, y) → {ok, reason}
      canHire / hire(G, baseId, kind, n) ; sack(G, baseId, kind, nOrSoldierId)
      canBuy / buy(G, baseId, itemIdOrCraftType, n) ; sell(G, baseId, itemId, n)
-     canSellCraft(G, craftId) → reason|null ('noCraft'|'away'|'crew') ; sellCraft(G, craftId) → {ok, price}|{ok:false, reason}
+     canSellCraft(G, craftId) → reason|null ('noCraft'|'away'|'crew') ; sellCraft(G, craftId) → {ok, price, rent}|{ok:false, reason}
+     craftRentDue(G, craftId) → $ do aluguer deste mês que a venda deixa em base.rentDue (cobrado no fim do mês)
      moveCargo(G, craftId, itemId, n) ; setArmour(G, soldierId, armourId) ; assignSoldier(G, soldierId, craftId|null)
      fitWeapon(G, craftId, slot, weaponType|null) ; checkup(G, craftId) → estado ; serviceStatus(G, craftId) → estado (puro)
      renameBase / renameCraft
@@ -363,11 +364,25 @@
     if (craft.soldiers.length) return 'crew';
     return null;
   }
+  /* Aluguer proporcional (ours): uma nave vendida paga o aluguer dos dias em que esteve na base neste mês (desde o
+     início do mês ou desde que chegou); entra em base.rentDue e é cobrado no fim do mês com a manutenção. Sem isto,
+     vender antes do fecho e recomprar a seguir poupava o aluguer inteiro. */
+  function craftRentDue(G, craftId) {
+    const craft = C().findCraft(G, craftId);
+    const def = craft ? D().crafts[craft.type] : null;
+    if (!def || !(def.rent > 0)) return 0;
+    const m0 = OV.Clock.monthStartT(G.month | 0), m1 = OV.Clock.monthStartT((G.month | 0) + 1);
+    const from = Math.max(m0, Number.isInteger(craft.acquiredT) ? craft.acquiredT : m0);
+    const held = Math.max(0, Math.min(G.t, m1) - from);
+    return U.idiv(def.rent * held, m1 - m0);
+  }
   function sellCraft(G, craftId) {
     const r = canSellCraft(G, craftId);
     if (r) return fail(r);
     const craft = C().findCraft(G, craftId);
     const base = C().findBase(G, craft.baseId);
+    const rent = craftRentDue(G, craftId);
+    base.rentDue = (base.rentDue | 0) + rent;
     for (const w of craft.weapons) {
       if (!w) continue;
       add(base.stores, w.type, 1);
@@ -379,7 +394,7 @@
     G.funds += price;
     C().removeById(base.crafts, craftId);
     delete G.crafts[craftId];
-    return { ok: true, price };
+    return { ok: true, price, rent };
   }
 
   // ---- naves e soldados ------------------------------------------------------------------------------------
@@ -697,6 +712,13 @@
     if (G.funds < m.cost) return 'funds';
     for (const it in m.materials) if ((base.stores[it] | 0) < m.materials[it]) return 'materials';
     if (m.produces.craft && freeHangars(G, base, p.id) < 1) return 'hangar';
+    // a unidade seguinte tem de caber no armazém (contando os materiais que ela própria consome)
+    if (m.produces.item) {
+      const st = capacitiesOf(G, base, base.grid).storage;
+      let room = st.cap * 10 - st.usedTenths - tenths(m.produces.item, m.produces.n || 1);
+      for (const it in m.materials) room += tenths(it, m.materials[it]);
+      if (room < 0) return 'storage';
+    }
     return null;
   }
   // tenta pagar dinheiro e materiais da unidade seguinte; avisa uma vez por paragem
@@ -805,7 +827,13 @@
         }
       }
     } else if (dl.kind === 'craft') {
-      for (let k = 0; k < dl.n; k++) checkup(G, C().addCraft(G, base.id, dl.itemId).id);
+      // o aluguer conta desde a compra (a encomenda já entra na manutenção do mês)
+      const boughtT = dl.etaT - ((D().crafts[dl.itemId] || {}).deliveryH | 0) * 3600;
+      for (let k = 0; k < dl.n; k++) {
+        const c = C().addCraft(G, base.id, dl.itemId);
+        c.acquiredT = Math.min(G.t, boughtT);
+        checkup(G, c.id);
+      }
     } else if (dl.kind === 'soldier') {
       for (let k = 0; k < dl.n; k++) C().addSoldier(G, OV.Soldiers.generate(G, { baseId: base.id }));
     } else if (dl.kind === 'scientist') {
@@ -874,7 +902,7 @@
 
   OV.BaseSim = {
     capacities, staff, canPlace, build, canDismantle, dismantle,
-    canHire, hire, sack, canBuy, buy, sell, canSellCraft, sellCraft,
+    canHire, hire, sack, canBuy, buy, sell, canSellCraft, sellCraft, craftRentDue,
     moveCargo, setArmour, assignSoldier, fitWeapon, checkup, serviceStatus, renameBase, renameCraft,
     startResearch, setScientists, cancelResearch, researchLabel, completeResearch,
     startProduction, setEngineers, setQty, cancelProduction,
