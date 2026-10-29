@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="pt-PT">
+<head>
+<meta charset="utf-8">
+<title>Folha de itens e retratos — QA</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; background: #0b0f14; color: #c8d2dc; font: 12px/1.3 -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif; }
+  #sheet { display: block; }
+  #err { color: #ff6a5a; white-space: pre; padding: 8px; }
+</style>
+</head>
+<body>
+<canvas id="sheet"></canvas>
+<div id="err"></div>
+<script>
+  window.addEventListener('error', (e) => { document.getElementById('err').textContent += (e.message || e) + '\n'; });
+</script>
+<script src="../js/core/util.js"></script>
+<script src="../js/gfx/color.js"></script>
+<script src="../js/gfx/iso.js"></script>
+<script src="../js/gfx/sprites_items.js"></script>
+<script src="../js/gfx/portraits.js"></script>
+<script>
+/* Folha de contacto dos ícones de itens (caixa de inventário 48 px), das versões no chão (sobre losangos de
+   relva e de chão metálico) e de retratos de soldados. Parâmetros: ?view=all|icons|ground|portraits
+   &zoom=1|2 (escala dos ícones/sprites) &n=24 (número de retratos) &seed=1 (primeira semente).
+   Expõe window.__done e window.__info. */
+(function () {
+  'use strict';
+  const IS = OV.ItemSprites, PR = OV.Portraits, C = OV.Color;
+  const q = new URLSearchParams(location.search);
+  const view = q.get('view') || 'all';
+  const zoom = +(q.get('zoom') || 1);
+  const NP = +(q.get('n') || 24);
+  const SEED0 = +(q.get('seed') || 1);
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const ITEMS = IS.IDS.concat(['objeto_desconhecido']);
+  const NATS = ['pt', 'usa', 'nigeria', 'japan', 'uk', 'brazil', 'india', 'russia', 'egypt', 'china', 'france', 'south_africa', 'germany', 'italy', 'spain', 'canada', 'australia'];
+  const ARMOURS = ['coveralls', 'personal_armour', 'power_suit', 'flying_suit'];
+  const RANKS = ['Rec.', 'Sold.', 'Sarg.', 'Cap.', 'Cor.', 'Cmdt.'];
+  const BG = [
+    { base: 0x3d5a2a, alt: 0x45652f, line: 0x2c4220 },
+    { base: 0x2b313b, alt: 0x323945, line: 0x1c2129 },
+  ];
+
+  // geometria
+  const PAD = 10, HEAD = 26;
+  const zc = view === 'all' ? 1 : zoom;
+  const ICW = (view === 'icons' ? 76 : view === 'ground' ? 104 : 150) * zc, ICH = (view === 'all' ? 98 : 84) * zc;
+  const COLS = view === 'all' ? 9 : view === 'portraits' ? 0 : Math.max(4, Math.floor(1400 / ICW));
+  const PSZ = view === 'portraits' ? 96 * zoom : 88;
+  const PCOLS = view === 'portraits' ? Math.max(4, Math.floor(1400 / (PSZ + 14))) : 12;
+  const itemRows = view === 'portraits' ? 0 : Math.ceil(ITEMS.length / COLS);
+  const W = Math.max(COLS * ICW, PCOLS * (PSZ + 14)) + PAD * 2;
+  const PH = view === 'all' || view === 'portraits' ? HEAD + Math.ceil(NP / PCOLS) * (PSZ + 34) : 0;
+  const H = PAD + (itemRows ? HEAD + itemRows * ICH : 0) + PH + PAD;
+
+  const cv = document.getElementById('sheet');
+  cv.style.width = W + 'px';
+  cv.style.height = H + 'px';
+  cv.width = Math.round(W * dpr);
+  cv.height = Math.round(H * dpr);
+  const ctx = cv.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = '#0b0f14';
+  ctx.fillRect(0, 0, W, H);
+
+  function title(text, y) {
+    ctx.font = '600 13px -apple-system, Helvetica, Arial, sans-serif';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#ffb648';
+    ctx.fillText(text, PAD, y + HEAD / 2);
+  }
+  function diamond(x, y, tw, th) {
+    ctx.beginPath();
+    ctx.moveTo(x, y - th / 2);
+    ctx.lineTo(x + tw / 2, y);
+    ctx.lineTo(x, y + th / 2);
+    ctx.lineTo(x - tw / 2, y);
+    ctx.closePath();
+  }
+  function floor(cx, cy, x0, y0, w, h, P, z) {
+    const tw = 64 * z, th = 32 * z;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(x0, y0, w, h);
+    ctx.clip();
+    ctx.fillStyle = C.css(C.shade(P.base, -0.5));
+    ctx.fillRect(x0, y0, w, h);
+    for (let i = -2; i <= 2; i++) {
+      for (let j = -2; j <= 2; j++) {
+        diamond(cx + (i - j) * tw / 2, cy + (i + j) * th / 2, tw + 0.6, th + 0.6);
+        ctx.fillStyle = C.css(i === 0 && j === 0 ? C.shade(P.alt, 0.08) : (i + j) & 1 ? P.alt : P.base);
+        ctx.fill();
+        ctx.strokeStyle = C.css(P.line, 0.8);
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+  function slot(x, y, s) {
+    const r = 5;
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + s, y, x + s, y + s, r);
+    ctx.arcTo(x + s, y + s, x, y + s, r);
+    ctx.arcTo(x, y + s, x, y, r);
+    ctx.arcTo(x, y, x + s, y, r);
+    ctx.closePath();
+    const g = ctx.createLinearGradient(0, y, 0, y + s);
+    g.addColorStop(0, '#1a2431');
+    g.addColorStop(1, '#111821');
+    ctx.fillStyle = g;
+    ctx.fill();
+    ctx.strokeStyle = '#2f4256';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+
+  const t0 = performance.now();
+  let drawn = 0;
+  let y = PAD;
+  if (itemRows) {
+    const zi = view === 'all' ? 1 : zoom;
+    title('Itens: ícone de inventário (caixa 48 px) e no chão  ·  zoom ' + zi + '  ·  dpr ' + dpr + '  ·  ' + ITEMS.length + ' ids', y);
+    y += HEAD;
+    ITEMS.forEach((id, n) => {
+      const cx = PAD + (n % COLS) * ICW, cy = y + Math.floor(n / COLS) * ICH;
+      const showIcon = view !== 'ground', showGround = view !== 'icons';
+      const box = 48 * zi, sz = box + 8 * zi;
+      if (showIcon) {
+        slot(cx + 4 * zi, cy + 4 * zi, sz);
+        IS.drawIcon(ctx, id, cx + 8 * zi, cy + 8 * zi, box);
+      }
+      if (showGround) {
+        const gx0 = showIcon ? cx + sz + 10 * zi : cx + 4 * zi, gw = ICW - (gx0 - cx) - 6 * zi, gh = ICH - (showIcon ? 26 : 20) * zi;
+        const ax = gx0 + gw / 2, ay = cy + 4 * zi + gh / 2 + 4 * zi;
+        floor(ax, ay, gx0, cy + 4 * zi, gw, gh, BG[n & 1], zi);
+        IS.drawGround(ctx, id, ax, ay, zi);
+        ctx.fillStyle = 'rgba(255,60,60,0.85)';
+        ctx.fillRect(ax - 1, ay - 1, 2, 2);
+      }
+      ctx.font = '10px -apple-system, Helvetica, Arial, sans-serif';
+      ctx.textBaseline = 'alphabetic';
+      ctx.fillStyle = IS.has(id) ? '#9fb2c6' : '#ff8a6a';
+      ctx.fillText(id.length > 22 && view === 'icons' ? id.slice(0, 20) + '…' : id, cx + 4 * zi, cy + ICH - 5 * zi);
+      drawn++;
+    });
+    y += itemRows * ICH;
+  }
+  if (view === 'all' || view === 'portraits') {
+    title('Retratos (semente ' + SEED0 + '…' + (SEED0 + NP - 1) + ')  ·  ' + PSZ + ' px', y);
+    y += HEAD;
+    for (let i = 0; i < NP; i++) {
+      const s = { portraitSeed: (SEED0 + i) * 7919, female: (i % 3) === 1, nat: NATS[i % NATS.length], armour: ARMOURS[Math.floor(i / 3) % 4], rank: i % 6 };
+      const px = PAD + (i % PCOLS) * (PSZ + 14), py = y + Math.floor(i / PCOLS) * (PSZ + 34);
+      PR.draw(ctx, s, px, py, PSZ);
+      const T = PR.traits(s);
+      ctx.font = '10px -apple-system, Helvetica, Arial, sans-serif';
+      ctx.fillStyle = '#9fb2c6';
+      ctx.fillText(RANKS[s.rank] + ' ' + s.nat + (s.female ? ' ♀' : ' ♂'), px, py + PSZ + 12);
+      ctx.fillStyle = '#6f8396';
+      ctx.fillText(T.style + ' · ' + T.headwear + (T.facial !== 'none' ? ' · ' + T.facial : ''), px, py + PSZ + 24);
+      drawn++;
+    }
+  }
+  window.__info = { drawn, ms: Math.round(performance.now() - t0), W, H, items: ITEMS.length, cache: IS.stats() };
+  window.__done = true;
+})();
+</script>
+</body>
+</html>

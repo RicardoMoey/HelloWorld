@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="pt-PT">
+<head>
+<meta charset="utf-8">
+<title>Folha de unidades — QA</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; background: #0b0f14; color: #c8d2dc; font: 12px/1.3 -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif; }
+  #sheet { display: block; }
+  #err { color: #ff6a5a; white-space: pre; padding: 8px; }
+</style>
+</head>
+<body>
+<canvas id="sheet"></canvas>
+<div id="err"></div>
+<script src="../js/core/util.js"></script>
+<script src="../js/gfx/color.js"></script>
+<script src="../js/gfx/iso.js"></script>
+<script src="../js/gfx/sprites_units.js"></script>
+<script>
+/* Folha de contacto dos sprites de unidades: cada chave × 8 direções × poses, sobre losangos de relva e
+   de chão escuro. Parâmetros: ?view=overview|poses|variants|all  &key=sectoid  &zoom=1|2  &bounds=1
+   (bounds desenha o retângulo do canvas de cada sprite, para ver recortes). Expõe window.__done. */
+(function () {
+  'use strict';
+  const US = OV.UnitSprites, C = OV.Color;
+  const q = new URLSearchParams(location.search);
+  const view = q.get('view') || 'overview';
+  const zoom = +(q.get('zoom') || (view === 'overview' ? 1 : 2));
+  const showBounds = q.get('bounds') === '1';
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const DIRS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+  const WEAPON = { soldier: 'rifle', sectoid: 'pistol', floater: 'rifle', snakeman: 'rifle', muton: 'heavy', ethereal: 'none' };
+  const BG = {
+    grass: { base: 0x3d5a2a, alt: 0x45652f, line: 0x2c4220, cell: 0x1c2a14 },
+    floor: { base: 0x2b313b, alt: 0x323945, line: 0x1c2129, cell: 0x12161c },
+  };
+
+  // linhas: {label, key, cells:[{dir, pose, frame, opts, bg, ring}]}
+  const rows = [];
+  const allDirs = (key, pose, frame, opts, bg) => [0, 1, 2, 3, 4, 5, 6, 7].map((d) => ({ dir: d, key, pose, frame, opts, bg }));
+  if (view === 'overview') {
+    for (const key of US.KEYS) {
+      const w = { weapon: WEAPON[key] || 'none' };
+      rows.push({ label: key, key, cells: allDirs(key, 'stand', 0, w, 'grass').concat(allDirs(key, 'walk', 1, w, 'floor')) });
+    }
+  } else if (view === 'poses') {
+    const key = q.get('key') || 'soldier';
+    const w = { weapon: WEAPON[key] || 'none', armour: q.get('armour') || undefined };
+    const list = [['stand', 0], ['walk', 0], ['walk', 1], ['walk', 2], ['walk', 3], ['kneel', 0], ['aim', 0], ['fall', 0], ['fall', 1], ['fall', 2], ['dead', 0], ['float', 0]];
+    list.forEach(([pose, f], i) => rows.push({ label: pose + (FR(pose) > 1 ? ' ' + f : ''), key, cells: allDirs(key, pose, f, w, i & 1 ? 'floor' : 'grass') }));
+  } else if (view === 'variants') {
+    for (const armour of US.ARMOURS) {
+      const cells = [];
+      ['rifle', 'pistol', 'heavy', 'none'].forEach((weapon, wi) => {
+        cells.push({ key: 'soldier', dir: 3, pose: 'stand', frame: 0, opts: { armour, weapon, skin: wi, female: wi & 1, rank: wi + 1 }, bg: 'grass' });
+        cells.push({ key: 'soldier', dir: 1, pose: 'aim', frame: 0, opts: { armour, weapon, skin: wi, female: wi & 1, rank: wi + 2, gun: ['ballistic', 'laser', 'plasma', 'ballistic'][wi] }, bg: 'floor' });
+      });
+      cells.push({ key: 'soldier', dir: 5, pose: 'float', frame: 0, opts: { armour, weapon: 'rifle' }, bg: 'floor' });
+      cells.push({ key: 'soldier', dir: 3, pose: 'kneel', frame: 0, opts: { armour, weapon: 'rifle' }, bg: 'grass' });
+      rows.push({ label: armour, key: 'soldier', cells });
+    }
+    for (const key of ['civilian_m', 'civilian_f']) {
+      const cells = [];
+      for (let v = 0; v < 8; v++) cells.push({ key, dir: v % 8, pose: 'stand', frame: 0, opts: { variant: v, skin: v & 3 }, bg: v & 1 ? 'floor' : 'grass' });
+      for (let s = 0; s < 2; s++) cells.push({ key, dir: 3, pose: 'walk', frame: s, opts: { variant: s, skin: s + 1 }, bg: 'grass' });
+      rows.push({ label: key, key, cells });
+    }
+    const cells = [];
+    for (const key of ['sectoid', 'floater', 'snakeman', 'muton', 'ethereal']) {
+      for (const weapon of ['pistol', 'rifle', 'heavy']) cells.push({ key, dir: 2, pose: 'aim', frame: 0, opts: { weapon }, bg: 'floor' });
+    }
+    rows.push({ label: 'armas alien', key: 'sectoid', cells: cells.slice(0, 10) });
+    rows.push({ label: 'armas alien', key: 'sectoid', cells: cells.slice(10) });
+  } else {
+    for (const key of US.KEYS) {
+      const w = { weapon: WEAPON[key] || 'none' };
+      for (const [pose, f] of [['stand', 0], ['walk', 1], ['kneel', 0], ['aim', 0], ['fall', 1], ['dead', 0]]) rows.push({ label: key + ' ' + pose, key, cells: allDirs(key, pose, f, w, f & 1 ? 'floor' : 'grass') });
+    }
+  }
+  function FR(pose) { return US.FRAMES[pose] || 1; }
+
+  // geometria das células (px CSS; escala com o zoom)
+  const LABEL = 92;
+  const cellW = (key) => (US.sizeOf(key) > 1 ? 150 : 80) * zoom;
+  const cellH = (key) => (US.sizeOf(key) > 1 ? 118 : 88) * zoom;
+  const anchorY = (key) => (US.sizeOf(key) > 1 ? 64 : 62) * zoom;
+  let W = 0, H = 22;
+  for (const r of rows) {
+    let w = LABEL;
+    for (const c of r.cells) w += cellW(c.key);
+    W = Math.max(W, w);
+    r.h = Math.max(...r.cells.map((c) => cellH(c.key)));
+    H += r.h;
+  }
+  const cv = document.getElementById('sheet');
+  cv.style.width = W + 'px';
+  cv.style.height = H + 'px';
+  cv.width = Math.round(W * dpr);
+  cv.height = Math.round(H * dpr);
+  const ctx = cv.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = '#0b0f14';
+  ctx.fillRect(0, 0, W, H);
+
+  function diamond(x, y, tw, th) {
+    ctx.beginPath();
+    ctx.moveTo(x, y - th / 2);
+    ctx.lineTo(x + tw / 2, y);
+    ctx.lineTo(x, y + th / 2);
+    ctx.lineTo(x - tw / 2, y);
+    ctx.closePath();
+  }
+  // fundo de 5×5 losangos centrado no tile da âncora
+  function ground(cx, cy, x0, y0, w, h, bg, size) {
+    const P = BG[bg], tw = 64 * zoom, th = 32 * zoom;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(x0, y0, w, h);
+    ctx.clip();
+    ctx.fillStyle = C.css(P.cell);
+    ctx.fillRect(x0, y0, w, h);
+    for (let i = -3; i <= 3; i++) {
+      for (let j = -3; j <= 3; j++) {
+        const x = cx + (i - j) * tw / 2, y = cy + (i + j) * th / 2;
+        diamond(x, y, tw + 0.6, th + 0.6);
+        const inFoot = size > 1 ? i >= 0 && i <= 1 && j >= 0 && j <= 1 : i === 0 && j === 0;
+        ctx.fillStyle = C.css(inFoot ? C.shade(P.alt, 0.12) : (i + j) & 1 ? P.alt : P.base);
+        ctx.fill();
+        ctx.strokeStyle = C.css(P.line, 0.8);
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+
+  ctx.font = '600 11px -apple-system, Helvetica, Arial, sans-serif';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#8fa3b8';
+  ctx.fillText('vista: ' + view + '  zoom ' + zoom + '  dpr ' + dpr, 6, 11);
+  let y = 22;
+  let drawn = 0;
+  const t0 = performance.now();
+  for (const r of rows) {
+    ctx.fillStyle = '#c8d2dc';
+    ctx.fillText(r.label, 6, y + r.h / 2);
+    let x = LABEL;
+    for (const c of r.cells) {
+      const w = cellW(c.key), h = cellH(c.key);
+      const ax = x + w / 2, ay = y + anchorY(c.key);
+      const size = US.sizeOf(c.key);
+      ground(ax, ay, x + 1, y + 1, w - 2, r.h - 2, c.bg, size);
+      if (c.pose !== 'dead') US.drawShadow(ctx, ax, ay, size, zoom);
+      if (c.dir === 0 && c.pose === 'stand') US.selectionRing(ctx, ax, ay, zoom, 0xffc23a, size);
+      const spr = US.draw(ctx, c.key, c.dir, c.pose, c.frame, ax, ay, zoom, c.opts);
+      if (showBounds) {
+        ctx.strokeStyle = 'rgba(255,80,200,0.55)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(ax - spr.ax * zoom + 0.5, ay - spr.ay * zoom + 0.5, spr.w * zoom - 1, spr.h * zoom - 1);
+      }
+      // cruz na âncora (centro do losango) para verificar os pés
+      ctx.fillStyle = 'rgba(255,60,60,0.9)';
+      ctx.fillRect(ax - 3, ay - 0.5, 6, 1);
+      ctx.fillRect(ax - 0.5, ay - 3, 1, 6);
+      ctx.fillStyle = 'rgba(220,230,240,0.75)';
+      ctx.font = '10px -apple-system, Helvetica, Arial, sans-serif';
+      ctx.fillText(DIRS[c.dir] + ' ' + c.dir + (r.cells.length !== 16 && view !== 'overview' ? '' : ''), x + 4, y + 8);
+      if (view === 'variants') ctx.fillText(c.pose + ' ' + (c.opts.weapon || c.opts.variant || ''), x + 4, y + 19);
+      x += w;
+      drawn++;
+    }
+    y += r.h;
+  }
+  window.__info = { drawn, ms: Math.round(performance.now() - t0), cache: US.stats(), W, H };
+  window.__done = true;
+})();
+</script>
+</body>
+</html>
