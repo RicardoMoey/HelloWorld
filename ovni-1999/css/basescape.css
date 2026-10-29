@@ -321,10 +321,20 @@ button.bsc-row:hover { border-color: #3d6a8e; background: rgba(22, 36, 52, 0.9);
 .bsc-equip-head { display: flex; align-items: center; gap: 14px; padding-bottom: 10px; margin-bottom: 10px; border-bottom: 1px solid var(--line); }
 .bsc-equip-note { flex: 1; font-size: 12.5px; text-align: right; }
 .bsc-equip-body { flex: 1; min-height: 0; display: flex; }
-.bsc-equip-body > .inv-equip { flex: 1; min-height: 0; height: 100%; grid-template-rows: minmax(0, 1fr); }
+.bsc-equip-body > .inv-equip { flex: 1; min-height: 0; min-width: 0; height: 100%; }
 .bsc-equip .eq-main, .bsc-equip .eq-squad { min-height: 0; }
 .bsc-equip .inv-body { grid-template-rows: minmax(0, 1fr); }
 .bsc-equip .inv-doll { min-height: 0; overflow-y: auto; }
+/* retrato / estreito: o painel ocupa o ecrã todo e o próprio «Equipar» rearruma-se pela largura (battle.css,
+   @container eq) — equipa em faixa, boneco e armazém em coluna com deslocação */
+@media (max-width: 900px), (orientation: portrait) and (max-width: 1100px) {
+  .bsc-equip { padding: calc(8px + env(safe-area-inset-top)) 8px calc(8px + env(safe-area-inset-bottom)); }
+  .bsc-equip-panel { height: 100%; padding: 10px; }
+  .bsc-equip-head { flex-wrap: wrap; gap: 8px 12px; }
+  .bsc-equip-note { flex-basis: 100%; order: 3; text-align: left; }
+  .bsc-equip .inv-body { grid-template-rows: auto auto; }
+  .bsc-equip .inv-doll { overflow: visible; }
+}
 
 /* avisos por baixo dos separadores enquanto a base está aberta (não tapar a data e os fundos) */
 body:has(.scr.bsc:not(.scr-paused):not(.scr-leaving)) #toasts { top: calc(132px + env(safe-area-inset-top)); }
@@ -379,3 +389,13 @@ body:has(.scr.bsc:not(.scr-paused):not(.scr-leaving)) #toasts { top: calc(132px 
   .bsc-badge.warn { animation: none; }
   .bsc-meter-bar i { transition: none; }
 }
+
+/* ---- ronda de personas 1: embarcar todos os aptos, soldados sem arma, lista de soldados ao teclado ----------------- */
+.bsc-crew-head { flex-wrap: wrap; }
+.bsc-crew-head .bsc-note { flex: 1 1 180px; }
+.bsc-crew-warn { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; margin: 0 0 6px; font-weight: 700; }
+.bsc-crew-warn > span { flex: 1 1 160px; }
+.bsc-crew-warn::before { content: '!'; flex: none; width: 15px; height: 15px; display: grid; place-items: center; font: 800 10px var(--mono); border-radius: 50%; background: var(--red); color: #fff; }
+.bsc-soltbl tr[data-sol]:focus-visible { outline: 2px solid var(--cyan); outline-offset: -2px; }
+.bsc-soltbl tr[data-sol]:focus-visible td { background: #1a3046; }
+.bsc .btn.disabled[tabindex="-1"]:focus-visible { outline-style: dashed; }

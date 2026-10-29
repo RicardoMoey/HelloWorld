@@ -1,4 +1,7 @@
-/* Utilitários DOM: criação de elementos, toasts, modais com Promise, tooltips, barras */
+/* Utilitários DOM: criação de elementos, toasts, modais com Promise (foco preso e devolvido), tooltips, barras.
+   OV.Dom = { $, el, clear, toast, modal, anyModalOpen, tooltip, hideTooltip, bar, download, pickFile,
+              trapFocus(caixa, {keep, returnTo}) → release(restore?) ; trapOpen() ; focusKey(nó) ; refocus(chave, dentro?) ;
+              focusables(caixa) } */
 (function (OV) {
   'use strict';
 
@@ -45,22 +48,102 @@
     setTimeout(() => d.remove(), 4100);
   }
 
-  // ---- modais -------------------------------------------------------------------------------
+  // ---- foco preso num diálogo ------------------------------------------------------------------------------
+  // trapFocus(caixa, {keep:[nós], returnTo}) → release(): o resto da página fica inerte (sem foco nem cliques, fora do
+  // que está em keep), Tab/⇧Tab dão a volta dentro da caixa e, ao libertar, o foco volta a quem abriu o diálogo.
+  const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+  const traps = [];
+  function focusables(box) {
+    return [...box.querySelectorAll(FOCUSABLE)].filter((n) => !n.closest('[inert]') && !n.closest('.hidden') && n.offsetParent !== null);
+  }
+  // chave estável de um elemento (para o reencontrar depois de um redesenho)
+  function focusKey(n) {
+    if (!n || n === document.body || !n.getAttribute) return null;
+    const ds = n.dataset ? Object.keys(n.dataset) : [];
+    if (ds.length) return n.tagName.toLowerCase() + ds.map((k) => '[data-' + k.replace(/[A-Z]/g, (c) => '-' + c.toLowerCase()) + '="' + String(n.dataset[k]).replace(/"/g, '\\"') + '"]').join('');
+    if (n.id) return '#' + n.id;
+    const lbl = n.getAttribute('aria-label');
+    if (lbl) return n.tagName.toLowerCase() + '[aria-label="' + lbl.replace(/"/g, '\\"') + '"]';
+    return null;
+  }
+  function refocus(key, within) {
+    if (!key) return false;
+    let n = null;
+    try { n = (within || document).querySelector(key); } catch (e) { n = null; }
+    if (!n || n.closest('[inert]') || n.disabled) return false;
+    n.focus({ preventScroll: true });
+    return document.activeElement === n;
+  }
+  function trapFocus(box, opts) {
+    const o = opts || {};
+    const back = o.returnTo !== undefined ? o.returnTo : document.activeElement;
+    const backKey = focusKey(back);
+    const keep = new Set((o.keep || []).filter(Boolean));
+    // #modals nunca fica inerte: um modal aberto a partir deste diálogo tem de responder (prende o foco por sua vez)
+    const quiet = (n) => n.id === 'toasts' || n.id === 'tooltip' || n.id === 'modals' || n.tagName === 'SCRIPT' || n.tagName === 'STYLE';
+    const set = [];
+    for (let n = box; n && n.parentElement && n !== document.body; n = n.parentElement) {
+      for (const sib of n.parentElement.children) {
+        if (sib === n || sib.inert || keep.has(sib) || quiet(sib)) continue;
+        sib.inert = true;
+        set.push(sib);
+      }
+    }
+    const onKey = (e) => {
+      if (e.key !== 'Tab' || traps[traps.length - 1] !== trap) return;
+      const list = focusables(box);
+      if (!list.length) { e.preventDefault(); return; }
+      const i = list.indexOf(document.activeElement);
+      const next = e.shiftKey ? (i <= 0 ? list[list.length - 1] : list[i - 1]) : (i < 0 || i === list.length - 1 ? list[0] : list[i + 1]);
+      e.preventDefault();
+      e.stopPropagation();
+      next.focus();
+    };
+    document.addEventListener('keydown', onKey, true);
+    let done = false;
+    const trap = {
+      box,
+      release(restore) {
+        if (done) return;
+        done = true;
+        document.removeEventListener('keydown', onKey, true);
+        for (const n of set) n.inert = false;
+        const i = traps.indexOf(trap);
+        if (i >= 0) traps.splice(i, 1);
+        if (restore === false) return;
+        const a = document.activeElement;
+        if (a && a !== document.body && !box.contains(a) && a.isConnected) return; // o foco já foi para outro sítio
+        if (back && back.isConnected && back !== document.body && !back.closest('[inert]') && !back.disabled) back.focus({ preventScroll: true });
+        else refocus(backKey);
+      },
+    };
+    traps.push(trap);
+    return trap.release;
+  }
+  const trapOpen = () => traps.length > 0;
+
+  // ---- modais -------------------------------------------------------------------------------------------------
   // modal({title, body: Node|string, buttons:[{label, value, kind:'primary'|'danger'}], dismissible, wide})
   // → Promise(valor do botão; null se fechado com Esc/fundo)
   function modal(spec) {
     return new Promise((resolve) => {
       const host = $('modals');
+      let release = null;
       const close = (v) => {
         document.removeEventListener('keydown', onKey, true);
         back.remove();
+        if (release) release();
         resolve(v);
       };
       const onKey = (e) => {
+        if (back.nextElementSibling) return; // outro diálogo por cima
         // repetição automática de uma tecla premida antes do modal abrir (Enter longo) nunca o confirma
         if (e.repeat && (e.key === 'Enter' || e.key === 'Escape' || e.key === ' ')) { e.preventDefault(); e.stopPropagation(); return; }
         if (e.key === 'Escape' && spec.dismissible !== false) { e.preventDefault(); e.stopPropagation(); close(null); }
         if (e.key === 'Enter') {
+          // Enter num botão com foco ativa esse botão (Cancelar não confirma); fora dos botões, o principal
+          const a = document.activeElement;
+          if (a && box.contains(a) && (a.tagName === 'BUTTON' || a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT')) return;
           const prim = (spec.buttons || []).find((b) => b.kind === 'primary');
           if (prim) { e.preventDefault(); e.stopPropagation(); close(prim.value); }
         }
@@ -70,13 +153,14 @@
       const t0 = performance.now();
       const fresh = () => performance.now() - t0 < 320;
       const btns = (spec.buttons || [{ label: OV.T('common.ok'), value: true, kind: 'primary' }]).map((b) =>
-        el('button', { class: 'btn ' + (b.kind || ''), onclick: () => close(b.value) }, b.label));
-      const box = el('div', { class: 'modal' + (spec.wide ? ' wide' : '') + (spec.cls ? ' ' + spec.cls : ''), role: 'dialog', 'aria-modal': 'true' },
+        el('button', { type: 'button', class: 'btn ' + (b.kind || ''), onclick: (e) => { if (e.detail > 1 && fresh()) return; close(b.value); } }, b.label));
+      const box = el('div', { class: 'modal' + (spec.wide ? ' wide' : '') + (spec.cls ? ' ' + spec.cls : ''), role: 'dialog', 'aria-modal': 'true', 'aria-label': spec.title || null },
         spec.title ? el('h2', { class: 'modal-title', text: spec.title }) : null,
         body,
         el('div', { class: 'modal-actions' }, btns));
       const back = el('div', { class: 'modal-back', onclick: (e) => { if (e.target === back && spec.dismissible !== false && !fresh()) close(null); } }, box);
       host.appendChild(back);
+      release = trapFocus(back);
       document.addEventListener('keydown', onKey, true);
       const prim = box.querySelector('.btn.primary') || box.querySelector('.btn');
       if (prim) prim.focus();
@@ -144,5 +228,5 @@
     });
   }
 
-  OV.Dom = { $, el, clear, toast, modal, anyModalOpen, tooltip, hideTooltip, bar, download, pickFile };
+  OV.Dom = { $, el, clear, toast, modal, anyModalOpen, tooltip, hideTooltip, bar, download, pickFile, trapFocus, trapOpen, focusKey, refocus, focusables };
 })(globalThis.OV || (globalThis.OV = {}));

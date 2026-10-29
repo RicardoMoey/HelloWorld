@@ -6,7 +6,8 @@
    Cena: OV.SceneDefs.basescape({G, baseId, tab}) (isScreen).
    API: OV.BaseUI = {
      TABS,
-     open(G, baseId?, tab?)   empilha 'basescape' (ou muda de base/separador se já estiver no topo)
+     open(G, baseId?, tab?, {pick?})   empilha 'basescape' (ou muda de base/separador se já estiver no topo); tab
+                              'research' abre a escolha de projeto sozinha sem projetos a decorrer ou com pick
      close()                  volta ao ecrã anterior (Geoscape) ; isOpen() → bool ; refresh()
      errText(reason) → texto pt-PT de 'base.err.<reason>'
      debug: { state(), cellCenter(x, y) → {x, y} px do centro de uma célula, scene() }
@@ -85,11 +86,13 @@
   // botão com dica e razão de bloqueio: bloqueado fica cinzento e o clique explica porquê (com zumbido)
   function btn(label, o) {
     o = o || {};
-    const b = el('button', { type: 'button', class: 'btn ' + (o.cls || ''), 'aria-disabled': o.why ? 'true' : null, dataset: o.data || null });
+    // nome acessível com contexto («Iniciar: Armas Laser», «Comprar 1 × Stingray»); bloqueado não é paragem do Tab
+    const aria = o.aria || (o.title && o.title !== label ? o.title : null);
+    const b = el('button', { type: 'button', class: 'btn ' + (o.cls || ''), 'aria-disabled': o.why ? 'true' : null, 'aria-label': aria ? aria + (o.why ? ' — ' + o.why : '') : null, 'aria-keyshortcuts': o.key || null, dataset: o.data || null });
     if (o.icon) b.appendChild(o.icon);
     b.appendChild(document.createTextNode(label));
     if (o.key) b.appendChild(el('kbd', { text: o.key }));
-    if (o.why) b.classList.add('disabled');
+    if (o.why) { b.classList.add('disabled'); b.tabIndex = -1; }
     b.addEventListener('click', (e) => {
       e.stopPropagation();
       if (o.why) { deny(o.why); return; }
@@ -448,7 +451,7 @@
         el('div', { class: 'bsc-info-btns' }, btn(T('common.cancel'), { cls: 'small', title: T('base.build.cancel'), tip: T('base.build.cancelTip'), key: 'Esc', on: cancelBuild })));
         return;
       }
-      const at = S.sel || S.hover;
+      const at = S.sel || S.hover || S.kcur;
       const f = at ? OV.BaseRender.facilityAt(b, at.x, at.y) : null;
       if (!f) {
         r.info.append(el('div', { class: 'bsc-info-main' }, el('div', { class: 'bsc-info-txt' },
@@ -512,6 +515,10 @@
       const r = S.r;
       const keep = r.content.scrollTop;
       const same = r.content.dataset.tab === S.tab;
+      // o foco do teclado sobrevive ao redesenho (Contratar, Iniciar, Gravar…): reencontra o mesmo botão pela chave
+      const a = document.activeElement;
+      const hadFocus = same && !!a && r.content.contains(a);
+      const fk = hadFocus ? OV.Dom.focusKey(a) : null;
       OV.Dom.hideTooltip();
       OV.Dom.clear(r.content);
       S.hlFac = null; // a linha sob o rato desaparece sem mouseleave
@@ -520,6 +527,12 @@
       const fn = { facilities: tabFacilities, research: tabResearch, production: tabProduction, personnel: tabPersonnel, stores: tabStores, crafts: tabCrafts, soldiers: tabSoldiers, market: tabMarket, containment: tabContainment }[S.tab];
       r.content.appendChild(fn());
       r.content.scrollTop = same ? keep : S.scroll[S.tab] || 0;
+      if (hadFocus && !(fk && OV.Dom.refocus(fk, r.content))) {
+        // o botão desapareceu: o foco vai para o separador ativo (nunca para o <body>)
+        const t = r.tabs.querySelector('.bsc-tab.on');
+        if (t) t.focus({ preventScroll: true });
+      }
+      if (S.focusSol) { S.focusSol = false; const tr = r.content.querySelector('tr[data-sol].sel'); if (tr) tr.focus({ preventScroll: true }); }
     }
     function head(title, sub, ...right) {
       return el('div', { class: 'bsc-head' },
@@ -769,7 +782,7 @@
             el('div', { class: 'bsc-row-btns' },
               art ? btn(T('base.btn.ufopaedia'), { cls: 'small ghost', title: T('base.tip.article'), on: () => { s.close(); openUfopaedia(art); } }) : null,
               btn(T('base.research.start'), {
-                cls: 'small primary', title: T('base.research.start'), tip: Tn('base.research.startTip', give), data: { start: id },
+                cls: 'small primary', title: T('base.research.start'), aria: T('base.research.startAria', { name: topicName(id) }), tip: Tn('base.research.startTip', give), data: { start: id },
                 on: () => {
                   s.close();
                   act(() => BS().startResearch(g, b.id, id, give), T('base.toast.researchStarted', { name: topicName(id), who: Tn('base.nSci', give) }));
@@ -943,6 +956,7 @@
             el('span', { text: T('base.personnel.salary', { money: money(salary) }) }),
             arr ? el('span', { class: 'good', text: T('base.personnel.arriving', { n: arr }) }) : null),
           el('div', { class: 'bsc-card-act' }, ...hireBtns, ...sackBtns),
+          k.kind === 'soldier' ? note(T('base.pers.soldierAuto'), 'info') : null,
           k.kind === 'soldier' ? note(T('base.pers.sackSoldierHint'), 'muted') : null));
       }
       wrap.appendChild(grid);
@@ -1084,9 +1098,18 @@
       // tripulação
       if (def.seatsUI > 0) {
         const max = def.seatsUI;
+        const CUI = OV.CampaignUI;
+        const idle = CUI && CUI.idleFit ? CUI.idleFit(g, b.id).length : 0;
+        const free = Math.max(0, max - c.soldiers.length);
+        const unarmed = CUI && CUI.unarmedAboard ? CUI.unarmedAboard(g, c.id).length : 0;
+        const boardWhy = away || (!free ? errText('seats') : !idle ? T('base.crafts.noIdle') : null);
         const crewHead = el('div', { class: 'bsc-crew-head' },
           el('span', { class: 'bsc-note muted', text: TT('base.crafts.crewHint') }),
+          CUI && CUI.crewUp ? btn(T('base.crafts.boardAll', { n: Math.min(idle, free) }), { cls: 'small' + (!c.soldiers.length && !boardWhy ? ' primary' : ''), title: T('base.crafts.boardAll', { n: Math.min(idle, free) }), tip: T('base.crafts.boardAllTip'), key: 'A', why: boardWhy, data: { act: 'boardAll' }, on: () => crewUpDlg(c) }) : null,
           btn(T('base.crafts.equip'), { cls: 'primary small', title: T('base.crafts.equip'), tip: T('base.crafts.equipTip'), key: 'E', why: away || (!c.soldiers.length ? T('base.crafts.noCrew') : null), on: () => openEquip(c.id), data: { act: 'equip' } }));
+        const crewWarn = unarmed ? el('div', { class: 'bsc-note bad bsc-crew-warn' }, el('span', { text: Tn('base.crafts.unarmed', unarmed) }),
+          away ? null : btn(T('base.crafts.autoKit'), { cls: 'small', title: T('base.crafts.autoKit'), tip: T('base.crafts.autoKitTip'), data: { act: 'autoKit' }, on: () => autoKitNow(c) }),
+          CUI && CUI.orderStarterKit ? btn(T('base.crafts.starterKit'), { cls: 'small', title: T('base.crafts.starterKit'), tip: T('base.crafts.starterKitTip'), data: { act: 'starterKit' }, on: () => CUI.orderStarterKit(g, b.id, unarmed).then(() => refresh()) }) : null) : null;
         const crew = el('div', { class: 'bsc-crew' });
         const sols = b.soldiers.map((id) => C().findSoldier(g, id)).filter(Boolean);
         sols.sort((x, y) => (x.craftId === c.id ? 0 : 1) - (y.craftId === c.id ? 0 : 1) || y.rank - x.rank);
@@ -1097,11 +1120,12 @@
           if (!why && other && !inHangar(other)) why = errText('away');
           if (!why && !aboard && s.woundDays > 0) why = errText('wounded');
           if (!why && !aboard && c.soldiers.length >= max) why = errText('seats');
+          const noGun = aboard && CUI && CUI.armedLo && !CUI.armedLo(s.loadout);
           const row = el('button', { type: 'button', class: 'bsc-crewrow' + (aboard ? ' on' : '') + (why ? ' locked' : ''), dataset: { sol: s.id }, 'aria-pressed': aboard ? 'true' : 'false' },
             el('span', { class: 'bsc-check' }),
             el('span', { class: 'bsc-crew-rank', text: rankName(s.rank, true) }),
             el('span', { class: 'bsc-crew-name', text: s.name }),
-            el('span', { class: 'bsc-crew-st ' + (s.woundDays > 0 ? 'bad' : other ? 'muted' : ''), text: s.woundDays > 0 ? Tn('base.sol.woundedDays', s.woundDays) : other ? craftName(other) : '' }));
+            el('span', { class: 'bsc-crew-st ' + (s.woundDays > 0 || noGun ? 'bad' : other ? 'muted' : ''), text: s.woundDays > 0 ? Tn('base.sol.woundedDays', s.woundDays) : noGun ? T('base.crafts.noGun') : other ? craftName(other) : '' }));
           row.addEventListener('click', () => {
             if (why) { deny(why); return; }
             act(() => BS().assignSoldier(g, s.id, aboard ? null : c.id));
@@ -1109,7 +1133,7 @@
           OV.Dom.tooltip(row, () => tipHtml(s.name, [esc(aboard ? T('base.crafts.crewOff') : T('base.crafts.crewOn')), why ? warnLine(why) : '']));
           crew.appendChild(row);
         }
-        box.appendChild(section(T('base.crafts.crew') + ' · ' + T('base.crafts.seats', { n: c.soldiers.length, max }), crewHead, crew));
+        box.appendChild(section(T('base.crafts.crew') + ' · ' + T('base.crafts.seats', { n: c.soldiers.length, max }), crewHead, crewWarn, crew));
         // carga solta
         const loose = BS().loose(g, c.id) || {};
         const ids = Object.keys(loose);
@@ -1119,6 +1143,23 @@
         box.appendChild(section(T('base.crafts.cargo'), note(T('base.crafts.cargoHint'), 'muted'), lbox));
       }
       return box;
+    }
+    // «Embarcar todos os aptos»: os soldados aptos sem nave embarcam e quem vai sem arma leva o material do armazém
+    function crewUpDlg(c) {
+      const CUI = OV.CampaignUI;
+      if (!CUI || !CUI.crewUp) return;
+      const r = CUI.crewUp(S.G, c.id);
+      sfx(r.boarded || r.equipped ? 'ui_confirm' : 'ui_deny');
+      OV.Dom.toast(CUI.crewText(S.G, c.id, r) || T('base.crafts.boardNone'), null, r.unarmed ? 'warn' : 'good');
+      refresh();
+    }
+    function autoKitNow(c) {
+      const CUI = OV.CampaignUI;
+      if (!CUI || !CUI.autoKit) return;
+      const k = CUI.autoKit(S.G, c.id);
+      sfx(k.equipped ? 'ui_confirm' : 'ui_deny');
+      OV.Dom.toast(k.equipped ? Tn('cp.crew.equipped', k.equipped) + (k.unarmed ? ' ' + Tn('cp.crew.unarmed', k.unarmed) : '') : T('cp.br.autoKit.none'), null, k.unarmed ? 'warn' : 'good');
+      refresh();
     }
     function weaponPicker(c, slot) {
       const g = S.G, b = base();
@@ -1195,6 +1236,8 @@
             el('div', { class: 'bsc-equip-note muted', text: TT('base.equip.hint') }), done),
           bodyBox));
       S.root.appendChild(ov);
+      // o ecrã «Equipar» prende o foco: as linhas da tripulação por trás ficam inertes até fechar
+      const release = OV.Dom.trapFocus(ov);
       // cada alteração é aplicada logo (Campaign.applyEquip recusa o que criaria ou destruiria itens)
       const build = () => {
         OV.Dom.clear(bodyBox);
@@ -1217,9 +1260,10 @@
         });
         return ctl;
       };
-      S.equip = { craftId, ov, ctl: null, changed: false };
+      S.equip = { craftId, ov, ctl: null, changed: false, release };
       S.equip.ctl = build();
       sfx('ui_select');
+      setTimeout(() => { if (S.equip && S.equip.ov === ov && !ov.contains(document.activeElement)) { const f = OV.Dom.focusables(ov)[0]; if (f) f.focus({ preventScroll: true }); } }, 0);
     }
     function closeEquip(silent) {
       const E = S.equip;
@@ -1227,6 +1271,7 @@
       S.equip = null;
       try { if (E.ctl) E.ctl.destroy(); } catch (e) { /* já removido */ }
       E.ov.remove();
+      if (E.release) E.release(!silent);
       OV.Dom.hideTooltip();
       if (!silent) {
         sfx('ui_click');
@@ -1284,7 +1329,9 @@
       const tbody = el('tbody');
       for (const s of sols) {
         const c = s.craftId ? C().findCraft(g, s.craftId) : null;
-        const tr = el('tr', { class: 'click' + (s.id === S.solSel ? ' sel' : '') + (s.woundDays > 0 ? ' wounded' : ''), dataset: { sol: s.id } },
+        // lista com foco itinerante: a linha escolhida é a paragem do Tab; ↑/↓ escolhem, Enter vai para a ficha
+        const on = s.id === S.solSel;
+        const tr = el('tr', { class: 'click' + (on ? ' sel' : '') + (s.woundDays > 0 ? ' wounded' : ''), dataset: { sol: s.id }, tabindex: on ? '0' : '-1', 'aria-selected': on ? 'true' : 'false' },
           el('td', { class: 'c-rank' }, el('span', { class: 'bsc-rank r' + s.rank, text: rankName(s.rank, true) })),
           el('td', { class: 'c-name', text: s.name }),
           el('td', { class: 'c-missions mono', text: String(s.missions) }),
@@ -1292,10 +1339,11 @@
           ...['tu', 'hp', 'fire', 'react', 'brav'].map((st) => el('td', { class: 'c-' + st + ' mono' + (s.stats[st] > s.initial[st] ? ' up' : ''), text: String(s.stats[st]) })),
           el('td', { class: 'c-wound mono' + (s.woundDays > 0 ? ' bad' : ' muted'), text: s.woundDays > 0 ? String(s.woundDays) : '—' }),
           el('td', { class: 'c-craft', text: c ? craftName(c) : '—' }));
-        tr.addEventListener('click', () => { S.solSel = s.id; sfx('ui_select'); renderContent(); });
+        tr.addEventListener('click', () => { S.solSel = s.id; S.focusSol = true; sfx('ui_select'); renderContent(); });
         tbody.appendChild(tr);
       }
-      const table = el('table', { class: 'tbl bsc-soltbl' }, el('thead', null, thead), tbody);
+      S.solOrder = sols.map((x) => x.id);
+      const table = el('table', { class: 'tbl bsc-soltbl', 'aria-label': T('base.tab.soldiers') }, el('thead', null, thead), tbody);
       wrap.appendChild(el('div', { class: 'bsc-tblwrap' }, table));
       wrap.appendChild(soldierDetail(C().findSoldier(g, S.solSel)));
       return wrap;
@@ -1389,15 +1437,17 @@
     }
 
     // ---------------------------------------------------------------------------------------------------- 8
-    function qtyCtl(map, id, max, onChange) {
+    function qtyCtl(map, id, max, onChange, tag) {
       const v = Math.max(1, Math.min(max || 999, map[id] || 1));
       map[id] = v;
       const set = (n) => { map[id] = Math.max(1, Math.min(max || 999, n)); sfx('ui_click'); onChange(); };
+      const nm = itemName(id);
+      const k = (tag || 'q') + ':' + id;
       return el('div', { class: 'bsc-stepper qty' },
-        btn('−', { cls: 'small', title: T('base.market.less'), why: v <= 1 ? T('base.market.minQty') : null, on: () => set(v - 1) }),
+        btn('−', { cls: 'small', title: T('base.market.less'), aria: T('base.market.lessOf', { name: nm }), why: v <= 1 ? T('base.market.minQty') : null, data: { qty: k + ':-1' }, on: () => set(v - 1) }),
         el('b', { class: 'bsc-step-v', text: String(v) }),
-        btn('+', { cls: 'small', title: T('base.market.more'), why: max && v >= max ? T('base.market.maxQty') : null, on: () => set(v + 1) }),
-        btn('+10', { cls: 'small', title: T('base.market.more10'), why: max && v >= max ? T('base.market.maxQty') : null, on: () => set(v + 10) }));
+        btn('+', { cls: 'small', title: T('base.market.more'), aria: T('base.market.moreOf', { name: nm }), why: max && v >= max ? T('base.market.maxQty') : null, data: { qty: k + ':+1' }, on: () => set(v + 1) }),
+        btn('+10', { cls: 'small', title: T('base.market.more10'), aria: T('base.market.more10Of', { name: nm }), why: max && v >= max ? T('base.market.maxQty') : null, data: { qty: k + ':+10' }, on: () => set(v + 10) }));
     }
     function tabMarket() {
       const g = S.G, b = base();
@@ -1441,7 +1491,7 @@
             isCraft ? craftIcon(id, 40) : itemIcon(id, 40),
             el('div', { class: 'bsc-row-main' }, el('div', { class: 'bsc-row-name', text: itemName(id) }),
               el('div', { class: 'bsc-row-sub', text: T('base.market.priceLine', { price: money(def.buy), h: eta, have }) + (isCraft ? ' · ' + T('base.market.rent', { money: money(def.rent) }) : '') })),
-            qtyCtl(S.qty, id, isCraft ? 3 : 0, renderContent),
+            qtyCtl(S.qty, id, isCraft ? 3 : 0, renderContent, 'buy'),
             el('div', { class: 'bsc-mtotal mono' + (g.funds < def.buy * n ? ' bad' : ''), text: money(def.buy * n) }),
             btn(T('base.market.buy'), {
               cls: 'small primary', title: T('base.market.buyN', { n, name: itemName(id) }), tip: T('base.market.buyEta', { h: eta }), why: why ? errText(why) : null, data: { act: 'buy', id },
@@ -1470,10 +1520,10 @@
           list.appendChild(el('div', { class: 'bsc-row bsc-mrow' + (why ? ' locked' : ''), dataset: { sell: id } }, itemIcon(id, 36),
             el('div', { class: 'bsc-row-main' }, el('div', { class: 'bsc-row-name', text: itemName(id) }),
               el('div', { class: 'bsc-row-sub', text: why ? why : T('base.market.sellLine', { price: money(it.sell), have }) })),
-            why ? el('span') : qtyCtl(S.sellQty, id, have, renderContent),
+            why ? el('span') : qtyCtl(S.sellQty, id, have, renderContent, 'sell'),
             el('div', { class: 'bsc-mtotal mono good', text: why ? '' : money(it.sell * n) }),
             el('div', { class: 'bsc-row-btns' },
-              why ? null : btn(T('base.market.all'), { cls: 'small', title: T('base.market.allTip'), on: () => { S.sellQty[id] = have; renderContent(); } }),
+              why ? null : btn(T('base.market.all'), { cls: 'small', title: T('base.market.allTip'), aria: T('base.market.allOf', { name: itemName(id) }), data: { sellAll: id }, on: () => { S.sellQty[id] = have; renderContent(); } }),
               btn(T('base.market.sell'), {
                 cls: 'small', title: T('base.market.sellN', { n, name: itemName(id) }), tip: T('base.market.sellNow'), why, data: { act: 'sell', id },
                 on: () => { S.sellQty[id] = 1; act(() => BS().sell(g, b.id, id, n), T('base.toast.sold', { n, name: itemName(id), money: money(it.sell * n) })); },
@@ -1561,16 +1611,18 @@
       const host = OV.Dom.$('modals');
       const box = el('div', { class: 'modal wide bsc-sheet ' + (cls || ''), role: 'dialog', 'aria-modal': 'true', 'aria-label': title });
       const back = el('div', { class: 'modal-back' }, box);
-      let closed = false;
+      let closed = false, release = null;
       const close = () => {
         if (closed) return;
         closed = true;
         document.removeEventListener('keydown', onKey, true);
         OV.Dom.hideTooltip();
         back.remove();
+        if (release) release();
         if (S.sheet === api) S.sheet = null;
       };
       const onKey = (e) => {
+        if (back.nextElementSibling) return; // um modal de confirmação por cima trata as teclas
         if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); if (!e.repeat) { sfx('ui_click'); close(); } }
       };
       const acts = el('div', { class: 'modal-actions' });
@@ -1582,6 +1634,8 @@
       box.append(el('h2', { class: 'modal-title', text: title }), el('div', { class: 'bsc-sheet-body scroll', 'data-scroll': '' }, body), acts);
       back.addEventListener('click', (e) => { if (e.target === back) close(); });
       host.appendChild(back);
+      // foco preso na folha (o resto inerte) e devolvido a quem a abriu
+      release = OV.Dom.trapFocus(back);
       document.addEventListener('keydown', onKey, true);
       const api = { close, box };
       S.sheet = api;
@@ -1701,7 +1755,7 @@
       const hl = S.hlFac || S.highlight;
       OV.BaseRender.draw(g, b, {
         x: L.x, y: L.y, cell: L.cell, dpr: view.dpr, time: t / 1000,
-        hover: S.build ? null : S.hover, selection: S.sel, ghost: ghost(), dismantle: S.dismantle, highlight: hl || null, G: S.G,
+        hover: S.build ? null : S.hover || S.kcur, selection: S.sel, ghost: ghost(), dismantle: S.dismantle, highlight: hl || null, G: S.G,
       });
       if (S.build) updateGhostTip();
     };
@@ -1715,6 +1769,7 @@
       if (sameCell(cell, S.hover)) return;
       S.hover = cell;
       if (cell && S.build) S.kcur = cell;
+      else if (cell) S.kcur = null;
       if (!cell) hideGhostTip();
       S.dirty = true;
       renderInfo();
@@ -1797,10 +1852,43 @@
         return false;
       }
       if (lk === 'e' && S.tab === 'crafts') { const b = S.r.content.querySelector('[data-act="equip"]'); if (b) b.click(); return true; }
+      if (lk === 'a' && S.tab === 'crafts') { const b = S.r.content.querySelector('[data-act="boardAll"]'); if (b) b.click(); return true; }
       if (lk === 'x' && S.tab === 'crafts') { const b = S.r.content.querySelector('[data-act="cydonia"]'); if (b) b.click(); return true; }
       if (lk === 'm' && S.tab === 'soldiers') { S.memorial = !S.memorial; sfx('ui_select'); renderContent(); return true; }
       if (k === '[') { switchBase(-1); return true; }
       if (k === ']') { switchBase(1); return true; }
+      // Soldados: ↑/↓/Início/Fim escolhem o soldado da lista (com o foco onde estiver, fora dos campos de texto)
+      if (S.tab === 'soldiers' && !S.memorial && S.solOrder && S.solOrder.length && (k === 'ArrowDown' || k === 'ArrowUp' || k === 'Home' || k === 'End')) {
+        const L = S.solOrder;
+        let i = L.indexOf(S.solSel);
+        i = k === 'Home' ? 0 : k === 'End' ? L.length - 1 : Math.max(0, Math.min(L.length - 1, i + (k === 'ArrowDown' ? 1 : -1)));
+        if (L[i] !== S.solSel) sfx('ui_select');
+        S.solSel = L[i];
+        S.focusSol = true;
+        renderContent();
+        return true;
+      }
+      if (S.tab === 'soldiers' && k === 'Enter' && document.activeElement && document.activeElement.matches && document.activeElement.matches('tr[data-sol]')) {
+        const inp = S.r.content.querySelector('.bsc-sol-name');
+        if (inp) { inp.focus(); inp.select(); }
+        return true;
+      }
+      // Instalações: as setas movem um cursor sobre a grelha; Enter escolhe a instalação, ⌫ desmantela
+      if (S.tab === 'facilities' && (k === 'ArrowLeft' || k === 'ArrowRight' || k === 'ArrowUp' || k === 'ArrowDown')) {
+        if (!S.kcur) S.kcur = S.sel ? { x: S.sel.x, y: S.sel.y } : { x: 2, y: 2 };
+        else moveCursor(k === 'ArrowLeft' ? -1 : k === 'ArrowRight' ? 1 : 0, k === 'ArrowUp' ? -1 : k === 'ArrowDown' ? 1 : 0);
+        S.dirty = true;
+        renderInfo();
+        return true;
+      }
+      if (S.tab === 'facilities' && k === 'Enter' && S.kcur && !(document.activeElement && document.activeElement.tagName === 'BUTTON' && S.root.contains(document.activeElement))) {
+        const f = OV.BaseRender.facilityAt(base(), S.kcur.x, S.kcur.y);
+        if (!f || (S.sel && S.sel.x === f.x && S.sel.y === f.y)) { S.sel = null; sfx('ui_click'); }
+        else { S.sel = { x: f.x, y: f.y }; sfx('ui_select'); }
+        S.dirty = true;
+        renderInfo();
+        return true;
+      }
       if ((k === 'Backspace' || k === 'Delete') && S.sel) {
         const f = OV.BaseRender.facilityAt(base(), S.sel.x, S.sel.y);
         if (f) dismantleDlg(f);
@@ -1842,7 +1930,9 @@
         }
       } catch (e) { /* som opcional */ }
       // vindo do aviso «Investigação concluída → Novo projeto»: abre logo a escolha se houver quem trabalhe
-      if (P.tab === 'research') {
+      // com projetos a decorrer (ex.: cientistas acabados de chegar) mostra-se a lista para os atribuir; a escolha de
+      // projeto só abre sozinha sem projetos ou quando pedida («Novo projeto»)
+      if (P.tab === 'research' && (P.pick || !base().research.length)) {
         const b = base(), st = BS().staff(g, b.id), caps = BS().capacities(g, b.id);
         if (st.scientists.free > 0 && caps.labs.used < caps.labs.cap && C().availableResearch(g, b.id).length) setTimeout(() => { if (S.root && OV.Scenes.top() === sc) researchPicker(); }, 220);
       }
@@ -1885,13 +1975,13 @@
   };
 
   // ================================================================================================
-  function open(G, baseId, tab) {
+  function open(G, baseId, tab, opts) {
     const top = OV.Scenes.top();
     if (top && top.id === 'basescape' && top.S && top.S.G === G) {
       top.go(baseId, tab);
       return top;
     }
-    return OV.Scenes.push('basescape', { G, baseId: baseId || null, tab: tab || null });
+    return OV.Scenes.push('basescape', { G, baseId: baseId || null, tab: tab || null, pick: !!(opts && opts.pick) });
   }
   function close() {
     const top = OV.Scenes.top();

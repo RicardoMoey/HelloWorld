@@ -16,8 +16,9 @@
      model                           funções puras (sem DOM; testadas em Node)
    }
    Teclas: 1–6 velocidades, P/Espaço pausa, I intercetar, B bases, U Ufopédia, F financiamento, S gravar, Esc opções
-   (ou fecha a janela aberta), C centrar na seleção, H centrar na base, R radares, Tab próximo OVNI/local,
-   setas rodam, +/− ampliam. */
+   (ou fecha a janela aberta), C centrar na seleção, H centrar na base, R radares, T / ⇧T próximo OVNI/local/nave,
+   Tab percorre os botões do painel, setas rodam, +/− ampliam. No modo de destino as setas rodam o globo sob a mira
+   do centro e Enter/Espaço escolhem esse ponto. Janelas e diálogos prendem o foco (o resto do painel fica inerte). */
 (function (OV) {
   'use strict';
 
@@ -68,9 +69,19 @@
   // ---- nomes -------------------------------------------------------------------------------------------------------
   const ufoDef = (u) => D().ufos[u.type] || { size: 0, sizeKey: 'ufo.size.0', nameKey: 'ufo.small_scout' };
   const ufoName = (u) => T('geo.ufo.label', { n: numOf(u.id) });
+  // raça e missão só com o descodificador hiperonda; o tipo também quando já foi visto (combate aéreo, batalha) ou
+  // quando o briefing de uma missão contra este OVNI o mostrou (G.ui.idUfos) — os ecrãs nunca se contradizem
   const ufoKnown = (u) => !!(u && u.hyper);
-  function ufoTitle(u) {
-    return ufoKnown(u) ? ufoName(u) + ' · ' + T(ufoDef(u).nameKey) : ufoName(u) + ' · ' + T(ufoDef(u).sizeKey);
+  function typeKnown(G, u) {
+    if (!u) return false;
+    if (u.hyper) return true;
+    if (G && G.seen && Array.isArray(G.seen.ufoTypes) && G.seen.ufoTypes.indexOf(u.type) >= 0) return true;
+    return !!(G && G.ui && Array.isArray(G.ui.idUfos) && G.ui.idUfos.indexOf(u.id) >= 0);
+  }
+  // «Batedor Grande» quando identificado; senão o eco do radar («Eco pequeno»), que nunca parece contradizer o tipo
+  const ufoWhat = (G, u) => (typeKnown(G, u) ? T(ufoDef(u).nameKey) : T('geo.ufo.echo', { size: T(ufoDef(u).sizeKey).toLowerCase() }));
+  function ufoTitle(u, G) {
+    return ufoName(u) + ' · ' + ufoWhat(G || null, u);
   }
   function craftName(G, c) {
     if (!c) return '—';
@@ -129,7 +140,7 @@
   function ufoRows(G, u) {
     const def = ufoDef(u), rows = [];
     rows.push(['geo.i.status', T('geo.ufo.st.' + u.status)]);
-    rows.push(['geo.i.type', ufoKnown(u) ? T(def.nameKey) : T('geo.unknown')]);
+    rows.push(['geo.i.type', typeKnown(G, u) ? T(def.nameKey) : T('geo.unknown')]);
     rows.push(['geo.i.size', T(def.sizeKey)]);
     if (u.status === 'flying') {
       const alt = D().altitudes[u.alt] || 'high';
@@ -473,6 +484,19 @@
     return it ? T(it.nameKey) : id;
   }
   const researchName = (id) => (has('research.' + id) ? T('research.' + id) : id);
+  // encomendas que chegam juntas: somadas por tipo, objeto e base («Chegaram 10 soldados», não duas linhas de 5)
+  function mergeDeliveries(evs) {
+    const out = [], at = new Map();
+    for (const e of evs) {
+      const k = e.kind + '|' + (e.itemId || '') + '|' + e.baseId;
+      const x = at.get(k);
+      if (x) { x.n = (x.n | 0) + (e.n | 0); if (e.crew) x.crew = (x.crew ? x.crew + ' ' : '') + e.crew; continue; }
+      const c = Object.assign({}, e);
+      at.set(k, c);
+      out.push(c);
+    }
+    return out;
+  }
 
   // chaves montadas dinamicamente (para os testes de cobertura i18n)
   function textKeys() {
@@ -504,7 +528,7 @@
   const MISSION_REASONS = ['busy', 'ended', 'noCraft', 'notTransport', 'inDogfight', 'noSoldiers', 'noTarget', 'locked', 'craftType', 'notReady', 'notAtSite', 'noBattle', 'generic'];
 
   const model = {
-    fmtDur, fmtNm, fmtKn, fmtLL, compass, ufoName, ufoTitle, craftName, baseName, cityName, countryName, placeName,
+    fmtDur, fmtNm, fmtKn, fmtLL, compass, ufoName, ufoTitle, typeKnown, ufoWhat, mergeDeliveries, craftName, baseName, cityName, countryName, placeName,
     targetName, craftStatusKey, ufoRows, craftRows, baseRows, siteRows, alienBaseRows, cityRows, weaponsText, etaHours,
     launchState, craftsFor, targetsFor, reasonText, warnText, fundingRows, runClock, REACT, MERGE, classify, toastFor,
     prodName, itemName, researchName, textKeys, ufoVisible, WORLD_REASONS, WORLD_WARNS, MISSION_REASONS,
@@ -556,7 +580,10 @@
   }
   const fn = (mod, name) => !!(OV[mod] && typeof OV[mod][name] === 'function');
   const debugOn = (G) => !!((OV.Game && OV.Game.debug) || (G && G.debug));
-  const reduceMotion = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const reduceMotion = () => (OV.Game && typeof OV.Game.reduceMotion === 'function' ? OV.Game.reduceMotion() : typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches);
+  // textos com variante de toque (iPad sem teclado: nomeia o botão em vez da tecla)
+  const touchNow = () => !!(OV.Input && OV.Input.lastPointerType === 'touch') || (typeof matchMedia === 'function' && matchMedia('(hover: none) and (pointer: coarse)').matches);
+  const TT = (k, p) => (touchNow() && has(k + '.touch') ? T(k + '.touch', p) : T(k, p));
   const ZSTEP = Math.log(1.5);
 
   function makeScene(params) {
@@ -729,7 +756,7 @@
       const card = el('section', { class: 'geo-card hidden', 'aria-live': 'polite' });
       const banner = el('div', { class: 'geo-banner hidden', role: 'status' });
       const layer = el('div', { class: 'geo-layer' });
-      const hint = el('div', { class: 'geo-hint', text: T((OV.Input && OV.Input.lastPointerType === 'touch') || (typeof matchMedia === 'function' && matchMedia('(hover: none) and (pointer: coarse)').matches) ? 'geo.hint.touch' : 'geo.hint') });
+      const hint = el('div', { class: 'geo-hint', text: TT('geo.hint') });
       root.append(side, tools, card, banner, layer, hint);
       OV.Dom.$('hud').appendChild(root);
       S.side = side;
@@ -821,7 +848,7 @@
         if (!rows.length) box.appendChild(el('p', { class: 'geo-empty', text: empty }));
         for (const r of rows) box.appendChild(r);
       };
-      sec(T('geo.list.ufos'), ufos.length, ufos.map((u) => listRow('k-' + u.status, 'ufo', ufoName(u), T('geo.ufo.st.' + u.status) + ' · ' + (ufoKnown(u) ? T(ufoDef(u).nameKey) : T(ufoDef(u).sizeKey)),
+      sec(T('geo.list.ufos'), ufos.length, ufos.map((u) => listRow('k-' + u.status, 'ufo', ufoName(u), T('geo.ufo.st.' + u.status) + ' · ' + ufoWhat(G, u),
         u.status === 'flying' ? fmtKn(u.speed) : placeName(u.lon, u.lat), refOf('ufo', u.id))), T('geo.list.ufos.none'));
       const siteRowsEl = G.sites.map((s) => listRow('k-terror', 'skull', cityName(s.cityId), T('geo.site.kind') + ' · ' + raceName(s.race), fmtDur(Math.max(0, s.leftS) / 3600), refOf('site', s.id)))
         .concat(abs.map((a) => listRow('k-abase', 'alien', T('geo.alienBase.short'), placeName(a.lon, a.lat), '', refOf('alienBase', a.id))));
@@ -859,7 +886,7 @@
       x.addEventListener('click', () => { if (!isTop()) return; sfx('ui_click'); ui.stepsOff = true; refreshAux(true); });
       OV.Dom.tooltip(x, tip(T('geo.steps.hide')));
       box.append(el('div', { class: 'geo-steps-h' }, el('span', { text: T('geo.steps.title') }), x),
-        el('ol', null, ns.steps.map((st) => el('li', { class: st.done ? 'done' : '' }, el('i', { 'aria-hidden': 'true', text: st.done ? '✓' : '' }), el('span', { text: T('geo.steps.' + st.id) })))));
+        el('ol', null, ns.steps.map((st) => el('li', { class: st.done ? 'done' : '' }, el('i', { 'aria-hidden': 'true', text: st.done ? '✓' : '' }), el('span', { text: TT('geo.steps.' + st.id) })))));
     }
     // lembrete do pessoal parado: um toast por dia de jogo, só com o tempo a correr (nunca uma janela)
     function idleReminder() {
@@ -926,8 +953,8 @@
         const acts = [];
         if (o.status === 'flying') acts.push({ label: T('geo.a.intercept'), key: 'I', cls: 'primary', act: () => openIntercept({ target: ref }) });
         else acts.push({ label: T('geo.a.sendTeam'), key: 'E', cls: 'primary', act: () => openIntercept({ target: ref }) });
-        if (ufoKnown(o) && fn('Ufopaedia', 'open')) acts.push({ label: T('geo.a.ufopaedia'), act: () => OV.Ufopaedia.open(G, 'ufo_' + o.type) });
-        return { kind: T('geo.k.ufo'), title: ufoName(o), sub: ufoKnown(o) ? T(ufoDef(o).nameKey) : null, icon: 'ufo', tone: 'ufo-' + o.status, rows: ufoRows(G, o), acts };
+        if (typeKnown(G, o) && fn('Ufopaedia', 'open')) acts.push({ label: T('geo.a.ufopaedia'), act: () => OV.Ufopaedia.open(G, 'ufo_' + o.type) });
+        return { kind: T('geo.k.ufo'), title: ufoName(o), sub: typeKnown(G, o) ? T(ufoDef(o).nameKey) : null, icon: 'ufo', tone: 'ufo-' + o.status, rows: ufoRows(G, o), acts };
       }
       if (ref.kind === 'craft') {
         const acts = [];
@@ -1057,8 +1084,16 @@
     // ---------------------------------------------------------------------------------------------------------------
     // janelas (diálogos) na camada central: interceção, financiamento, escolha de base
     // ---------------------------------------------------------------------------------------------------------------
+    // diálogo na camada central: foco preso nele (o painel lateral fica inerte) e devolvido ao fechar
+    function trapDlg(node) {
+      const d = S.dlg;
+      if (!d || !OV.Dom.trapFocus) return;
+      if (d.release) d.release(false);
+      d.release = OV.Dom.trapFocus(node, { keep: [OV.View.canvas], returnTo: d.back });
+    }
     function closeDlg() {
       if (!S.dlg) return;
+      if (S.dlg.release) S.dlg.release();
       if (S.dlg.node) S.dlg.node.remove();
       S.dlg = null;
       view.country = null;
@@ -1087,7 +1122,7 @@
       else if (st.craftId) st.step = 'target';
       else st.step = G.bases.length > 1 && !st.baseId ? 'base' : 'craft';
       if (!st.baseId && G.bases.length === 1) st.baseId = G.bases[0].id;
-      S.dlg = { kind: 'intercept', st, node: null, t: 0 };
+      S.dlg = { kind: 'intercept', st, node: null, t: 0, back: document.activeElement };
       renderIntercept();
     }
     function interceptTitle(st) {
@@ -1128,6 +1163,10 @@
               else { st.err = reasonText(res.reason); renderIntercept(); }
             } else { st.craftId = c.id; st.step = 'target'; renderIntercept(); }
           }));
+          if (def.transport && st.target && groundTarget(G, st.target)) {
+            const fix = transportFix(c);
+            if (fix) list.appendChild(fix);
+          }
         }
       } else {
         const rows = targetsFor(G, st.craftId);
@@ -1138,7 +1177,7 @@
           if (ref === 'home') { ic = 'base'; cls = 'home'; sub = baseName(C().findBase(G, G.crafts[st.craftId].baseId)); }
           else {
             const tg = C().targetOf(G, ref);
-            if (ref.kind === 'ufo') { sub = T('geo.ufo.st.' + tg.obj.status) + ' · ' + (ufoKnown(tg.obj) ? T(ufoDef(tg.obj).nameKey) : T(ufoDef(tg.obj).sizeKey)) + ' · ' + placeName(tg.lon, tg.lat); cls = 'ufo k-' + tg.obj.status; }
+            if (ref.kind === 'ufo') { sub = T('geo.ufo.st.' + tg.obj.status) + ' · ' + ufoWhat(G, tg.obj) + ' · ' + placeName(tg.lon, tg.lat); cls = 'ufo k-' + tg.obj.status; }
             else if (ref.kind === 'site') { ic = 'skull'; cls = 'terror'; sub = T('geo.site.kind') + ' · ' + T('geo.approx', { t: fmtDur(tg.obj.leftS / 3600) }); }
             else if (ref.kind === 'alienBase') { ic = 'alien'; cls = 'abase'; sub = placeName(tg.lon, tg.lat); }
           }
@@ -1159,11 +1198,55 @@
       shell.foot.appendChild(el('span', { class: 'geo-grow' }));
       if (st.step === 'target') shell.foot.appendChild(btn(T('geo.a.pickPoint'), { icon: 'globe', key: 'G', tip: tip(T('geo.a.pickPoint.tip'), 'G'), onClick: () => startTargetMode(st.craftId) }));
       shell.foot.appendChild(btn(T('common.cancel'), { key: 'Esc', onClick: () => closeDlg() }));
+      const hadFocus = !!old && old.contains(document.activeElement);
+      const fk = hadFocus && OV.Dom.focusKey ? OV.Dom.focusKey(document.activeElement) : null;
       if (old && old.parentNode) old.replaceWith(shell.node);
       else S.els.layer.appendChild(shell.node);
+      trapDlg(shell.node);
       d.sig = interceptSig(st);
+      if (fk && OV.Dom.refocus(fk, shell.node)) return;
       const first = shell.node.querySelector('.geo-row:not(:disabled)');
       if (first && OV.Input.lastPointerType !== 'touch') setTimeout(() => { if (first.isConnected) first.focus({ preventScroll: true }); }, 0);
+    }
+    /* «Enviar equipa»: porque é que um transporte não leva tropas e a correção a um clique (embarcar os aptos e
+       equipá-los com o armazém, ir contratar, encomendar o kit básico); também avisa de soldados sem arma. */
+    function transportFix(c) {
+      const cu = CU();
+      if (!cu || !cu.idleFit) return null;
+      const def = D().crafts[c.type];
+      const base = C().findBase(G, c.baseId);
+      const home = !!base && !!HANGAR[c.status] && base.crafts.indexOf(c.id) >= 0;
+      const fit = fitCount(G, c);
+      const idle = cu.idleFit(G, c.baseId).length;
+      const seats = Math.max(0, (def.seatsUI | 0) - c.soldiers.length);
+      const unarmed = cu.unarmedAboard(G, c.id).length;
+      const box = (tone, text, ...btns) => el('div', { class: 'geo-fix t-' + tone, role: 'note' }, el('span', { text }), ...btns.filter(Boolean));
+      const crewBtn = (label) => btn(label, {
+        cls: 'small primary', tip: tip(T('geo.fix.boardBtn.tip')), onClick: () => {
+          const r = cu.crewUp(G, c.id);
+          OV.Dom.toast(cu.crewText(G, c.id, r) || T('geo.fix.nothing'), null, r.unarmed ? 'warn' : 'good');
+          afterOrder();
+          renderIntercept();
+        },
+      });
+      const kitBtn = (n) => btn(T('geo.a.starterKit'), { cls: 'small', tip: tip(T('geo.a.starterKit.tip')), onClick: () => cu.orderStarterKit(G, c.baseId, n) });
+      if (!fit) {
+        if (home && idle && seats) return box('warn', T('geo.fix.noTroops', { n: Math.min(idle, seats) }), crewBtn(T('geo.fix.boardBtn', { n: Math.min(idle, seats) })));
+        if (!idle && !(base && base.soldiers.length)) return box('warn', T('geo.fix.hire'), btn(T('geo.fix.hireBtn'), { cls: 'small', onClick: () => { closeDlg(); openBase(c.baseId, 'personnel'); } }));
+        if (!idle) return box('warn', T('geo.fix.wounded'));
+        return box('warn', T('geo.fix.away'));
+      }
+      if (unarmed) {
+        if (!home) return box('bad', Tn('geo.fix.unarmedAway', unarmed));
+        return box('bad', Tn('geo.fix.unarmed', unarmed),
+          btn(T('geo.fix.kitBtn'), { cls: 'small primary', tip: tip(T('geo.fix.kitBtn.tip')), onClick: () => {
+            const k = cu.autoKit(G, c.id);
+            OV.Dom.toast(k.equipped ? Tn('cp.crew.equipped', k.equipped) + (k.unarmed ? ' ' + Tn('cp.crew.unarmed', k.unarmed) : '') : T('cp.br.autoKit.none'), null, k.unarmed ? 'warn' : 'good');
+            renderIntercept();
+          } }), kitBtn(unarmed));
+      }
+      if (home && idle && seats) return box('info', Tn('geo.fix.seats', Math.min(idle, seats)), crewBtn(T('geo.fix.boardBtn', { n: Math.min(idle, seats) })));
+      return null;
     }
     function interceptSig(st) {
       try {
@@ -1173,7 +1256,7 @@
       return '';
     }
     function rowBtn(cls, title, sub, right, ok, note, onPick, ic) {
-      const b = el('button', { type: 'button', class: 'geo-row ' + cls },
+      const b = el('button', { type: 'button', class: 'geo-row ' + cls, dataset: { row: title } },
         icon(ic || (cls.indexOf('craft') === 0 ? 'craft' : cls)),
         el('span', { class: 'geo-row-t' }, el('b', { text: title }), el('small', { text: sub }), note ? el('em', { class: 't-' + note.tone, text: note.text }) : null),
         right ? el('span', { class: 'geo-row-r', text: right }) : null);
@@ -1194,7 +1277,7 @@
       view.mode = 'target';
       view.targetFrom = { lon: c.lon, lat: c.lat };
       if (S.dlg && S.dlg.node) S.dlg.node.classList.add('hidden');
-      showBanner(T('geo.tm.title', { craft: craftName(G, c) }), T('geo.tm.hint'), 'target');
+      showBanner(T('geo.tm.title', { craft: craftName(G, c) }), TT('geo.tm.hint'), 'target');
       setCursor('crosshair');
       dirty();
     }
@@ -1228,7 +1311,7 @@
       const key = JSON.stringify(ref && ref.kind === 'point' ? null : ref);
       if (key === S.lastHoverRef && ref && ref.kind !== 'point') return;
       S.lastHoverRef = key;
-      if (!ref) { showBanner(T('geo.tm.title', { craft: craftName(G, G.crafts[S.target.craftId]) }), T('geo.tm.hint'), 'target'); return; }
+      if (!ref) { showBanner(T('geo.tm.title', { craft: craftName(G, G.crafts[S.target.craftId]) }), TT('geo.tm.hint'), 'target'); return; }
       const r = W().canOrder(G, S.target.craftId, ref);
       const name = ref === 'home' ? T('geo.tk.home') : targetName(G, ref);
       const e = etaHours(G, G.crafts[S.target.craftId], ref);
@@ -1252,7 +1335,7 @@
     function openFunding() {
       closeDlg();
       const shell = dlgShell('geo-fund', T('geo.fund.kicker'), T('geo.fund.title'), () => closeDlg());
-      S.dlg = { kind: 'funding', node: shell.node };
+      S.dlg = { kind: 'funding', node: shell.node, back: document.activeElement };
       const rows = fundingRows(G);
       const income = OV.Economy && OV.Economy.income ? OV.Economy.income(G) : rows.reduce((s, r) => s + (r.pact ? 0 : r.funding), 0);
       const upkeep = OV.Economy && OV.Economy.upkeep ? OV.Economy.upkeep(G).total : 0;
@@ -1301,6 +1384,7 @@
       shell.foot.appendChild(el('span', { class: 'geo-grow' }));
       shell.foot.appendChild(btn(T('common.close'), { cls: 'primary', key: 'F', onClick: () => closeDlg() }));
       S.els.layer.appendChild(shell.node);
+      trapDlg(shell.node);
       requestAnimationFrame(() => drawGraph(cv));
     }
     function stat(label, value, tone) {
@@ -1385,13 +1469,16 @@
       if (b || G.bases.length === 1) { openBase((b || G.bases[0]).id); return; }
       closeDlg();
       const shell = dlgShell('geo-bases', T('geo.btn.bases'), T('geo.int.chooseBase'), () => closeDlg());
-      S.dlg = { kind: 'bases', node: shell.node };
+      S.dlg = { kind: 'bases', node: shell.node, back: document.activeElement };
       const list = el('div', { class: 'geo-rows' });
       for (const x of G.bases) list.appendChild(rowBtn('base', baseName(x), placeName(x.lon, x.lat), T('geo.i.craftsN', { n: x.crafts.length }), true, null, () => { closeDlg(); openBase(x.id); }, 'base'));
       shell.body.appendChild(list);
       shell.foot.appendChild(el('span', { class: 'geo-grow' }));
       shell.foot.appendChild(btn(T('common.cancel'), { key: 'Esc', onClick: () => closeDlg() }));
       S.els.layer.appendChild(shell.node);
+      trapDlg(shell.node);
+      const f = shell.node.querySelector('.geo-row');
+      if (f && !touchNow()) setTimeout(() => { if (f.isConnected) f.focus({ preventScroll: true }); }, 0);
     }
     function selBase() {
       const s = view.selection;
@@ -1400,10 +1487,10 @@
       if (s.kind === 'craft') { const c = G.crafts[s.id]; return c ? C().findBase(G, c.baseId) : null; }
       return null;
     }
-    function openBase(baseId, tab) {
+    function openBase(baseId, tab, opts) {
       if (!fn('BaseUI', 'open')) { sfx('ui_deny'); OV.Dom.toast(T('geo.noBaseUI'), null, 'warn'); return; }
       closePopupQuiet();
-      OV.BaseUI.open(G, baseId, tab);
+      OV.BaseUI.open(G, baseId, tab, opts);
     }
     function openUfopaedia(article) {
       if (!fn('Ufopaedia', 'open')) { sfx('ui_deny'); return; }
@@ -1462,6 +1549,10 @@
     // ---------------------------------------------------------------------------------------------------------------
     function handle(evs0) {
       const evs = dropBaseLosses(evs0);
+      // entregas do lote: a equipa trata-se uma vez por base (o resultado vai no primeiro aviso dessa base)
+      const firstAt = new Map();
+      for (const ev of evs) if (ev.t === 'deliveryArrived' && !firstAt.has(ev.baseId)) firstAt.set(ev.baseId, ev);
+      for (const [baseId, ev] of firstAt) crewOnDelivery(ev, evs.filter((e) => e.t === 'deliveryArrived' && e.baseId === baseId).map((e) => e.kind));
       for (const ev of evs) {
         const mode = classify(ev);
         if (ev.t === 'terrorSiteExpired') logTerror(G, ev);
@@ -1476,6 +1567,35 @@
       }
       S.sigs.lists = null;
       dirty();
+    }
+    /* Soldados ou transporte novos: os aptos sem nave embarcam sozinhos num transporte com lugares e quem vai sem arma
+       leva o material do armazém (o Skyranger de substituição chega tripulado); armas novas no armazém equipam quem
+       ficou sem arma. O resultado vai para o aviso da entrega (ev.crew / ev.unarmed). */
+    function crewOnDelivery(ev, kinds) {
+      const cu = CU();
+      const ks = kinds || [ev.kind];
+      const people = ks.indexOf('soldier') >= 0 || ks.indexOf('craft') >= 0;
+      if (!cu || !cu.crewUp || !(people || ks.indexOf('item') >= 0)) return;
+      const base = C().findBase(G, ev.baseId);
+      if (!base) return;
+      const tr = base.crafts.map((id) => G.crafts[id]).filter((c) => c && D().crafts[c.type] && (D().crafts[c.type].seatsUI | 0) > 0 && HANGAR[c.status]);
+      if (!tr.length) return;
+      // a equipa fica junta: primeiro o transporte que já leva mais soldados
+      tr.sort((a, b2) => b2.soldiers.length - a.soldiers.length);
+      const parts = [];
+      let unarmed = 0;
+      for (const c of tr) {
+        let r;
+        if (!people) {
+          if (!cu.unarmedAboard(G, c.id).length) continue;
+          const k = cu.autoKit(G, c.id);
+          r = { boarded: 0, equipped: k.equipped | 0, unarmed: k.unarmed | 0 };
+        } else r = cu.crewUp(G, c.id);
+        unarmed += r.unarmed | 0;
+        if (r.boarded || r.equipped || r.unarmed) parts.push(cu.crewText(G, c.id, r));
+      }
+      if (parts.length) ev.crew = parts.join(' ');
+      ev.unarmed = unarmed;
     }
     function addToast(ev) {
       const list = S.toasts.get(ev.t) || [];
@@ -1555,6 +1675,7 @@
     }
     function closePopupQuiet() {
       if (!S.popup) return;
+      if (S.popup.release) S.popup.release(false);
       S.popup.node.remove();
       S.popup = null;
     }
@@ -1617,7 +1738,7 @@
           return {
             tone: 'good', icon: 'ufo', title: T('geo.ev.ufoCrashed'), sound: 'ui_confirm', focus: ref,
             text: T('geo.ev.ufoCrashed.body', { ufo: ufoName(u), place: placeName(u.lon, u.lat), craft: craftName(G, craftOf(ev)) }),
-            rows: [['geo.i.type', ufoKnown(u) ? T(ufoDef(u).nameKey) : T(ufoDef(u).sizeKey)], ['geo.i.crashLeft', T('geo.approx', { t: fmtDur(u.crashLeftS / 3600) })]],
+            rows: [['geo.i.type', ufoWhat(G, u)], ['geo.i.crashLeft', T('geo.approx', { t: fmtDur(u.crashLeftS / 3600) })]],
             lines: [teamEtaLine(G, ref, u.crashLeftS)],
             buttons: [sendBtn(ref, true), centreBtn(ref), ok],
           };
@@ -1639,9 +1760,11 @@
           const recall = { label: T('geo.a.recall'), key: 'R', act: () => doRecall(c.id) };
           const fit = (c.soldiers || []).filter((id) => { const s = C().findSoldier(G, id); return s && !s.woundDays; }).length;
           if (ev.prompt === 'mission') {
+            const unarmed = CU() ? CU().unarmedAboard(G, c.id).length : 0;
             return {
-              tone: 'good', icon: 'craft', title: T('geo.ev.arrived.mission'), sound: 'radar_ping', focus: refOf('craft', c.id),
+              tone: unarmed ? 'warn' : 'good', icon: 'craft', title: T('geo.ev.arrived.mission'), sound: 'radar_ping', focus: refOf('craft', c.id),
               text: T('geo.ev.arrived.mission.body', { craft: craftName(G, c), target: targetName(G, tref), n: fit }),
+              lines: unarmed ? [Tn('geo.ev.arrived.unarmed', unarmed)] : [],
               buttons: [{ label: T('geo.a.startMission'), key: 'Enter', cls: 'primary', def: true, act: () => launchMission(tref, c.id) },
                 { label: T('geo.a.wait'), key: 'W', esc: true, act: () => {} }, recall],
             };
@@ -1672,7 +1795,7 @@
           const noTransport = !Object.keys(G.crafts).some((id) => D().crafts[G.crafts[id].type] && D().crafts[G.crafts[id].type].transport);
           const lines = evs.length > 1 ? evs.map(body) : [];
           if (n) lines.push(Tn('geo.ev.craftLost.crew', n));
-          if (noTransport) lines.push(T('geo.ev.craftLost.noTransport'));
+          if (noTransport) lines.push(TT('geo.ev.craftLost.noTransport'), T('geo.ev.craftLost.kit'));
           return {
             tone: 'alert', icon: 'alert', title: evs.length > 1 ? Tn('geo.ev.craftLost.many', evs.length) : T('geo.ev.craftLost'), sound: 'ui_deny',
             text: evs.length > 1 ? '' : body(ev),
@@ -1711,7 +1834,7 @@
             text: T('geo.ev.researchDone.body', { topic: researchName(ev.topic), base: b(ev) }), lines,
             buttons: [cyBtn,
               { label: T('geo.a.viewUfopaedia'), key: 'U', cls: final ? '' : 'primary', disabled: !fn('Ufopaedia', 'open'), act: () => openUfopaedia(ev.article || ev.topic) },
-              { label: T('geo.a.newProject'), key: 'N', disabled: !fn('BaseUI', 'open'), act: () => openBase(ev.baseId, 'research') }, ok].filter(Boolean),
+              { label: T('geo.a.newProject'), key: 'N', disabled: !fn('BaseUI', 'open'), act: () => openBase(ev.baseId, 'research', { pick: true }) }, ok].filter(Boolean),
           };
         }
         case 'productionDone':
@@ -1739,10 +1862,17 @@
             if (e.kind === 'item' || e.kind === 'craft') return T('geo.ev.delivery.' + e.kind, { n: e.n | 0, item: itemName(e.kind, e.itemId), base: b(e) });
             return Tn('geo.ev.delivery.' + e.kind, e.n | 0, { base: b(e) });
           };
-          const tab = { soldier: 'soldiers', scientist: 'personnel', engineer: 'personnel', craft: 'crafts', item: 'stores' }[ev.kind] || 'stores';
+          const all = mergeDeliveries(evs);
+          const first = all[0];
+          // cientistas vão para a Investigação e engenheiros para o Fabrico, onde se atribuem
+          const tab = { soldier: 'soldiers', scientist: 'research', engineer: 'production', craft: 'crafts', item: 'stores' }[first.kind] || 'stores';
+          const lines = all.slice(1).map(line);
+          for (const e of evs) if (e.crew) lines.push(e.crew);
+          const unarmed = evs.reduce((n, e) => Math.max(n, e.unarmed | 0), 0);
+          const kitBtn = unarmed && CU() ? { label: T('geo.a.starterKit'), key: 'K', cls: 'primary', act: () => CU().orderStarterKit(G, ev.baseId, unarmed) } : null;
           return {
-            tone: 'good', icon: 'box', title: T('geo.ev.deliveryArrived'), sound: 'production_done',
-            text: line(ev), lines: evs.slice(1).map(line), buttons: [baseBtn(ev.baseId, tab), ok],
+            tone: unarmed ? 'warn' : 'good', icon: 'box', title: T('geo.ev.deliveryArrived'), sound: 'production_done',
+            text: line(first), lines, buttons: [kitBtn, baseBtn(first.baseId, unarmed ? 'market' : tab), ok].filter(Boolean),
           };
         }
         case 'terrorSite': {
@@ -1752,7 +1882,7 @@
           return {
             tone: 'terror', icon: 'skull', title: T('geo.ev.terrorSite'), sound: 'siren', focus: ref, kicker: T('geo.ev.terrorSite.kicker'),
             text: T('geo.ev.terrorSite.body', { city: cityName(s.cityId), race: has('race.' + s.race + '.plural') ? T('race.' + s.race + '.plural') : raceName(s.race) }), rows: siteRows(G, s),
-            lines: [T('geo.ev.terrorSite.stakes'), terrorEtaLine(ref, s)],
+            lines: [T('geo.ev.terrorSite.stakes', { points: fmtInt(OV.Missions && OV.Missions.expiredPoints ? OV.Missions.expiredPoints(G) : 1000) }), terrorEtaLine(ref, s)],
             buttons: [sendBtn(ref, true), centreBtn(ref), ok],
           };
         }
@@ -1826,7 +1956,7 @@
         case 'intro':
           return {
             tone: 'info', icon: 'globe', title: T('geo.intro.title'), kicker: T('geo.intro.kicker'), noDate: true, text: T('geo.intro.body', { base: baseName(G.bases[0]) }),
-            lines: [T('geo.intro.l1'), T('geo.intro.l2'), T('geo.intro.l3')],
+            lines: [TT('geo.intro.l1'), T('geo.intro.l2'), TT('geo.intro.l3')],
             buttons: [{ label: T('geo.intro.go'), key: 'Enter', cls: 'primary', def: true, esc: true, act: () => {} }],
           };
         default:
@@ -1865,6 +1995,7 @@
         nq ? el('div', { class: 'geo-pop-q', text: Tn('geo.pop.more', nq) }) : null].filter(Boolean));
       S.popup = pop;
       S.els.layer.appendChild(node);
+      pop.release = OV.Dom.trapFocus ? OV.Dom.trapFocus(node, { keep: [OV.View.canvas] }) : null;
       if (spec.sound === 'siren') siren();
       else if (spec.sound) sfx(spec.sound);
       if (spec.stinger) stinger(spec.stinger);
@@ -1880,6 +2011,7 @@
       p.node.classList.add('out');
       const node = p.node;
       setTimeout(() => node.remove(), 140);
+      if (p.release) p.release();
       S.popup = null;
       OV.Dom.hideTooltip();
       if (bspec && bspec.act) bspec.act();
@@ -2099,6 +2231,7 @@
       switch (ev.kind) {
         case 'key': return onKey(ev);
         case 'hover': {
+          S.kbdAim = false;
           view.cursor = OV.GlobeRender.pick(view, ev.x, ev.y);
           const hit = OV.GlobeRender.objectAt(G, view, ev.x, ev.y);
           const prev = view.hover;
@@ -2217,6 +2350,7 @@
       if (CAMERA_KEYS[k]) {
         if (k === '+' || k === '=') { if (!ev.repeat) zoomStep(1); }
         else if (k === '-' || k === '_') { if (!ev.repeat) zoomStep(-1); }
+        else if (S.target) { S.kbdAim = true; dirty(); }
         hintGone();
         return true;
       }
@@ -2227,6 +2361,8 @@
       if (S.popup) return popupKey(ev);
       if (S.target) {
         if (k === 'Escape') { sfx('ui_click'); endTargetMode(true); }
+        // teclado: as setas rodam o globo sob a mira do centro; Enter ou Espaço escolhem o que está na mira
+        else if ((k === 'Enter' || k === ' ') && !ev.repeat) { S.kbdAim = true; targetClick(view.cx, view.cy); }
         return true;
       }
       if (S.dlg) {
@@ -2252,7 +2388,8 @@
         case 'r':
           toggleRadar();
           return true;
-        case 'Tab': cycleTargets(ev.mods && ev.mods.shift ? -1 : 1); return true;
+        // Tab navega pelos botões do painel (foco nativo); T percorre OVNIs, locais e naves no ar
+        case 't': cycleTargets(ev.mods && ev.mods.shift ? -1 : 1); return true;
         case 'Escape': sfx('ui_click'); openOptions(); return true;
         default:
           return cardKey(k);
@@ -2295,6 +2432,24 @@
         else hl.push(x.ref);
       }
       view.highlights = hl;
+    }
+    // mira do teclado no modo de destino (centro do globo)
+    function drawAim(c, x, y) {
+      c.save();
+      const arm = (lw, col) => {
+        c.lineWidth = lw;
+        c.strokeStyle = col;
+        c.beginPath();
+        c.moveTo(x - 20, y); c.lineTo(x - 7, y); c.moveTo(x + 7, y); c.lineTo(x + 20, y);
+        c.moveTo(x, y - 20); c.lineTo(x, y - 7); c.moveTo(x, y + 7); c.lineTo(x, y + 20);
+        c.stroke();
+      };
+      arm(4, 'rgba(0,0,0,0.55)');
+      arm(2, '#e8f6ff');
+      c.beginPath();
+      c.arc(x, y, 11, 0, Math.PI * 2);
+      c.stroke();
+      c.restore();
     }
     function animatedMarkers() {
       if (view.selection || view.highlights.length || view.mode === 'target' || G.sites.length) return true;
@@ -2357,7 +2512,15 @@
       S.dirty = false;
       S.timeDirty = false;
       view.time = t;
+      if (S.target && S.kbdAim) view.cursor = OV.GlobeRender.pick(view, view.cx, view.cy);
       const r = OV.GlobeRender.draw(V.ctx || ctx, G, view);
+      if (S.target && S.kbdAim) {
+        const c2 = V.ctx || ctx;
+        c2.setTransform(V.dpr || 1, 0, 0, V.dpr || 1, 0, 0);
+        drawAim(c2, view.cx, view.cy);
+        const key = Math.round(view.lon * 10) + ',' + Math.round(view.lat * 10);
+        if (S.aimKey !== key) { S.aimKey = key; targetHover(view.cx, view.cy); }
+      }
       S.perf = r;
       S.draws = (S.draws | 0) + 1;
       if (OV.GlobeRender.busy(view)) S.dirty = true;

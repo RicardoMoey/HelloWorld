@@ -274,3 +274,11 @@ body:has(.cp-mr) #toasts { display: none; }
 .cp-cy .cp-cy-warn { color: #ff8a7f; font-weight: 700; }
 .cp-newres { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 10px; }
 .cp-newres-act { display: flex; justify-content: flex-start; }
+
+/* ---- ronda de personas 1 ----------------------------------------------------------------------------------------- */
+.cp-warns li { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; }
+.cp-warns li > span { flex: 1 1 180px; }
+.cp-warns li.bad { font-weight: 700; }
+.cp-warns li .btn { min-height: 30px; }
+.cp-kbd-help { color: var(--muted); font-size: 12.5px; }
+:root[data-palette="cvd"] .cp-warns li.warn::before { background: var(--warn-c); }

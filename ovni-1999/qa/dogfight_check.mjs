@@ -51,6 +51,8 @@ function pageSetup(o) {
   if (OV.DogfightUI.isOpen()) OV.DogfightUI.close();
   const G = OV.Campaign.newCampaign({ seed: o.seed || 7, difficulty: o.difficulty === undefined ? 1 : o.difficulty });
   G.events.length = 0;
+  // a pergunta dos mísseis (OVNI muito pequeno) testa-se em qa/persona_r1_shell.mjs; aqui fica desligada
+  if (!o.askMissiles) G.ui.dfMissileKeep = 2;
   const b = G.bases[0];
   const crafts = o.crafts || ['c2'];
   const ufos = crafts.map((cid, i) => {

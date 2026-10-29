@@ -213,3 +213,13 @@
 .df-hint-x { flex: none; width: 32px; min-height: 28px; padding: 0; font-size: 16px; }
 @media (hover: none) { .df-hint-x { min-height: 36px; width: 40px; } }
 
+
+/* ---- pergunta dos mísseis (OVNI muito pequeno): uma linha grande, o combate em pausa ----------------------------- */
+.df-root { zoom: var(--ui-scale, 1); }
+.df-ask { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(460px, calc(100% - 24px)); display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; pointer-events: auto; z-index: 5;
+  background: rgba(8, 13, 20, 0.95); border: 1px solid var(--line2); border-top: 3px solid var(--amber); border-radius: 4px; box-shadow: 0 10px 34px rgba(0, 0, 0, 0.6); }
+.df-ask.hidden { display: none; }
+.df-ask-q { font: 700 15px/1.4 var(--sans); color: #f2f7fb; }
+.df-ask-a { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+.df-ask-a .btn { min-height: 38px; }
+@media (hover: none) { .df-ask-a .btn { min-height: 44px; } .df-ask kbd { display: none; } }

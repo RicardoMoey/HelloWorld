@@ -121,5 +121,11 @@
     'df.btn.restore': 'Abrir a interceção de {craft}',
     'df.btn.next': 'Outra interceção',
     'df.closing': 'A fechar…',
+
+    'df.ask.q': 'OVNI muito pequeno: os mísseis desintegram-no e não sobram destroços. Desligar os mísseis?',
+    'df.ask.off': 'Desligar mísseis',
+    'df.ask.off.hint': 'O canhão abate-o sem o desintegrar: a equipa pode ir aos destroços',
+    'df.ask.keep': 'Manter',
+    'df.ask.keep.hint': 'Os mísseis disparam como estão (depois de 2 respostas destas, não volta a perguntar)',
   });
 })(globalThis.OV || (globalThis.OV = {}));

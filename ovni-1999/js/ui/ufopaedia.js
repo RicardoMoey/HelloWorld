@@ -1157,7 +1157,7 @@
   function sfx(name) {
     try { if (OV.audio && OV.audio.play) OV.audio.play(name); } catch (e) { /* som é opcional */ }
   }
-  const reduceMotion = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const reduceMotion = () => (OV.Game && typeof OV.Game.reduceMotion === 'function' ? OV.Game.reduceMotion() : typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches);
 
   OV.SceneDefs = OV.SceneDefs || {};
   OV.SceneDefs.ufopaedia = function (params) {
@@ -1344,11 +1344,18 @@
       }
     }
 
+    // pesquisa: mostra o 1.º resultado; sem resultados volta ao artigo que estava aberto antes de pesquisar (nunca
+    // fica um artigo de uma correspondência intermédia, sem relação com o que se escreveu)
+    let preSearch = null;
     function onSearch() {
+      const prevQuery = query;
       query = searchInp.value;
+      if (query && !prevQuery) preSearch = cur;
       buildNav();
-      if (shown.length && !shown.includes(cur)) show(shown[0]);
+      if (!shown.length) { if (preSearch && cur !== preSearch) show(preSearch); else if (cur) show(cur); }
+      else if (!shown.includes(cur)) show(shown[0]);
       else if (cur) show(cur);
+      if (!query) preSearch = null;
     }
 
     function close() {

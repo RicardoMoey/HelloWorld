@@ -325,3 +325,27 @@ body:has(#hud > .geo:not(.geo-off) .geo-banner:not(.hidden)) #toasts { top: calc
   .geo-nudge .btn, .geo-nudge .geo-nudge-x { min-height: 36px; }
   .geo-nudge .geo-nudge-x { width: 40px; }
 }
+
+/* ---- ronda de personas 1 ----------------------------------------------------------------------------------------- */
+.geo { zoom: var(--ui-scale, 1); }
+.geo-empty { color: var(--muted); }
+/* a 125 % de zoom (≈1024 px) as teclas continuam visíveis: menores, nunca escondidas (só no toque) */
+@media (max-width: 1100px) {
+  .geo .geo-sp kbd, .geo-acts .btn:not(.geo-int-b) kbd { display: inline-block; font-size: 9px; line-height: 12px; padding: 0 2px; }
+  .geo .geo-sp { justify-content: space-between; padding: 0 3px; font-size: 11px; }
+  .geo-acts .btn { padding: 0 6px; font-size: 12px; gap: 5px; }
+}
+@media (max-width: 1340px) and (hover: hover) {
+  .geo-acts .btn:not(.geo-int-b) kbd { display: inline-block; }
+}
+@media (hover: none) {
+  .geo kbd, .geo .geo-sp kbd, .geo-acts .btn:not(.geo-int-b) kbd { display: none; }
+}
+/* «Enviar equipa»: porque é que o transporte não leva tropas e a correção a um clique */
+.geo-fix { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; margin: -1px 0 6px 18px; padding: 6px 8px; font-size: 12.5px; line-height: 1.35; color: #e3edf4; background: rgba(8, 14, 22, 0.9); border: 1px solid #2a4560; border-left: 3px solid var(--cyan); border-radius: 0 0 3px 3px; }
+.geo-fix > span { flex: 1 1 160px; }
+.geo-fix::before { content: 'i'; flex: none; width: 15px; height: 15px; display: grid; place-items: center; font: 800 10px var(--mono); border-radius: 50%; background: var(--cyan); color: #04111a; }
+.geo-fix.t-warn { border-left-color: var(--warn-c); }
+.geo-fix.t-warn::before { content: '!'; background: var(--warn-c); }
+.geo-fix.t-bad { border-left-color: var(--red); }
+.geo-fix.t-bad::before { content: '✕'; background: var(--red); color: #fff; }

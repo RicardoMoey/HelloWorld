@@ -299,7 +299,7 @@
   const el = (...a) => OV.Dom.el(...a);
   const uiRng = OV.RNG ? OV.RNG.create(0xd06f16) : { next: () => 0.5 };
   const rnd = () => uiRng.next();
-  const reduceMotion = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const reduceMotion = () => (OV.Game && typeof OV.Game.reduceMotion === 'function' ? OV.Game.reduceMotion() : typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches);
   const dprNow = () => Math.min(2, (typeof devicePixelRatio === 'number' && devicePixelRatio) || 1);
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 
@@ -371,7 +371,38 @@
     if (!focused()) restore(id, true);
     else flashChip(p);
     sfx('reaction_alert');
+    // OVNI muito pequeno com mísseis ligados: pergunta já (uma linha, combate em pausa) se quer destroços
+    if (missileTip(S.G, d, track) && !((S.G.ui && S.G.ui.dfMissileKeep | 0) >= 2)) askMissiles(p);
     return p;
+  }
+  function askMissiles(p) {
+    const E = p.el;
+    if (!E.ask || p.track.outcome) return;
+    p.ask = true;
+    setCls(E.ask, 'hidden', false);
+    setPaused(true, true);
+    if (p.minimised) restore(p.id, true);
+    setTimeout(() => { if (p.ask && E.askOff.isConnected && !(OV.Input && OV.Input.lastPointerType === 'touch')) E.askOff.focus({ preventScroll: true }); }, 0);
+  }
+  // resposta: off = desligar os mísseis (há destroços para a equipa); senão continua como está
+  function answerMissiles(p, off) {
+    if (!p.ask || !S) return;
+    p.ask = false;
+    setCls(p.el.ask, 'hidden', true);
+    if (off) {
+      const craft = C().findCraft(S.G, p.d.craftId);
+      for (const ws of p.d.weapons) {
+        const w = craft && craft.weapons[ws.slot];
+        const wd = w && D().craftWeapons[w.type];
+        if (ws.enabled && wd && wd.projectile === 'missile') DFS().toggleWeapon(S.G, p.id, ws.slot);
+      }
+      sfx('ui_confirm');
+    } else {
+      if (S.G.ui) S.G.ui.dfMissileKeep = (S.G.ui.dfMissileKeep | 0) + 1;
+      sfx('ui_click');
+    }
+    setPaused(false, true);
+    refreshPanel(p);
   }
 
   function newVis(track, d) {
@@ -417,6 +448,13 @@
     E.pauseTag = el('div', { class: 'df-pausetag', text: T('df.hud.paused') });
     E.banner = el('div', { class: 'df-banner hidden', role: 'status', 'aria-live': 'polite' });
     E.tip = el('div', { class: 'df-tip hidden', text: T('df.tip.smallUfo') });
+    E.askOff = el('button', { type: 'button', class: 'btn primary', 'aria-keyshortcuts': 'Q Enter' }, T('df.ask.off'), el('kbd', { text: 'Q' }));
+    E.askOff.addEventListener('click', () => answerMissiles(p, true));
+    tip(E.askOff, T('df.ask.off'), 'Q / Enter', T('df.ask.off.hint'));
+    const askKeep = el('button', { type: 'button', class: 'btn', 'aria-keyshortcuts': 'N Escape' }, T('df.ask.keep'), el('kbd', { text: 'N' }));
+    askKeep.addEventListener('click', () => answerMissiles(p, false));
+    tip(askKeep, T('df.ask.keep'), 'N / Esc', T('df.ask.keep.hint'));
+    E.ask = el('div', { class: 'df-ask hidden', role: 'alertdialog', 'aria-label': T('df.ask.q') }, el('b', { class: 'df-ask-q', text: T('df.ask.q') }), el('div', { class: 'df-ask-a' }, E.askOff, askKeep));
     const hintLines = [];
     if (tr.scramble) hintLines.push(T(tr.ufoType === 'battleship' ? 'df.hint.scrambleBig' : 'df.hint.scramble'));
     if (S.G.ui && !S.G.ui.dfHintSeen) {
@@ -429,7 +467,7 @@
       E.hint = el('div', { class: 'df-hint', role: 'note' }, el('div', null, hintLines.map((l) => el('p', { text: l }))), x);
       p.hintUntil = null;
     }
-    const view = el('div', { class: 'df-view' }, E.canvas, el('div', { class: 'df-status', 'aria-live': 'polite' }, E.st, E.warn, E.tip), E.alt, E.pauseTag, E.hint || null, E.banner);
+    const view = el('div', { class: 'df-view' }, E.canvas, el('div', { class: 'df-status', 'aria-live': 'polite' }, E.st, E.warn, E.tip), E.alt, E.pauseTag, E.hint || null, E.banner, E.ask);
 
     // barra de distância: nave à esquerda (0), OVNI no marcador; zonas e marcas de alcance
     const DF = D().dogfight;
@@ -1614,6 +1652,13 @@
     if (ev.kind !== 'key') return !f && CAMERA_KINDS[ev.kind] ? forward(ev) : false;
     const k = ev.key;
     if (ev.mods && (ev.mods.meta || ev.mods.ctrl || ev.mods.alt)) return false;
+    // pergunta dos mísseis aberta: só as respostas contam (Espaço/P também continuam, sem mudar nada)
+    if (f && f.ask) {
+      if (ev.repeat) return true;
+      if (k === 'Enter' || k === 'q' || k === 'Q') { answerMissiles(f, true); return true; }
+      if (k === 'Escape' || k === 'n' || k === 'N' || k === ' ' || k === 'p' || k === 'P') { answerMissiles(f, false); return true; }
+      return !CAMERA_KEYS[k];
+    }
     if (k === ' ' || k === 'p' || k === 'P') { if (!ev.repeat) togglePause(); return true; }
     if (k === 'Tab') { cycle(); return true; }
     if (k === 'm' || k === 'M') { if (!ev.repeat) toggle(); return true; }

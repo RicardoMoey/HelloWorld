@@ -728,4 +728,24 @@
   for (const r in RACE) for (const k in RANK) add['research.interrogate_' + r + '_' + k] = 'Interrogatório: ' + RANK[k] + ' ' + RACE[r];
   for (const u in TERROR) add['research.interrogate_' + u] = 'Interrogatório: ' + TERROR[u];
   Object.assign(OV.STR, add);
+  // ronda de personas 1: embarcar todos os aptos, soldados sem arma, nomes acessíveis
+  Object.assign(OV.STR, {
+    'base.crafts.boardAll': 'Embarcar aptos ({n})',
+    'base.crafts.boardAllTip': 'Os soldados aptos sem nave embarcam e quem vai sem arma leva o material do armazém',
+    'base.crafts.noIdle': 'Não há soldados aptos sem nave nesta base.',
+    'base.crafts.boardNone': 'Ninguém para embarcar nem para equipar.',
+    'base.crafts.unarmed.one': '{n} soldado a bordo está sem arma.',
+    'base.crafts.unarmed.other': '{n} soldados a bordo estão sem arma.',
+    'base.crafts.noGun': 'sem arma',
+    'base.crafts.autoKit': 'Equipar automaticamente',
+    'base.crafts.autoKitTip': 'Quem está sem arma leva a melhor arma do armazém que a Força aguenta, com munição',
+    'base.crafts.starterKit': 'Kit básico',
+    'base.crafts.starterKitTip': 'Encomendar espingardas, carregadores e granadas para quem está sem arma',
+    'base.pers.soldierAuto': 'Os recrutas chegam sem nave: embarcam sozinhos num transporte com lugares e levam o material do armazém. Sem espingardas e carregadores no armazém, compre-os no Mercado.',
+    'base.research.startAria': 'Iniciar: {name}',
+    'base.market.lessOf': 'Menos {name}',
+    'base.market.moreOf': 'Mais {name}',
+    'base.market.more10Of': 'Mais 10 × {name}',
+    'base.market.allOf': 'Vender tudo: {name}',
+  });
 })(globalThis.OV || (globalThis.OV = {}));

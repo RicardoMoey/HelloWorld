@@ -8,7 +8,7 @@
   --line2: #31506d;
   --ink: #dbe6ef;
   --muted: #7d93a6;
-  --dim: #546a7d;
+  --dim: #6c8296; /* ≥ 4,5:1 sobre --bg (texto informativo secundário) */
   --amber: #ffb53d;
   --amber2: #c98a1d;
   --teal: #3fd7c5;
@@ -25,7 +25,27 @@
   --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --r: 3px;
   --shadow: 0 10px 40px rgba(0, 0, 0, 0.55);
+  --warn-c: var(--amber);
+  --ui-scale: 1; /* Opções → Acessibilidade → Tamanho do texto (main.js) */
 }
+/* paleta para daltonismo (Opções → Acessibilidade): azul = bom, laranja = mau, magenta = aviso; as formas e os
+   textos continuam a distinguir os estados (nunca só a cor) */
+:root[data-palette="cvd"] {
+  --red: #ff9426;
+  --green: #4fa8ff;
+  --hp: #4fa8ff;
+  --warn-c: #f07cff;
+}
+:root[data-palette="cvd"] .warn { color: var(--warn-c); }
+:root[data-palette="cvd"] .toast.warn { border-color: #8a3d94; color: var(--warn-c); }
+:root[data-palette="cvd"] .toast.alert { border-color: #9a5410; color: #ffb066; box-shadow: 0 0 18px rgba(255, 148, 38, 0.25); }
+:root[data-palette="cvd"] .toast.good { border-color: #1f5c99; color: var(--green); }
+/* reduzir movimento (Opções ou o sistema): sem animações nem transições em nenhum ecrã */
+:root[data-motion="reduce"] *, :root[data-motion="reduce"] *::before, :root[data-motion="reduce"] *::after {
+  animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important;
+}
+/* tamanho do texto: os diálogos, avisos e dicas comuns crescem com --ui-scale (cada área aplica-o aos seus ecrãs) */
+#modals .modal, #toasts, #tooltip { zoom: var(--ui-scale); }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font-family: var(--sans); font-size: 14px; overflow: hidden; overscroll-behavior: none; }
 body { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }

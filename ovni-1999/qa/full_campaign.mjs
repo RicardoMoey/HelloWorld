@@ -293,8 +293,12 @@ async function setSpeed(k) {
   const s = await gs();
   if (s.top !== 'geoscape' || s.speed === k - 1 && !s.paused) return;
   // ora tecla, ora botão (como um jogador)
-  if (TOUCH || (k + shotN) % 3 === 0) await press(page.locator('.geo-speeds .geo-sp').nth(k - 1));
-  else await key(String(k));
+  // com um aviso aberto o painel lateral fica inerte (o foco fica no aviso): o jogador fecha-o primeiro
+  if (await popupText()) return;
+  if (TOUCH || (k + shotN) % 3 === 0) {
+    const b = page.locator('.geo-speeds .geo-sp').nth(k - 1).first();
+    try { if (TOUCH) await b.tap({ timeout: 3000 }); else await b.click({ timeout: 3000 }); } catch (e) { /* um aviso chegou entretanto */ }
+  } else await key(String(k));
 }
 
 const goal = {

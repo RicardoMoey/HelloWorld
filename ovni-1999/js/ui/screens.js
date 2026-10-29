@@ -4,13 +4,16 @@
    Parâmetros das cenas:
      quickbattle {params?: URLSearchParams}  ?battle=<ufo|terror|alienBase|cydonia>&night=1&seed=N&diff=0..2&month=0..4
                  (&landed=1 &dusk=1 &terrain=FARM &squad=8) ⇒ salta o formulário e entra direto na batalha
-     briefing    {mission, meta?, quick?}
+     briefing    {mission, meta?, quick?}   (E: passo «Equipar» → cena qequip {mission, night})
      debrief     {B, debrief?, outcome?, mission?, meta?, quick?, progression?, onDone?(debrief)}
      options     {inGame?}   (sobreposição; isScreen:false)
    Campanha: startBattle(mission, meta) com meta.campaign e resumeGame(st) com st.G passam a OV.CampaignUI; o menu
    chama OV.CampaignUI.newGame / loadDialog quando existem.
    API: OV.Screens = { VERSION, Backdrop, startBattle, buildQuickMission, quickFromURL, missionTitle, loadoutFor,
+                       heavyPicks(squad, n) → Set de índices ; quickStore(mês, noite) → {item: n}
                        defaultQuick, openOptions, saves, resumeGame, missionRating, battleExit,
+                       crewText({min,max}) → texto ; lossCauses(B) → {enemy, friendly, wounds, other, total, main, tip}
+                       lossNotes(B, resultado) → [nós DOM],
                        ui: {makeScreen, header, panelSection, seg, goBack, portraitEl, itemIconEl, unitSpriteEl, canvasCopy} } */
 (function (OV) {
   'use strict';
@@ -26,7 +29,8 @@
   const TAU = Math.PI * 2;
   // stream de interface (cosmética): nunca as streams da simulação
   const uiRng = OV.RNG.create((Date.now() ^ 0x5c4ee5) >>> 0);
-  const reduceMotion = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const reduceMotion = () => (OV.Game && typeof OV.Game.reduceMotion === 'function' ? OV.Game.reduceMotion() : typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches);
+  const isTouch = () => !!(OV.Input && OV.Input.lastPointerType === 'touch') || (typeof matchMedia === 'function' && matchMedia('(hover: none) and (pointer: coarse)').matches);
   const dpr = () => (OV.View && OV.View.dpr) || Math.min(2, (typeof devicePixelRatio === 'number' && devicePixelRatio) || 1);
 
   const UFO_KINDS = { crash: 1, landed: 1 };
@@ -36,7 +40,7 @@
   const TERRAINS = ['auto', 'FARM', 'FOREST', 'JUNGLE', 'DESERT', 'MOUNTAIN', 'POLAR', 'URBAN'];
   const TIMES = ['day', 'dusk', 'night'];
   const GAME_SCENES = { battlescape: 1, geoscape: 1, basescape: 1, dogfight: 1, equip: 1, inventory: 1, ufopaedia: 1 };
-  const MY_SCENES = { menu: 1, quickbattle: 1, briefing: 1, debrief: 1, options: 1, howto: 1, credits: 1 };
+  const MY_SCENES = { menu: 1, quickbattle: 1, briefing: 1, qequip: 1, debrief: 1, options: 1, howto: 1, credits: 1 };
 
   function sfx(name) {
     try { if (OV.audio && OV.audio.play) OV.audio.play(name); } catch (e) { /* som é opcional */ }
@@ -493,18 +497,30 @@
     return false;
   }
 
+  // spec.trap = seletor do painel de um diálogo sobreposto: foco preso nele (o resto inerte) e devolvido ao sair
   function makeScreen(id, spec) {
+    let release = null;
     const sc = {
       id,
       isScreen: spec.isScreen !== false,
       root: null,
+      t0: 0,
+      // a cena acabou de abrir: o 2.º clique de um duplo clique (ou um Enter do mesmo gesto) não conta
+      fresh: (ms) => now() - sc.t0 < (ms || 300),
       enter() {
+        sc.t0 = now();
+        const back = document.activeElement;
         sc.root = mount('scr-' + id + (spec.cls ? ' ' + spec.cls : ''));
         spec.build(sc.root, sc);
+        if (spec.trap) {
+          const box = sc.root.querySelector(spec.trap);
+          if (box) release = OV.Dom.trapFocus(box, { returnTo: back });
+        }
         if (spec.focus) setTimeout(() => { const f = spec.focus(sc); if (f && sc.root && sc.root.isConnected) f.focus({ preventScroll: true }); }, 0);
       },
       exit() {
         if (spec.exit) spec.exit(sc);
+        if (release) { const r = release; release = null; r(); }
         unmount(sc.root);
         sc.root = null;
       },
@@ -707,9 +723,11 @@
   }
 
   /* Equipamento por nível tecnológico («Mês»): 0 espingardas; 1 + armadura pessoal; 2 lasers + kits médicos;
-     3 laser pesado/plasma + fato energético; 4 kit de Cidónia. k = posição na equipa (3 e 7 levam a arma pesada). */
-  function loadoutFor(tier, k, night) {
-    const heavy = k === 3 || k === 7;
+     3 laser pesado/plasma + fato energético; 4 kit de Cidónia. heavy = arma pesada (os dois soldados com mais Força;
+     sem o 4.º argumento, as posições 3 e 7 como antes). De noite um sinalizador vai no cinto (lança-se por 13 UT, não
+     21–23 da mochila) e outro na mochila. */
+  function loadoutFor(tier, k, night, heavyFlag) {
+    const heavy = heavyFlag === undefined ? k === 3 || k === 7 : !!heavyFlag;
     let lo, armour;
     switch (OV.U.clamp(tier | 0, 0, 4)) {
       case 0:
@@ -740,8 +758,48 @@
     lo.L = null;
     if (tier >= 2 && (k === 1 || k === 5)) lo.pack.push('medikit');
     if (tier >= 1 && k === 0) lo.pack.push('motion_scanner');
-    if (night) lo.pack.push('electro_flare', 'electro_flare');
+    if (night) {
+      const fits = (slot, list) => !D().fitsSlot || D().fitsSlot('electro_flare', slot, list);
+      if (!fits('belt', lo.belt)) {
+        // cinto cheio: o último objeto do cinto passa para a mochila
+        const moved = lo.belt.pop();
+        if (moved) lo.pack.push(moved);
+      }
+      if (fits('belt', lo.belt)) lo.belt.push('electro_flare');
+      else lo.pack.push('electro_flare');
+      lo.pack.push('electro_flare');
+    }
     return { lo, armour };
+  }
+  // os n soldados com mais Força levam a arma pesada (empates: a ordem da equipa)
+  function heavyPicks(squad, n) {
+    const idx = squad.map((s, k) => k);
+    idx.sort((a, b) => (((squad[b].stats && squad[b].stats.str) | 0) - ((squad[a].stats && squad[a].stats.str) | 0)) || a - b);
+    return new Set(idx.slice(0, Math.max(0, n)));
+  }
+  /* Armazém da nave na Batalha Rápida (o «chão» do Skyranger e a reserva do passo «Equipar»): munição extra, fumo,
+     bastão de atordoamento a partir do mês 1 e lança-bombas pequeno com bombas atordoantes a partir do mês 3. */
+  function quickStore(tier, night) {
+    const t = OV.U.clamp(tier | 0, 0, 4);
+    const st = {};
+    const add = (id, n) => { if (D().items[id] && n > 0) st[id] = (st[id] | 0) + n; };
+    add('smoke_grenade', 3);
+    add('grenade', 2);
+    if (t === 0) { add('rifle_clip', 4); add('small_rocket', 2); }
+    if (t === 1) { add('rifle_clip', 4); add('hc_ap', 2); add('hc_he', 1); }
+    if (t === 3) add('plasma_rifle_clip', 3);
+    if (t >= 4) { add('heavy_plasma_clip', 3); add('blaster_bomb', 1); }
+    if (t >= 1) add('stun_rod', 2);
+    if (t >= 3) { add('small_launcher', 1); add('stun_bomb', 4); }
+    if (t >= 2) add('medikit', 1);
+    if (night) add('electro_flare', 4);
+    return st;
+  }
+  // «Efetivo estimado»: «4–5 alienígenas» ou, com um só valor, «1 alienígena»
+  function crewText(range) {
+    if (!range) return '—';
+    if ((range.min | 0) === (range.max | 0)) return Tn('scr.qb.crewN', range.min | 0);
+    return T('scr.qb.crewRange', range);
   }
 
   function shadeFor(time) {
@@ -758,20 +816,54 @@
     const ufoKind = !!UFO_KINDS[qs.kind];
     const terrain = KIND_TERRAIN[qs.kind] || (qs.terrain === 'auto' ? pickRng.pick(UFO_TERRAINS) : qs.terrain);
     const fixedShade = qs.kind === 'alienBase' || qs.kind === 'cydonia';
+    const night = qs.time === 'night' || fixedShade;
     const mission = OV.Battle.quickMission({
       kind: qs.kind, ufoType: ufoKind ? qs.ufo : null, landed: qs.kind === 'landed', terrain,
       night: qs.time === 'night', shade: fixedShade ? undefined : shadeFor(qs.time),
       difficulty: qs.diff, month: qs.month, squadSize: qs.squad, seed: qs.seed,
     });
+    const heavy = heavyPicks(mission.squad, mission.squad.length >= 6 ? 2 : 1);
     mission.squad.forEach((s, k) => {
-      const { lo, armour } = loadoutFor(qs.month, k, qs.time === 'night' || fixedShade);
+      const { lo, armour } = loadoutFor(qs.month, k, night, heavy.has(k));
       s.loadout = lo;
       s.armour = armour;
     });
+    mission.craftItems = quickStore(qs.month, night);
     mission.settings = { instantGrenades: settings().instantGrenades !== false };
     const meta = { quick: qs, time: fixedShade ? 'night' : qs.time, terrain };
     if (qs.kind === 'terror' && Data.cities && Data.cities.length) meta.cityKey = pickRng.pick(Data.cities).nameKey;
     return { mission, meta };
+  }
+
+  /* Causas das baixas X-COM de uma batalha (para o relatório): inimigo, fogo amigo (incluindo os próprios explosivos),
+     ferimentos/fogo e outras; main = a causa com mais mortes; tip = chave da dica de uma frase para a causa principal. */
+  function lossCauses(B) {
+    const out = { enemy: 0, friendly: 0, wounds: 0, other: 0, total: 0, main: null, tip: null };
+    if (!B || !Array.isArray(B.units)) return out;
+    const byId = new Map(B.units.map((u) => [u.id, u]));
+    for (const u of B.units) {
+      if (u.origSide !== 'xcom' || u.type !== 'soldier' || u.status !== 'dead') continue;
+      out.total++;
+      const k = u.killedBy !== null && u.killedBy !== undefined ? byId.get(u.killedBy) : null;
+      if (k && (k.origSide === 'xcom' || k === u)) out.friendly++;
+      else if (k && k.origSide === 'alien') out.enemy++;
+      else if (u.deathCause === 'wounds' || u.deathCause === 'burn') out.wounds++;
+      else out.other++;
+    }
+    const order = ['friendly', 'enemy', 'wounds'];
+    let best = null;
+    for (const c of order) if (out[c] > 0 && (!best || out[c] > out[best])) best = c;
+    out.main = best;
+    out.tip = best ? 'scr.db.tip.' + best : null;
+    return out;
+  }
+  // linhas do relatório: «Soldados mortos por fogo amigo ×N» e a dica (só sem vitória)
+  function lossNotes(B, result) {
+    const c = lossCauses(B);
+    const out = [];
+    if (c.friendly) out.push(el('p', { class: 'scr-cause bad', text: Tn('scr.db.friendly', c.friendly) }));
+    if (result !== 'win' && c.tip) out.push(el('p', { class: 'scr-tip', role: 'note' }, el('b', { text: T('scr.db.tip') }), ' ', T(c.tip)));
+    return out;
   }
 
   // ?battle=… (QA e atalhos)
@@ -974,11 +1066,12 @@
       try { built = buildQuickMission(q); } catch (e) { built = null; }
       if (!built) return;
       const M = OV.Battle.normalizeMission(built.mission);
-      const range = D().deploymentRange(M.deploymentId, q.diff);
+      const range = D().deploymentRange(M.deploymentId, q.diff, M.month);
       const race = D().races[M.race];
       const sprite = race && race.members && race.members.soldier ? unitSpriteEl(race.members.soldier, 64) : null;
-      const s0 = built.mission.squad[0], s3 = built.mission.squad[3];
-      const kit = el('div', { class: 'scr-kit' }, itemIconEl(s0.loadout.R, 44), s3 ? itemIconEl(s3.loadout.R, 44) : null,
+      const s0 = built.mission.squad[0];
+      const guns = [...new Set(built.mission.squad.map((s) => s.loadout.R).filter(Boolean))].slice(0, 3);
+      const kit = el('div', { class: 'scr-kit' }, guns.map((g) => itemIconEl(g, 44)),
         built.mission.squad.some((s) => s.loadout.pack.indexOf('medikit') >= 0) ? itemIconEl('medikit', 36) : null,
         built.meta.time === 'night' ? itemIconEl('electro_flare', 32) : null);
       summary.append(
@@ -993,7 +1086,7 @@
             el('div', { class: 'scr-sum-k', text: T('scr.br.race') }),
             el('div', { class: 'scr-sum-v', text: race ? T(race.pluralKey || race.nameKey) : '—' }),
             el('div', { class: 'scr-sum-k', text: T('scr.qb.crew') }),
-            el('div', { class: 'scr-sum-v', text: range ? T('scr.qb.crewRange', range) : '—' }))),
+            el('div', { class: 'scr-sum-v', text: crewText(range) }))),
         el('div', { class: 'scr-sum-k', text: T('scr.qb.kit') }),
         kit,
         el('div', { class: 'scr-sum-k', text: T('scr.qb.armour') }),
@@ -1106,7 +1199,7 @@
     const mission = p.mission;
     const meta = p.meta || {};
     const M = OV.Battle.normalizeMission(mission);
-    let startBtn = null;
+    let startBtn = null, sc = null, roster = null;
 
     function soldierCard(s) {
       const rank = D().soldierRank(s.rank | 0);
@@ -1117,15 +1210,30 @@
         el('div', { class: 'scr-soldier-info' },
           el('div', { class: 'scr-soldier-name' }, el('span', { class: 'scr-rank r' + (s.rank | 0), text: rank ? T(rank.abbrKey) : '' }), el('b', { text: s.name || '' })),
           el('div', { class: 'scr-soldier-sub', text: [s.nat ? T('nat.' + s.nat) : '', Tn('scr.br.missions', s.missions | 0)].filter(Boolean).join(' · ') }),
-          el('div', { class: 'scr-stats' }, ['tu', 'hp', 'fire', 'react', 'brav'].map(statCell))),
+          el('div', { class: 'scr-stats' }, ['tu', 'hp', 'fire', 'react', 'str'].map(statCell))),
         el('div', { class: 'scr-soldier-kit' }, s.loadout && s.loadout.R ? itemIconEl(s.loadout.R, 40) : null));
     }
+    function renderRoster() {
+      if (!roster) return;
+      OV.Dom.clear(roster);
+      roster.append(...(mission.squad || []).map(soldierCard));
+    }
+    // o 2.º clique de um duplo clique em «Começar» (formulário) cai neste botão: só conta depois de a cena assentar
+    function start(e) {
+      if (e && e.detail > 1) return;
+      startBattle(mission, meta);
+    }
+    function equip() {
+      if (!OV.InventoryUI || !OV.InventoryUI.equipScreen) { sfx('ui_deny'); return; }
+      sfx('ui_click');
+      OV.Scenes.push('qequip', { mission, night: M.night });
+    }
 
-    return makeScreen('briefing', {
+    sc = makeScreen('briefing', {
       backdrop: { dim: 0.55, tint: M.kind === 'terror' ? 'rgba(120,20,10,0.10)' : null },
       build(root) {
         const race = D().races[M.race];
-        const range = D().deploymentRange(M.deploymentId, M.difficulty);
+        const range = D().deploymentRange(M.deploymentId, M.difficulty, M.month);
         const time = meta.time || (M.night ? 'night' : 'day');
         const sprite = race && race.members && race.members.soldier ? unitSpriteEl(race.members.soldier, 86) : null;
         const notes = [];
@@ -1134,7 +1242,13 @@
         if (M.kind === 'crash') notes.push(T('scr.br.note.crash'));
         if (M.kind === 'terror') notes.push(T('scr.br.note.terror'));
         const craft = D().crafts[M.craftType];
-        startBtn = el('button', { type: 'button', class: 'btn primary scr-big', text: T('scr.br.start'), onclick: () => startBattle(mission, meta) });
+        startBtn = el('button', { type: 'button', class: 'btn primary scr-big', text: T('scr.br.start'), 'aria-keyshortcuts': 'Enter', onclick: start });
+        OV.Dom.tooltip(startBtn, () => '<b>' + OV.U.esc(T('scr.br.start')) + '</b> <span class="key">Enter</span>');
+        const equipBtn = el('button', { type: 'button', class: 'btn', 'aria-keyshortcuts': 'E', onclick: equip }, T('scr.br.equip'), el('kbd', { text: 'E' }));
+        OV.Dom.tooltip(equipBtn, () => '<b>' + OV.U.esc(T('scr.br.equip')) + '</b> <span class="key">E</span><br><span class="muted">' + OV.U.esc(T('scr.br.equip.tip')) + '</span>');
+        const backBtn = el('button', { type: 'button', class: 'btn', text: T('scr.br.back'), 'aria-keyshortcuts': 'Escape', onclick: () => { sfx('ui_click'); backFromBrief(); } });
+        OV.Dom.tooltip(backBtn, () => '<b>' + OV.U.esc(T('scr.br.back')) + '</b> <span class="key">Esc</span>');
+        roster = el('div', { class: 'scr-roster' });
         root.append(el('div', { class: 'scr-panel scr-brief k-' + M.kind },
           header(T('scr.br.kicker'), missionTitle(M, meta),
             el('div', { class: 'scr-chips' },
@@ -1154,23 +1268,77 @@
                 el('div', { class: 'scr-intel' }, sprite ? el('div', { class: 'scr-intel-sprite' }, sprite) : null,
                   el('dl', null,
                     el('dt', { text: T('scr.br.race') }), el('dd', { text: race ? T(race.pluralKey || race.nameKey) : '—' }),
-                    el('dt', { text: T('scr.br.crew') }), el('dd', { text: range ? T('scr.qb.crewRange', range) : '—' }))),
+                    el('dt', { text: T('scr.br.crew') }), el('dd', { text: crewText(range) }))),
                 notes.map((n) => el('p', { class: 'scr-note', text: n })))),
-            panelSection(T('scr.br.squad') + ' · ' + (mission.squad || []).length,
-              el('div', { class: 'scr-roster' }, (mission.squad || []).map(soldierCard)))),
+            panelSection(T('scr.br.squad') + ' · ' + (mission.squad || []).length, roster)),
           el('footer', { class: 'scr-foot' },
-            el('span', { class: 'scr-hint', text: T('scr.br.hint') }),
-            el('div', { class: 'scr-foot-btns' },
-              el('button', { type: 'button', class: 'btn', text: T('scr.br.back'), onclick: () => { sfx('ui_click'); backFromBrief(); } }),
-              startBtn))));
+            el('span', { class: 'scr-hint', text: T(isTouch() ? 'scr.br.hint.touch' : 'scr.br.hint') }),
+            el('div', { class: 'scr-foot-btns' }, backBtn, equipBtn, startBtn))));
+        renderRoster();
       },
       focus: () => startBtn,
+      resume() {
+        renderRoster();
+        setTimeout(() => { if (startBtn && startBtn.isConnected) startBtn.focus({ preventScroll: true }); }, 0);
+      },
       keys(ev) {
-        if (ev.key === 'Enter') { startBattle(mission, meta); return true; }
+        if (ev.key === 'Enter') {
+          const a = document.activeElement;
+          if (a && a !== startBtn && sc.root && sc.root.contains(a) && (a.tagName === 'BUTTON' || a.tagName === 'INPUT')) return false;
+          startBattle(mission, meta);
+          return true;
+        }
+        if (ev.key === 'e' || ev.key === 'E') { if (!ev.repeat) equip(); return true; }
         return false;
       },
       back: backFromBrief,
     });
+    return sc;
+  };
+
+  // ---- «Equipar» da Batalha Rápida: o ecrã do inventário sobre a equipa e o armazém da nave ----------------------
+  OV.SceneDefs.qequip = function (params) {
+    const p = params || {};
+    const mission = p.mission;
+    let ctrl = null, doneBtn = null, sc = null;
+    const squad = () => (mission.squad || []).map((s) => ({
+      id: s.soldierId, name: s.name, rank: s.rank | 0, stats: s.stats, armour: s.armour, portraitSeed: s.portraitSeed,
+      female: s.female, nat: s.nat, loadout: { R: s.loadout.R || null, L: s.loadout.L || null, belt: (s.loadout.belt || []).slice(), pack: (s.loadout.pack || []).slice() },
+    }));
+    function onChange(res) {
+      const lo = (res && res.loadouts) || {};
+      for (const s of mission.squad || []) if (lo[s.soldierId]) s.loadout = lo[s.soldierId];
+      mission.craftItems = Object.assign({}, (res && res.stores) || {});
+    }
+    function done() { sfx('ui_click'); if (OV.Scenes.top() === sc) OV.Scenes.pop({ changed: true }); }
+    sc = makeScreen('qequip', {
+      backdrop: { dim: 0.6 },
+      build(root) {
+        doneBtn = el('button', { type: 'button', class: 'btn primary', 'aria-keyshortcuts': 'Enter', onclick: done }, T('cp.eq.done'), el('kbd', { text: '↵' }));
+        OV.Dom.tooltip(doneBtn, () => '<b>' + OV.U.esc(T('cp.eq.done')) + '</b> <span class="key">Enter · Esc</span>');
+        const host = el('div', { class: 'cp-eq-host' });
+        root.append(el('div', { class: 'scr-panel cp-eq' },
+          header(T('scr.qe.kicker'), T('scr.qe.title')),
+          host,
+          el('footer', { class: 'scr-foot' },
+            el('span', { class: 'scr-hint', text: T('scr.qe.hint') }),
+            el('div', { class: 'scr-foot-btns' }, doneBtn))));
+        ctrl = OV.InventoryUI.equipScreen(host, { squad: squad(), stores: Object.assign({}, mission.craftItems || {}), onChange, night: !!p.night });
+      },
+      exit() { if (ctrl) ctrl.destroy(); ctrl = null; },
+      focus: () => doneBtn,
+      keys(ev) {
+        if (ev.key === 'Enter') {
+          const a = document.activeElement;
+          if (a && a !== doneBtn && sc.root && sc.root.contains(a) && a.tagName === 'BUTTON') return false;
+          done();
+          return true;
+        }
+        return false;
+      },
+      back: done,
+    });
+    return sc;
   };
   function backFromBrief() {
     if (OV.Scenes.stack.length > 1) { OV.Scenes.pop(); return; }
@@ -1342,7 +1510,9 @@
           el('header', { class: 'scr-banner' },
             el('div', { class: 'scr-kicker', text: T('bs.debrief.title') + (M ? ' · ' + missionTitle(M, p.meta) : '') }),
             el('h1', { class: 'scr-result', text: T('scr.db.result.' + result) }),
-            el('div', { class: 'scr-result-sub', text: T('scr.db.sub.' + result) + (deb.turns ? ' · ' + Tn('scr.db.turns', deb.turns | 0) : '') })),
+            el('div', { class: 'scr-result-sub', text: T('scr.db.sub.' + result) + (deb.turns ? ' · ' + Tn('scr.db.turns', deb.turns | 0) : '') }),
+            // a causa principal das baixas e a dica ficam à vista, por baixo do resultado
+            el('div', { class: 'scr-deb-cause' }, lossNotes(B, result))),
           el('div', { class: 'scr-deb-body' },
             el('div', { class: 'scr-deb-col' }, scoreSec, alienSec),
             el('div', { class: 'scr-deb-col' }, lossSec, woundSec, recSec),
@@ -1355,7 +1525,13 @@
       },
       focus: () => contBtn,
       keys(ev) {
-        if (ev.key === 'Enter') { const a = document.activeElement; if (!a || a === document.body || a === contBtn) { cont(); return true; } }
+        // Enter continua sempre que o foco não está noutro botão (também com a lista do relatório em foco)
+        if (ev.key === 'Enter') {
+          const a = document.activeElement;
+          if (a && a !== contBtn && (a.tagName === 'BUTTON' || a.tagName === 'INPUT' || a.tagName === 'A')) return false;
+          cont();
+          return true;
+        }
         return false;
       },
     });
@@ -1404,15 +1580,26 @@
       });
     }
 
+    // objetivo da batalha em curso (o menu Esc do Battlescape é este painel)
+    function objective() {
+      const B = OV.Game && OV.Game.B;
+      if (!B || !B.mission || !OV.Scenes.stack.some((x) => x.id === 'battlescape')) return null;
+      const M = OV.Battle.normalizeMission(B.mission);
+      return el('div', { class: 'scr-objline', role: 'note' }, el('b', { text: T('scr.opt.objective') }), ' ', T('scr.br.obj.' + M.kind + '.1'));
+    }
+    const ACC = 'scr.opt.acc.';
     return makeScreen('options', {
       isScreen: false,
       backdrop: false,
       cls: 'scr-overlay',
+      trap: '.scr-opts',
       build(root) {
-        closeBtn = el('button', { type: 'button', class: 'btn primary', text: T('scr.opt.close'), onclick: close });
+        closeBtn = el('button', { type: 'button', class: 'btn primary', text: T('scr.opt.close'), 'aria-keyshortcuts': 'Escape', onclick: close });
+        OV.Dom.tooltip(closeBtn, () => '<b>' + OV.U.esc(T('scr.opt.close')) + '</b> <span class="key">Esc</span>');
         const back = el('div', { class: 'scr-ov-back', onclick: close });
+        const scaleSeg = sseg('textScale', [1, 1.15, 1.3].map((v) => ({ v, label: Math.round(v * 100) + ' %' })));
         root.append(back, el('div', { class: 'scr-panel scr-opts', role: 'dialog', 'aria-modal': 'true', 'aria-label': T('scr.opt.title') },
-          header(T('game.title'), T('scr.opt.title')),
+          header(T('game.title'), T('scr.opt.title'), objective()),
           el('div', { class: 'scr-opts-body' },
             el('div', { class: 'scr-deb-col' },
               panelSection(T('scr.opt.sec.sound'),
@@ -1433,7 +1620,12 @@
               panelSection(T('scr.opt.sec.game'),
                 optRow(T('scr.opt.instantGrenades'), toggleBtn(getK('instantGrenades'), setK('instantGrenades'), T('scr.opt.instantGrenades')), T('scr.opt.instantGrenades.hint')),
                 optRow(T('scr.opt.confirmEndTurn'), toggleBtn(getK('confirmEndTurn'), setK('confirmEndTurn'), T('scr.opt.confirmEndTurn'))),
-                optRow(T('scr.opt.hitPreview'), toggleBtn(getK('hitPreview'), setK('hitPreview'), T('scr.opt.hitPreview')))))),
+                optRow(T('scr.opt.hitPreview'), toggleBtn(getK('hitPreview'), setK('hitPreview'), T('scr.opt.hitPreview')))),
+              panelSection(T(ACC + 'title'),
+                optRow(T(ACC + 'palette'), sseg('palette', ['normal', 'cvd'].map((v) => ({ v, label: T(ACC + 'palette.' + v) }))), T(ACC + 'palette.hint')),
+                optRow(T(ACC + 'kbCursor'), toggleBtn(getK('kbCursor'), setK('kbCursor'), T(ACC + 'kbCursor')), T(ACC + 'kbCursor.hint')),
+                optRow(T(ACC + 'motion'), sseg('reduceMotion', ['auto', 'on', 'off'].map((v) => ({ v, label: T(ACC + 'motion.' + v) }))), T(ACC + 'motion.hint')),
+                optRow(T(ACC + 'textScale'), scaleSeg, T(ACC + 'textScale.hint'))))),
           el('footer', { class: 'scr-foot' },
             playing ? el('button', { type: 'button', class: 'btn danger', text: T('scr.opt.quit'), onclick: quit }) : el('span', { class: 'scr-hint', text: T('scr.version', { v: VERSION }) }),
             el('div', { class: 'scr-foot-btns' }, closeBtn))));
@@ -1466,12 +1658,18 @@
     let tabBar = null, body = null, backBtn = null;
     function pages() {
       return {
+        // no iPad (toque) a secção «Toque» vem primeiro; o teclado fica para quem o ligar
         controls: [
-          el('div', { class: 'scr-two' },
-            panelSection(T('scr.howto.ptr.title'), table('scr.howto.ptr', 10, 'scr.howto.col.gesture')),
+          isTouch() ? el('div', { class: 'scr-two' },
             el('div', null,
-              panelSection(T('scr.howto.key.title'), table('scr.howto.key', 17, 'scr.howto.col.key', true)),
-              panelSection(T('scr.howto.touch.title'), table('scr.howto.touch', 3, 'scr.howto.col.gesture')))),
+              panelSection(T('scr.howto.touch.title'), table('scr.howto.touch', 3, 'scr.howto.col.gesture')),
+              panelSection(T('scr.howto.ptr.title'), table('scr.howto.ptr', 10, 'scr.howto.col.gesture'))),
+            panelSection(T('scr.howto.key.title'), table('scr.howto.key', 17, 'scr.howto.col.key', true)))
+            : el('div', { class: 'scr-two' },
+              panelSection(T('scr.howto.ptr.title'), table('scr.howto.ptr', 10, 'scr.howto.col.gesture')),
+              el('div', null,
+                panelSection(T('scr.howto.key.title'), table('scr.howto.key', 17, 'scr.howto.col.key', true)),
+                panelSection(T('scr.howto.touch.title'), table('scr.howto.touch', 3, 'scr.howto.col.gesture')))),
         ],
         battle: [
           el('div', { class: 'scr-cards' },
@@ -1485,7 +1683,7 @@
         geo: [
           el('div', { class: 'scr-two' },
             el('div', null, el('div', { class: 'scr-cards one' }, card('scr.howto.geo.title', 'scr.howto.geo.body'), card('scr.howto.base.title', 'scr.howto.base.body'))),
-            panelSection(T('scr.howto.key.title'), table('scr.howto.geo', 8, 'scr.howto.col.gesture'))),
+            panelSection(T('scr.howto.key.title'), table('scr.howto.geo', 9, 'scr.howto.col.gesture'))),
         ],
       };
     }
@@ -1559,8 +1757,8 @@
   };
 
   OV.Screens = Object.assign(OV.Screens || {}, {
-    VERSION, Backdrop, startBattle, buildQuickMission, quickFromURL, missionTitle, loadoutFor, defaultQuick,
-    openOptions, saves, resumeGame, missionRating, battleExit, _urlUsed: false,
+    VERSION, Backdrop, startBattle, buildQuickMission, quickFromURL, missionTitle, loadoutFor, heavyPicks, quickStore, defaultQuick,
+    openOptions, saves, resumeGame, missionRating, battleExit, crewText, lossCauses, lossNotes, _urlUsed: false,
     ui: { makeScreen, header, panelSection, seg, goBack, portraitEl, itemIconEl, unitSpriteEl, canvasCopy },
   });
 })(globalThis.OV || (globalThis.OV = {}));
