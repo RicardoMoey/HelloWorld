@@ -2,8 +2,14 @@
    OV.BattleRender.draw(ctx, B, view)
      view = {cam:{x,y,zoom}, w, h (px CSS), viewZ, time (ms), selectedId, hover:{x,y,z}|null,
              cursor:'move'|'target'|'throw'|'none', path:{steps:[{i, tu, state:'ok'|'reserve'|'out'}], label}|null,
-             reach:{cost:Int16Array, budgetOk, budgetReserve}|null, target:{fromId, toI, hitPct, blocked, line:[voxel], label?}|null,
-             throwArc:[voxel]|null, anim:{units:{[id]:{fx,fy,fz,dir,pose,frame,flash?}}, hidden:Set|[id]}, showAll, nodes}
+             reach:{cost:Int16Array, budgetOk, budgetReserve}|null,
+             target:{fromId, toI, hitPct, blocked, line:[voxel], label?, sub?, subCol?, blockI?, blast?}|null,
+             throwArc:[voxel]|null, throwInfo:{toI, ok, label, sub?, blast?:{x,y,z,r,smoke,risk}}|null, throwRange:{x,y,z,r}|null, blips:[{x,y,z,size,t0}]|null,
+             anim:{units:{[id]:{fx,fy,fz,dir,pose,frame,flash?,show?}}, hidden:Set|[id], hideItems:Set}, showAll, nodes}
+     anim.units[id].show = desenhar mesmo fora de vista (animação em curso); target.sub = segunda etiqueta (aviso);
+     path.lock = destino bloqueado à espera de confirmação (pulsa); path.noLine = só o destino (inalcançável);
+     target.blockI = tile do obstáculo que tapa o tiro (losango vermelho); safe = {t,r,b,l} px CSS ocupados pelo HUD
+     (as etiquetas ficam dentro do resto do ecrã). clampCam(view, B) usa view.viewZ (0 por omissão).
    Ordem (§16): para z = 0..viewZ — chão pré-cozido em regiões de 512×256 px de mundo alinhadas ao ecrã (luz, névoa e
    escurecimento por nível já compostos por tile; recozidas só quando a assinatura chão/sombra muda, no máximo
    2 por fotograma) + decalques + área alcançável + cursor (metade de trás); varrimento diagonal s = x+y:
@@ -12,21 +18,38 @@
    Névoa: tiles por descobrir a negro (map.disc), descobertos mas fora de vista a 55 % + dessaturados; inimigos só
    se vistos pela X-COM (B._.visible / u.visible / u.vis, lidos com cautela: sem informação desenha todos).
    Luz: B._.light (0..15) quando calculada pela LOS; senão uma aproximação cosmética local (ambiente + fontes).
-   pick(view, px, py) → {x, y, z, unitId|null}|null ; bounds(B) ; centerOn(view, x, y, z) ; markDirty(i?) */
+   pick(view, px, py) → {x, y, z, unitId|null}|null ; bounds(B) ; centerOn(view, x, y, z) ; markDirty(i?) ;
+   labels() → [{x0,y0,x1,y1,text}] e unitRects() → [{unitId,x0,y0,x1,y1}] do último fotograma (px CSS) */
 (function (OV) {
   'use strict';
 
   const Col = OV.Color;
   const css = Col.css;
   const TAU = Math.PI * 2;
-  const RW = 512, RH = 256; // região de chão pré-cozida (px de mundo, alinhada ao ecrã)
+  // região de chão pré-cozida (px de mundo, alinhada ao ecrã). O tamanho em px do dispositivo fica fixo em
+  // REGION_DEV × REGION_DEV/2 para qualquer zoom: telas maiores deixam de ser aceleradas no Chrome/Safari e cada
+  // cópia passa a reenviar a tela inteira para a GPU (a zoom 2 @2× custava ~10 ms por fotograma)
+  const REGION_DEV = 1024;
+  let RW = 512, RH = 256;
+  function regionGrid(st, S) {
+    const rw = Math.max(128, Math.round(REGION_DEV / S / 32) * 32);
+    if (st.rw !== rw) {
+      st.chunks.clear();
+      st.chunkPx = 0;
+      st.forced.clear();
+      st.rw = rw;
+    }
+    RW = rw;
+    RH = rw >> 1;
+  }
   const mapRegionRange = (m) => ({ rx0: Math.floor((-m.h * 32 - 32) / RW), rx1: Math.floor((m.w * 32 + 32) / RW), ry0: 0, ry1: Math.floor(((m.w + m.h) * 16 + 32) / RH) });
   const NIGHT = 0x050a1e;
   const FOG_DIM = 0.55, FOG_GRAY = 0.6, LEVEL_DIM = 0.12;
   const SHADE_A = (s) => Math.min(0.85, (Math.max(0, s) / 15) * 0.85);
   const COL = {
     ok: 0x4ade6a, reserve: 0xffd23a, out: 0xff4a3a, move: 0xffd23a, target: 0xff4a3a, throw: 0xff9a30, none: 0xc8d2dc,
-    select: 0xffc23a, tu: 0x4ade6a, hp: 0xe04a3a, stun: 0x8ec8ff,
+    // barras por cima do soldado com as mesmas cores do cartão (css/base.css --tu, --hp, --stun)
+    select: 0xffc23a, tu: 0x58c8ff, hp: 0x5fe08a, stun: 0x9aa4ae,
   };
   const RANK_COL = [0x9aa4ae, 0x5ac85a, 0xd8c040, 0x5ab4ff, 0xff9a40, 0xe04ae0, 0xff4a4a];
 
@@ -46,9 +69,10 @@
   const states = new WeakMap();
   let chunkBudget = 48e6;
   let last = null; // último desenho: para pick()
-  const statsInfo = { ms: 0, chunks: 0, bakes: 0, sprites: 0, units: 0 };
+  const statsInfo = { ms: 0, chunks: 0, bakes: 0, direct: 0, sprites: 0, units: 0 };
   const DBG = {}; // interruptores de QA (perfil): noChunks, noSweep, noGlow, noFire, noUnits, noSprites
   let frameNo = 0;
+  let labels = []; // etiquetas do último fotograma (px CSS), para o QA
   let bakesPerFrame = 2;
 
   function stateOf(B) {
@@ -75,6 +99,10 @@
     const tgt = B || (last && last.B);
     if (!tgt) return;
     const st = stateOf(tgt);
+    if (st.rw) {
+      RW = st.rw;
+      RH = st.rw >> 1;
+    }
     st.version++;
     if (i === undefined || i === null || i < 0) {
       st.chunks.clear();
@@ -195,6 +223,8 @@
     const ax = solid(x - 1, y) || solid(x + 1, y), ay = solid(x, y - 1) || solid(x, y + 1);
     return ay && !ax ? 'y' : 'x';
   }
+  // meia-laje do chão junto a cascos diagonais / cúpulas (sprites_tiles); 0 = chão inteiro
+  const floorStateOf = (m, x, y, z) => (OV.TileSprites.floorState ? OV.TileSprites.floorState(m, x, y, z) : 0);
   function animState(defId, st, i, time) {
     const TS = OV.TileSprites;
     const f = TS.frames(defId);
@@ -247,11 +277,13 @@
     const W = Math.round(RW * S), H = Math.round(RH * S);
     const ox = rx * RW, oy = ry * RH - z * 48; // canto da região em px de mundo
     let c = null, g = null;
+    // caixa do conteúdo (px do dispositivo): só esta parte se compõe no ecrã (níveis altos quase vazios)
+    let bx0 = W, by0 = H, bx1 = 0, by1 = 0;
     forRegionTiles(m, rx, ry, (x, y) => {
       const i = (z * m.h + y) * m.w + x;
       const f = m.parts[i * 4];
       if (!f) return;
-      const spr = tileSpr(st, S, f, st.variant[i], 0);
+      const spr = tileSpr(st, S, f, st.variant[i], floorStateOf(m, x, y, z));
       if (!spr) return;
       if (!c) {
         c = st.pool.pop() || null;
@@ -263,10 +295,17 @@
         g.globalAlpha = 1;
         g.clearRect(0, 0, W, H);
       }
-      floorBlit(g, m, st, F, i, z, x, y, ((x - y) * 32 - ox) * S, ((x + y) * 16 - z * 48 - oy) * S, S, spr);
+      const X = ((x - y) * 32 - ox) * S, Y = ((x + y) * 16 - z * 48 - oy) * S;
+      floorBlit(g, m, st, F, i, z, x, y, X, Y, S, spr);
+      const sx0 = X - spr.ax * S, sy0 = Y - spr.ay * S;
+      if (sx0 < bx0) bx0 = sx0;
+      if (sy0 < by0) by0 = sy0;
+      if (sx0 + spr.w * S > bx1) bx1 = sx0 + spr.w * S;
+      if (sy0 + spr.h * S > by1) by1 = sy0 + spr.h * S;
     });
     statsInfo.bakes++;
-    return { c, S, px: c ? W * H : 0 };
+    const box = c ? [Math.max(0, Math.floor(bx0) - 1), Math.max(0, Math.floor(by0) - 1), Math.min(W, Math.ceil(bx1) + 1), Math.min(H, Math.ceil(by1) + 1)] : null;
+    return { c, S, px: c ? W * H : 0, box };
   }
   function dropRegion(st, k) {
     const ch = st.chunks.get(k);
@@ -308,7 +347,7 @@
       const i = (z * m.h + y) * m.w + x;
       const f = m.parts[i * 4];
       if (!f) return;
-      const spr = tileSpr(st, S, f, st.variant[i], 0);
+      const spr = tileSpr(st, S, f, st.variant[i], floorStateOf(m, x, y, z));
       if (spr) floorBlit(ctx, m, st, F, i, z, x, y, (x - y) * 32 * S + F.ox, ((x + y) * 16 - z * 48) * S + F.oy, S, spr);
     });
     ctx.restore();
@@ -406,16 +445,32 @@
       ctx.stroke();
     }
   }
-  function pill(ctx, F, X, Y, text, col, bg) {
+  // medida de uma etiqueta (px do dispositivo)
+  function pillSize(ctx, F, text) {
     const fs = Math.round(12 * F.dpr);
     ctx.font = '600 ' + fs + 'px -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif';
+    return { w: ctx.measureText(text).width + 12 * F.dpr, h: fs + 8 * F.dpr, fs };
+  }
+  // área livre do ecrã (px do dispositivo): sem o HUD de cima/baixo (view.safe em px CSS, posto pela interface)
+  function safeBox(F) {
+    const sf = F.view.safe || {}, d = F.dpr, m = 8 * d;
+    return { x0: (sf.l || 0) * d + m, y0: (sf.t || 0) * d + m, x1: F.W - (sf.r || 0) * d - m, y1: F.H - (sf.b || 0) * d - m };
+  }
+  // etiqueta: X é o centro (align 'center'), a aresta esquerda ('left') ou a direita ('right'); fica sempre no ecrã
+  function pill(ctx, F, X, Y, text, col, bg, align) {
+    const { w, h } = pillSize(ctx, F, text);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    const w = ctx.measureText(text).width + 12 * F.dpr, h = fs + 8 * F.dpr;
-    ctx.fillStyle = css(bg === undefined ? 0x0b0f14 : bg, 0.86);
+    ctx.fillStyle = css(bg === undefined || bg === null ? 0x0b0f14 : bg, 0.86);
     ctx.strokeStyle = css(col, 0.9);
     ctx.lineWidth = Math.max(1, F.dpr);
-    const x0 = Math.round(X - w / 2), y0 = Math.round(Y - h / 2);
+    const sb = safeBox(F);
+    let x0 = align === 'left' ? X : align === 'right' ? X - w : X - w / 2, y0 = Y - h / 2;
+    x0 = Math.round(Math.max(sb.x0, Math.min(sb.x1 - w, x0)));
+    y0 = Math.round(Math.max(sb.y0, Math.min(sb.y1 - h, y0)));
+    X = x0 + w / 2;
+    Y = y0 + h / 2;
+    labels.push({ x0: x0 / F.dpr, y0: y0 / F.dpr, x1: (x0 + w) / F.dpr, y1: (y0 + h) / F.dpr, text });
     const r = 4 * F.dpr;
     ctx.beginPath();
     ctx.moveTo(x0 + r, y0);
@@ -451,8 +506,9 @@
     if (!R || !R.cost) return;
     const m = B.map, cost = R.cost;
     const a = Math.min(R.budgetOk | 0, R.budgetReserve | 0), b = Math.max(R.budgetOk | 0, R.budgetReserve | 0);
-    const inner = (i) => cost[i] >= 0 && cost[i] <= a;
-    const outer = (i) => cost[i] >= 0 && cost[i] <= b;
+    const known = (i) => F.revealAll || (m.disc[i] & 1);
+    const inner = (i) => cost[i] >= 0 && cost[i] <= a && known(i);
+    const outer = (i) => cost[i] >= 0 && cost[i] <= b && known(i);
     const S = F.S;
     const segs = { inner: [], outer: [] };
     const plane = m.w * m.h;
@@ -525,10 +581,13 @@
     const m = B.map, D = OV.Data.tileDefs, TS = OV.TileSprites;
     const st = stateOf(B);
     const F = frameInfo(ctx, B, view);
+    labels = [];
+    regionGrid(st, F.S);
     F.light = F.lightReady ? B._.light : fallbackLight(B, st);
     const S = F.S, dpr = F.dpr;
     statsInfo.chunks = 0;
     statsInfo.bakes = 0;
+    statsInfo.direct = 0;
     statsInfo.sprites = 0;
     statsInfo.units = 0;
 
@@ -549,7 +608,8 @@
       const fx = a && a.fx !== undefined ? a.fx : u.x, fy = a && a.fy !== undefined ? a.fy : u.y, fz = a && a.fz !== undefined ? a.fz : u.z;
       const lz = Math.round(fz);
       if (lz > F.viewZ || lz < 0) continue;
-      if (u.side !== 'xcom' && !view.showAll && !seenByXcom(B, u)) continue;
+      const forced = !!(a && a.show);
+      if (u.side !== 'xcom' && !view.showAll && !forced && !seenByXcom(B, u)) continue;
       const dir = a && a.dir !== undefined ? a.dir : u.dir;
       const size = u.size || 1;
       const [ax, ay] = anchorOf(fx, fy, dir, size);
@@ -557,15 +617,17 @@
       const ti = (lz * m.h + cy) * m.w + cx;
       const bx = Math.max(0, Math.min(m.w - 1, Math.round(fx))), by = Math.max(0, Math.min(m.h - 1, Math.round(fy)));
       const ownTile = (lz * m.h + by) * m.w + bx;
-      if (u.side !== 'xcom' && !F.revealAll && !(m.disc[ownTile] & 1)) continue;
+      if (u.side !== 'xcom' && !F.revealAll && !forced && !(m.disc[ownTile] & 1)) continue;
       const rec = { u, a, fx, fy, fz, dir, size, ownTile };
       const list = unitsAt.get(ti);
       if (list) list.push(rec);
       else unitsAt.set(ti, [rec]);
     }
     const itemsAt = new Map();
+    const hideItems = anim.hideItems instanceof Set ? anim.hideItems : null;
     for (const it of B.items) {
       if (it.at === null || it.at === undefined || it.owner !== null) continue;
+      if (hideItems && hideItems.has(it.id)) continue;
       const list = itemsAt.get(it.at);
       if (list) list.push(it);
       else itemsAt.set(it.at, [it]);
@@ -590,11 +652,19 @@
           for (let rx = Math.max(rx0, lim.rx0); rx <= Math.min(rx1, lim.rx1); rx++) {
             const ch = getRegion(B, st, F, z, rx, ry, S);
             if (!ch) {
+              statsInfo.direct++;
               drawRegionDirect(ctx, B, st, F, z, rx, ry);
               continue;
             }
             if (!ch.c) continue;
-            ctx.drawImage(ch.c, rx * RW * S + F.ox, (ry * RH - z * 48) * S + F.oy);
+            // só a parte com conteúdo e dentro do ecrã
+            const X0 = rx * RW * S + F.ox, Y0 = (ry * RH - z * 48) * S + F.oy, b = ch.box;
+            const sx0 = Math.max(b[0], Math.floor(-X0)), sy0 = Math.max(b[1], Math.floor(-Y0));
+            const sx1 = Math.min(b[2], Math.ceil(F.W - X0)), sy1 = Math.min(b[3], Math.ceil(F.H - Y0));
+            if (sx1 <= sx0 || sy1 <= sy0) continue;
+            ctx.imageSmoothingEnabled = false; // cópia 1:1 alinhada ao píxel: sem filtragem
+            ctx.drawImage(ch.c, sx0, sy0, sx1 - sx0, sy1 - sy0, X0 + sx0, Y0 + sy0, sx1 - sx0, sy1 - sy0);
+            ctx.imageSmoothingEnabled = true;
             statsInfo.chunks++;
           }
         }
@@ -675,6 +745,7 @@
               if (m.ufoDoorOpen[i] && !od.open && od.alt) obj = od.alt;
               state = doorOri(m, x, y, z);
             } else if (TS.frames(obj) > 1) state = animState(obj, st, i, F.time);
+            else if (od.diagonal && TS.objectState) state = TS.objectState(m, x, y, z);
             const spr = tileSpr(st, S, obj, st.variant[i], state);
             if (spr) { TS.blitDev(ctx, spr, X, Y, S, dark, grayA); statsInfo.sprites++; }
             const od2 = D[obj];
@@ -711,9 +782,13 @@
       ctx.globalCompositeOperation = 'source-over';
     }
 
+    drawBlips(ctx, B, F);
+    drawThrowRange(ctx, B, F);
     drawPath(ctx, B, F);
     drawTarget(ctx, B, F);
+    drawBlast(ctx, B, F);
     drawThrow(ctx, B, F);
+    drawThrowLabel(ctx, B, F);
     ctx.restore();
 
     // FX por cima, em px CSS (com o tremor já aplicado na câmara)
@@ -746,10 +821,12 @@
     // sombra: luz do próprio tile; a X-COM tem luz pessoal (sombra limitada)
     const lit = F.light[r.ownTile] === undefined ? 15 : F.light[r.ownTile];
     let shadeA = 1 - (1 - SHADE_A(15 - lit)) * (1 - lvlDim);
-    if (u.side === 'xcom') shadeA = Math.min(shadeA, 0.42 + lvlDim);
+    // só se desenham inimigos que a X-COM vê: também têm de se ler no escuro (os soldados têm luz pessoal)
+    shadeA = Math.min(shadeA, (u.side === 'xcom' ? 0.42 : 0.3) + lvlDim);
     const shadeI = Math.max(0, Math.min(15, Math.round((shadeA / 0.85) * 15)));
     US.drawShadow(ctx, X, Y, r.size, S);
     if (F.view.selectedId === u.id) US.selectionRing(ctx, X, Y, S, COL.select, r.size);
+    else if (u.side === 'alien' && u.status !== 'dead') hostileRing(ctx, X, Y, S, r.size, F);
     const spr = US.get(key, r.dir, pose, frame, S, inf.opts);
     US.blit(ctx, spr, X, Y, S, shadeI, a && a.flash ? a.flash : 0);
     if (u.burn > 0) {
@@ -761,7 +838,22 @@
     const cx = X / F.dpr, cy = Y / F.dpr;
     const half = (r.size > 1 ? 26 : 13) * F.zoom;
     rects.push({ x0: cx - half, x1: cx + half, y0: cy - hgt - 6 * F.zoom + (r.size > 1 ? 16 * F.zoom : 0), y1: cy + 8 * F.zoom + (r.size > 1 ? 16 * F.zoom : 0),
-      unitId: u.id, x: Math.round(r.fx), y: Math.round(r.fy), z: Math.round(r.fz), X, Y, hgt });
+      unitId: u.id, x: Math.round(r.fx), y: Math.round(r.fy), z: Math.round(r.fz), X, Y, hgt, friend: u.side === 'xcom' && r.size === 1, yBody: cy - hgt * 0.55 });
+  }
+
+  // anel vermelho discreto debaixo de um alienígena visível (lê-se em terreno escuro e a zoom 0.75)
+  function hostileRing(ctx, X, Y, S, size, F) {
+    const big = size > 1, rx = (big ? 32 : 15) * S, ry = rx / 2, cy = Y + (big ? 16 * S : 0);
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(X, cy, rx, ry, 0, 0, TAU);
+    ctx.lineWidth = Math.max(1, 3 * S);
+    ctx.strokeStyle = 'rgba(0,0,0,0.45)';
+    ctx.stroke();
+    ctx.lineWidth = Math.max(1, 1.4 * S);
+    ctx.strokeStyle = css(COL.target, 0.7 + 0.15 * Math.sin(F.time / 300));
+    ctx.stroke();
+    ctx.restore();
   }
 
   function drawSelectedBars(ctx, B, F, rects) {
@@ -807,7 +899,7 @@
     // linha de ligação
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    for (let k = 0; k < pts.length; k++) {
+    for (let k = 0; k < (P.noLine ? 0 : pts.length); k++) {
       const p = pts[k];
       const prev = k ? pts[k - 1] : sel ? [(sel.x - sel.y) * 32 * F.S + F.ox, ((sel.x + sel.y) * 16 + 16 - sel.z * 48) * F.S + F.oy] : null;
       if (!prev) continue;
@@ -836,9 +928,23 @@
       ctx.stroke();
       if (s.tu !== undefined && s.tu !== null) smallText(ctx, F, p[0], p[1] - 10 * d, String(s.tu), col);
     }
-    if (P.label) {
+    if (P.lock) {
+      // destino à espera de confirmação: losango a pulsar
       const p = pts[pts.length - 1];
-      pill(ctx, F, p[0], p[1] - 30 * d, String(P.label), COL[P.steps[pts.length - 1].state] || COL.ok);
+      const k = 0.5 + 0.5 * Math.sin(F.time / 140);
+      const X = p[0], Y = p[1] - 16 * F.S;
+      diamond(ctx, X, Y, F.S, 1 - k * 3);
+      ctx.lineWidth = Math.max(1, 2 * d);
+      ctx.strokeStyle = css(COL[P.steps[pts.length - 1].state] || COL.ok, 0.5 + 0.5 * k);
+      ctx.stroke();
+    }
+    if (P.label) {
+      // etiqueta do lado oposto ao caminho que chega (não tapa os números dos passos)
+      const p = pts[pts.length - 1];
+      const q = pts.length > 1 ? pts[pts.length - 2] : sel ? [(sel.x - sel.y) * 32 * F.S + F.ox, ((sel.x + sel.y) * 16 + 16 - sel.z * 48) * F.S + F.oy] : null;
+      const below = !!q && q[1] < p[1] - 2 * d;
+      const ly = below ? p[1] + 20 * d + 8 * F.S : p[1] - 22 * d - 18 * F.S;
+      pill(ctx, F, p[0], ly, String(P.label), COL[P.steps[pts.length - 1].state] || COL.ok);
     }
   }
 
@@ -861,6 +967,18 @@
       ctx.lineWidth = 1.6 * d;
       ctx.stroke();
       ctx.setLineDash([]);
+    }
+    if (T.blockI !== undefined && T.blockI !== null && T.blockI >= 0 && T.blockI < m.n) {
+      // o que tapa o tiro (objeto, parede): losango vermelho nesse tile
+      const [bx, by, bz] = tileCenterDev(F, m, T.blockI);
+      if (bz <= F.viewZ) {
+        diamond(ctx, bx, by - 16 * F.S, F.S, 2);
+        ctx.fillStyle = css(COL.out, 0.2);
+        ctx.fill();
+        ctx.lineWidth = Math.max(1, 1.6 * d);
+        ctx.strokeStyle = css(COL.out, 0.9);
+        ctx.stroke();
+      }
     }
     if (T.toI === undefined || T.toI === null || T.toI < 0) return;
     const [X, Y] = tileCenterDev(F, m, T.toI);
@@ -886,7 +1004,65 @@
       ctx.stroke();
     }
     const label = T.label !== undefined && T.label !== null ? String(T.label) : T.hitPct !== undefined && T.hitPct !== null ? (T.hitPct | 0) + '%' : null;
-    if (label) pill(ctx, F, X + 34 * d, Y - 40 * F.S, label, col);
+    // ao lado do alvo, alinhadas pela aresta (nunca centradas na coluna da unidade); sem espaço à direita → esquerda
+    const gap = Math.max(26 * d, 24 * F.S);
+    const ly = Y - 36 * F.S;
+    const wMax = Math.max(label ? pillSize(ctx, F, label).w : 0, T.sub ? pillSize(ctx, F, String(T.sub)).w : 0);
+    const right = X + gap + wMax <= safeBox(F).x1;
+    const lx = right ? X + gap : X - gap, al = right ? 'left' : 'right';
+    if (label) pill(ctx, F, lx, ly, label, T.blocked ? COL.out : hitCol(T.hitPct), null, al);
+    if (T.sub) pill(ctx, F, lx, ly + 24 * d, String(T.sub), T.subCol || COL.reserve, null, al);
+  }
+  // cor da etiqueta pela probabilidade (vermelho → âmbar → verde)
+  function hitCol(p) {
+    if (p === null || p === undefined) return COL.target;
+    return p >= 60 ? COL.ok : p >= 30 ? COL.reserve : COL.target;
+  }
+
+  // anel de alcance do arremesso (elipse isométrica à volta da unidade)
+  function drawThrowRange(ctx, B, F) {
+    const R = F.view.throwRange;
+    if (!R || !(R.r > 0)) return;
+    const d = F.dpr, S = F.S;
+    const X = (R.x - R.y) * 32 * S + F.ox, Y = ((R.x + R.y) * 16 + 16 - R.z * 48) * S + F.oy;
+    const rx = R.r * 32 * Math.SQRT2 * S, ry = R.r * 16 * Math.SQRT2 * S;
+    ctx.save();
+    ctx.setLineDash([7 * d, 6 * d]);
+    ctx.lineDashOffset = -((F.time / 60) % (13 * d));
+    ctx.lineWidth = 3 * d;
+    ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+    ctx.beginPath();
+    ctx.ellipse(X, Y, rx, ry, 0, 0, TAU);
+    ctx.stroke();
+    ctx.lineWidth = 1.4 * d;
+    ctx.strokeStyle = css(COL.throw, 0.7);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // sinais do detetor de movimento (círculos a pulsar)
+  function drawBlips(ctx, B, F) {
+    const L = F.view.blips;
+    if (!L || !L.length) return;
+    const d = F.dpr, S = F.S;
+    for (const b of L) {
+      const X = (b.x - b.y) * 32 * S + F.ox, Y = ((b.x + b.y) * 16 + 16 - b.z * 48) * S + F.oy;
+      const age = Math.max(0, F.time - (b.t0 || 0));
+      const a = Math.max(0, 1 - age / 4000);
+      for (let k = 0; k < 2; k++) {
+        const ph = ((age / 900 + k * 0.5) % 1);
+        const r = (8 + ph * (14 + 4 * (b.size || 1))) * S;
+        ctx.beginPath();
+        ctx.ellipse(X, Y, r * 1.4, r * 0.7, 0, 0, TAU);
+        ctx.lineWidth = 2 * d;
+        ctx.strokeStyle = css(0x58c8ff, a * (1 - ph));
+        ctx.stroke();
+      }
+      ctx.beginPath();
+      ctx.ellipse(X, Y, 4 * S, 2 * S, 0, 0, TAU);
+      ctx.fillStyle = css(0x58c8ff, a);
+      ctx.fill();
+    }
   }
 
   function drawThrow(ctx, B, F) {
@@ -901,11 +1077,52 @@
       ctx.fill();
     }
     const e = pts[pts.length - 1];
+    const info = F.view.throwInfo;
+    const col = info && !info.ok ? COL.out : COL.throw;
     ctx.lineWidth = 1.6 * d;
-    ctx.strokeStyle = css(COL.throw, 0.95);
+    ctx.strokeStyle = css(col, 0.95);
     ctx.beginPath();
     ctx.ellipse(e[0], e[1], 14 * F.S, 7 * F.S, 0, 0, TAU);
     ctx.stroke();
+    if (info && info.toI !== undefined && info.toI !== null && info.toI >= 0) {
+      const [X, Y] = tileCenterDev(F, B.map, info.toI);
+      diamond(ctx, X, Y - 16 * F.S, F.S, 2);
+      ctx.fillStyle = css(col, 0.18);
+      ctx.fill();
+      ctx.strokeStyle = css(col, 0.9);
+      ctx.lineWidth = Math.max(1, 1.4 * d);
+      ctx.stroke();
+    }
+  }
+  // etiqueta do arremesso (também sem arco: fora de alcance); segunda etiqueta = aviso (aliados no raio)
+  function drawThrowLabel(ctx, B, F) {
+    const info = F.view.throwInfo;
+    if (!info || !info.label || info.toI === undefined || info.toI === null || info.toI < 0) return;
+    const [X, Y] = tileCenterDev(F, B.map, info.toI);
+    const ly = Y - 34 * F.dpr - 12 * F.S;
+    pill(ctx, F, X, ly, String(info.label), info.ok ? COL.throw : COL.out);
+    if (info.sub) pill(ctx, F, X, ly - 24 * F.dpr, String(info.sub), COL.out);
+  }
+  // área da explosão prevista: losango isométrico de raio r tiles (vermelho; fumo a cinzento)
+  function drawBlast(ctx, B, F) {
+    const info = F.view.throwInfo, tg = F.view.target;
+    const b = (info && info.blast) || (tg && !tg.blocked && tg.blast);
+    if (!b || !(b.r > 0) || b.z > F.viewZ) return;
+    const S = F.S, d = F.dpr;
+    const X = (b.x - b.y) * 32 * S + F.ox, Y = ((b.x + b.y) * 16 + 16 - b.z * 48) * S + F.oy;
+    const rx = (b.r + 0.5) * 32 * Math.SQRT2 * S, ry = (b.r + 0.5) * 16 * Math.SQRT2 * S;
+    const col = b.smoke ? 0xb8c4cc : b.risk ? COL.out : COL.throw;
+    const pulse = 0.5 + 0.5 * Math.sin(F.time / 220);
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(X, Y, rx, ry, 0, 0, TAU);
+    ctx.fillStyle = css(col, 0.07 + 0.05 * pulse);
+    ctx.fill();
+    ctx.setLineDash([5 * d, 4 * d]);
+    ctx.lineWidth = 1.5 * d;
+    ctx.strokeStyle = css(col, 0.75);
+    ctx.stroke();
+    ctx.restore();
   }
 
   // ---- picking, limites e câmara -------------------------------------------------------------------------------
@@ -916,9 +1133,12 @@
     const cam = view.cam;
     const sh = OV.FX && OV.FX.offset ? OV.FX.offset() : { x: 0, y: 0 };
     if (last && last.B === B) {
+      // a mover, a cabeça de um soldado não tapa o tile atrás dele (só o corpo seleciona)
+      const moving = !view.cursor || view.cursor === 'move' || view.cursor === 'none';
       for (let k = last.rects.length - 1; k >= 0; k--) {
         const r = last.rects[k];
-        if (px >= r.x0 && px <= r.x1 && py >= r.y0 && py <= r.y1) return { x: r.x, y: r.y, z: r.z, unitId: r.unitId };
+        const y0 = moving && r.friend ? Math.max(r.y0, r.yBody) : r.y0;
+        if (px >= r.x0 && px <= r.x1 && py >= y0 && py <= r.y1) return { x: r.x, y: r.y, z: r.z, unitId: r.unitId };
       }
     }
     const viewZ = Math.max(0, Math.min(m.d - 1, view.viewZ === undefined ? m.d - 1 : view.viewZ | 0));
@@ -939,12 +1159,18 @@
     OV.Iso.centerOn(view.cam, x, y, z || 0, view.w || 1280, view.h || 800);
     return view.cam;
   }
-  // prende a câmara aos limites do mapa (margem de meio ecrã)
+  /* prende a câmara: o centro do ecrã fica sempre sobre o losango do mapa no nível de vista (com 2 tiles de margem).
+     A caixa envolvente do losango tem cantos vazios — prender nela deixava o ecrã todo negro. */
+  const CAM_PAD = 2;
   function clampCam(view, B) {
-    const b = bounds(B), cam = view.cam;
+    const cam = view.cam, m = B.map, I = OV.Iso;
     const hw = (view.w || 1280) / cam.zoom / 2, hh = (view.h || 800) / cam.zoom / 2;
-    cam.x = Math.max(b.x0 - hw, Math.min(b.x1 - hw, cam.x));
-    cam.y = Math.max(b.y0 - hh, Math.min(b.y1 - hh, cam.y));
+    const z = Math.max(0, Math.min(m.d - 1, view.viewZ | 0));
+    const a = (cam.x + hw) / I.HW, b = (cam.y + hh + z * I.LH) / I.HH; // a = x − y, b = x + y
+    const x = Math.max(-CAM_PAD, Math.min(m.w + CAM_PAD, (a + b) / 2));
+    const y = Math.max(-CAM_PAD, Math.min(m.h + CAM_PAD, (b - a) / 2));
+    cam.x = (x - y) * I.HW - hw;
+    cam.y = (x + y) * I.HH - z * I.LH - hh;
     return cam;
   }
 
@@ -959,10 +1185,13 @@
   OV.BattleRender = {
     draw, pick, bounds, centerOn, clampCam, markDirty, clearCache, reset,
     stats: () => Object.assign({}, statsInfo),
+    // etiquetas (caminho, alvo, arremesso) e caixas das unidades desenhadas no último fotograma, em px CSS
+    labels: () => labels.slice(),
+    unitRects: () => (last ? last.rects.map((r) => ({ unitId: r.unitId, x0: r.x0, x1: r.x1, y0: r.y0, y1: r.y1 })) : []),
     setChunkBudget: (px) => { chunkBudget = Math.max(1e5, +px || 48e6); },
     setBakesPerFrame: (n) => { bakesPerFrame = Math.max(1, n | 0); },
     setCanvasFactory: (fn) => { makeCanvas = fn; },
-    REGION: [RW, RH],
+    get REGION() { return [RW, RH]; },
     _debug: DBG,
   };
 })(globalThis.OV || (globalThis.OV = {}));

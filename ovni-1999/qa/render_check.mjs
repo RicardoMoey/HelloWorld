@@ -3,7 +3,10 @@
    cenários (dia/noite com very-light, zoom 1 e 2, níveis cortados, FARM/URBAN/DESERT/ALIENBASE/MARS, cada tipo de
    OVNI, folhas de tiles, efeitos), grava capturas e falha em erros de consola/página. No fim mede o pan de
    300 fotogramas num mapa 50×50×3 a 1280×800 @2× e imprime fps e tempos de desenho.
-   Uso: node ovni-1999/qa/render_check.mjs [--out <pasta>] [--only <texto>] [--no-perf] [--frames 300] */
+   --hull-context: serve o battle_render.js com a integração de OV.TileSprites.floorState/objectState (chãos recortados
+   junto aos cascos diagonais, cúpula do elevador, diagonais a encher a metade interior); sem efeito se o
+   renderizador já a fizer.
+   Uso: node ovni-1999/qa/render_check.mjs [--out <pasta>] [--only <texto>] [--no-perf] [--frames 300] [--hull-context] */
 import { createRequire } from 'module';
 import fs from 'fs';
 import net from 'net';
@@ -27,6 +30,13 @@ const OUT = path.resolve(arg('out', DEF_OUT));
 const ONLY = arg('only', null);
 const FRAMES = +arg('frames', 300);
 const PERF = !argv.includes('--no-perf');
+const HULL_CONTEXT = argv.includes('--hull-context');
+// [original, integração] no battle_render.js
+const CONTEXT_PATCH = [
+  ['tileSpr(st, S, f, st.variant[i], 0)', 'tileSpr(st, S, f, st.variant[i], OV.TileSprites.floorState ? OV.TileSprites.floorState(m, x, y, z) : 0)'],
+  ['} else if (TS.frames(obj) > 1) state = animState(obj, st, i, F.time);',
+    '} else if (TS.frames(obj) > 1) state = animState(obj, st, i, F.time);\n            else if (od.diagonal && TS.objectState) state = TS.objectState(m, x, y, z);'],
+];
 
 // [ficheiro, query]
 const SHOTS = [
@@ -50,10 +60,20 @@ const SHOTS = [
   ['mars_z1.png', 'kind=cydonia&zoom=1&focus=centre&viewZ=1&overlays=0'],
   ['fx.png', 'mode=fx&ufo=abductor&terrain=FARM&zoom=1&focus=mid&overlays=0'],
 ];
+// cada OVNI: despenhado e pousado, de dia e de noite, por fora (nível de cima, com tejadilho) e por dentro (corte em z0)
 for (const u of ['small_scout', 'medium_scout', 'large_scout', 'harvester', 'abductor', 'supply_ship', 'terror_ship', 'battleship']) {
   SHOTS.push(['ufo_' + u + '.png', 'ufo=' + u + '&terrain=FARM&zoom=1&overlays=0&seed=7']);
+  SHOTS.push(['ufo_' + u + '_top.png', 'ufo=' + u + '&terrain=FARM&zoom=1&overlays=0&seed=7&kind=landed&viewZ=top']);
   SHOTS.push(['ufo_' + u + '_inside.png', 'ufo=' + u + '&terrain=FARM&zoom=2&overlays=0&seed=7&kind=landed']);
+  SHOTS.push(['ufo_' + u + '_night.png', 'ufo=' + u + '&terrain=DESERT&zoom=2&overlays=0&seed=7&night=1&flare=0&fire=0']);
 }
+// naves X-COM (porão por dentro e fuselagem por fora)
+for (const c of ['skyranger', 'avenger']) {
+  SHOTS.push(['craft_' + c + '.png', 'ufo=small_scout&terrain=FARM&zoom=2&overlays=0&seed=7&focus=craft&craft=' + c]);
+  SHOTS.push(['craft_' + c + '_top.png', 'ufo=small_scout&terrain=FARM&zoom=2&overlays=0&seed=7&focus=craft&viewZ=top&craft=' + c]);
+}
+SHOTS.push(['ufo_urban_crash.png', 'ufo=medium_scout&terrain=URBAN&zoom=2&overlays=0&seed=11']);
+SHOTS.push(['farm_buildings.png', 'ufo=small_scout&terrain=FARM&zoom=2&overlays=0&seed=3&focus=centre']);
 for (const s of ['FARM', 'FOREST', 'JUNGLE', 'DESERT', 'MOUNTAIN', 'POLAR', 'URBAN', 'ALIENBASE', 'MARS', 'UFO', 'CRAFT']) {
   SHOTS.push(['tiles_' + s + '.png', 'mode=tiles&set=' + s + '&zoom=1&w=1400&h=1000']);
 }
@@ -91,6 +111,14 @@ try {
   browser = await chromium.launch();
   const ctx = await browser.newContext({ deviceScaleFactor: 2, viewport: { width: 1280, height: 800 } });
   const page = await ctx.newPage();
+  if (HULL_CONTEXT) {
+    await page.route('**/js/gfx/battle_render.js', async (route) => {
+      const res = await route.fetch();
+      let body = await res.text();
+      for (const [a, b] of CONTEXT_PATCH) if (!body.includes(b)) body = body.split(a).join(b);
+      await route.fulfill({ response: res, body, headers: Object.assign({}, res.headers(), { 'content-type': 'text/javascript' }) });
+    });
+  }
   page.on('pageerror', (e) => errors.push('pageerror: ' + (e && e.message)));
   page.on('console', (m) => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
   const base = 'http://127.0.0.1:' + port + '/ovni-1999/qa/render_check.html?';

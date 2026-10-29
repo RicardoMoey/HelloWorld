@@ -484,6 +484,25 @@ module.exports = function (OV, t) {
     t.ok(BU.findItem(C, g3.id).at !== null);
   });
 
+  t.test('Arremesso: pode-se lançar para o tile de uma unidade (cai-lhe aos pés); a meio do caminho uma unidade trava o arco rasteiro; seara no destino não', () => {
+    const B = fixture();
+    const s = soldier(B, 2, 5, { dir: 2, loadout: { R: 'grenade', L: null, belt: [], pack: [] } });
+    const a = alien(B, 'sectoid_soldier', 9, 5);
+    sight(B);
+    const g = BU.item(B, s, 'R');
+    const v = A.validate(B, { type: 'throw', unitId: s.id, itemId: g.id, toI: I(B, 9, 5) });
+    t.ok(v.ok, 'arco até ao alienígena: ' + v.reason);
+    t.eq(A.planArc(B, s, I(B, a.x, a.y)).goal, I(B, 9, 5));
+    // para lá do alienígena, o arco tem de passar por cima dele (não o atravessa)
+    const far = A.traceArc(B, s, OV.LOS.originVoxel(B, s, [12 * 16 + 8, 5 * 16 + 8, 2]), [12 * 16 + 8, 5 * 16 + 8, 2], 0);
+    t.ok(far.land !== I(B, 12, 5), 'arco rasteiro bate no alienígena a meio');
+    // seara ou caixote no tile de destino: o item fica nesse tile (não ressalta para trás)
+    B.map.parts[I(B, 6, 9) * 4 + 3] = id('FARM.crop');
+    BT.rebuildDerived(B);
+    const pc = A.planArc(B, s, I(B, 6, 9));
+    t.ok(pc && pc.goal === I(B, 6, 9), 'arremesso para a seara');
+  });
+
   t.test('Arremesso: uma parede alta no meio obriga a arco; sem arco possível ⇒ noArc; sinalizador ilumina', () => {
     const B = fixture(20, 16, 1);
     // caixa fechada à volta do alvo (paredes nos 4 lados) num mapa de 1 nível: nenhum arco lá chega

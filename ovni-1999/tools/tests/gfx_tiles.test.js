@@ -146,14 +146,26 @@ module.exports = function (OV, t) {
     const spr = TS.get(OV.Data.tileId('UFO.powerSource'), 0, 2, 0);
     TS.silhouette(spr);
     TS.gray(spr);
-    const before = stats.drawImage;
+    let before = stats.drawImage;
     TS.blit(ctx, spr, 10, 20, 1, 0, 0);
     t.eq(stats.drawImage - before, 1, 'de dia: uma cópia');
+    before = stats.drawImage;
     TS.blit(ctx, spr, 10, 20, 1, 0.6, 0);
-    t.eq(stats.drawImage - before, 4, 'de noite: cor + silhueta + luzes');
+    t.eq(stats.drawImage - before, 4, 'de noite, 1.ª vez: compõe cor + silhueta + luzes numa variante e copia-a');
+    before = stats.drawImage;
+    TS.blit(ctx, spr, 10, 20, 1, 0.6, 0);
+    t.eq(stats.drawImage - before, 1, 'variante sombreada em cache: uma cópia por fotograma');
+    before = stats.drawImage;
     TS.blit(ctx, spr, 10, 20, 1, 0.6, 0.6);
-    t.eq(stats.drawImage - before, 7, 'névoa: cor + cinzento + silhueta');
+    TS.blit(ctx, spr, 10, 20, 1, 0.6, 0.6);
+    t.eq(stats.drawImage - before, 5, 'névoa: cor + cinzento + silhueta, depois uma cópia');
     t.ok(spr.sil && spr.gray, 'camadas derivadas criadas a pedido');
+    // muitas sombras diferentes: acima do limite de variantes volta às camadas sobrepostas (sem crescer sem fim)
+    for (let k = 1; k <= 30; k++) TS.blit(ctx, spr, 10, 20, 1, k / 31, 0);
+    t.ok(spr.shades.size <= 12, 'variantes limitadas (' + spr.shades.size + ')');
+    before = stats.drawImage;
+    TS.blit(ctx, spr, 10, 20, 1, 30 / 31, 0);
+    t.ok(stats.drawImage - before <= 3, 'acima do limite: no máximo cor + silhueta + luzes');
     t.eq(takeBad(), []);
   });
 

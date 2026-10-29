@@ -7,6 +7,9 @@
      --kind terror|alienBase|cydonia   missão sem OVNI ; --seed0 N  primeira semente ; --turns 40  limite
      --det            corre cada semente duas vezes e exige o mesmo hash final
      --save-at 5      grava no início do turno 5, recarrega, continua e compara o hash final
+     --vet            equipa veterana para o mês (ganhos de atributos de ~2 missões por mês de campanha)
+   Locais de terror: raça pelo calendário da campanha (Data.raceSchedule.alien_terror); missões escuras (base alienígena,
+   Marte) levam very-lights; dois soldados levam uma granada de fumo.
      --quiet / --verbose
    Código de saída ≠ 0 em qualquer exceção, falha de invariante ou divergência de hash.
    Também é um módulo: require('./sim.js') → {runBattle, missionFor, checkInvariants, SWEEP, TARGETS}. */
@@ -106,13 +109,44 @@ const TARGETS = {
   abductor: { win: 80, losses: 2 }, terror: { win: 70, losses: 3 }, battleship: { win: 70 }, cydonia: { win: 60 },
 };
 
+// raça de um local de terror como na campanha (Data.raceSchedule.alien_terror pelo mês), determinística pela semente
+function terrorRace(month, seed) {
+  const sch = OV.Data.raceSchedule && OV.Data.raceSchedule.alien_terror;
+  if (!sch) return undefined;
+  const keys = Object.keys(sch).map(Number).sort((a, b) => a - b);
+  let k = keys[0];
+  for (const m of keys) if (m <= month) k = m;
+  return OV.RNG.create((seed ^ 0x7e7707) >>> 0).weighted(sch[k]) || undefined;
+}
+
+// ganhos por mês de campanha (≈ 2 missões/mês, DESIGN §3.2: +1..+4 por estatística usada) — só com --vet
+const VET_GAIN = { tu: 2, sta: 2, hp: 1, react: 3, fire: 4, thr: 2, str: 1, brav: 5 };
+function veteranSquad(squad, month) {
+  const caps = OV.Data.soldierGen.caps;
+  for (const s of squad) {
+    for (const k of Object.keys(VET_GAIN)) s.stats[k] = Math.min(caps[k], (s.stats[k] | 0) + VET_GAIN[k] * month);
+    s.missions = 2 * month;
+    s.rank = Math.min(5, (s.rank | 0) + (month >> 1));
+  }
+}
+
 function missionFor(o) {
   const kind = o.kind || null;
   const terrain = kind === 'terror' ? 'URBAN' : kind === 'alienBase' ? 'ALIENBASE' : kind === 'cydonia' ? 'MARS' : o.terrain || 'FARM';
   const mission = OV.Battle.quickMission({
     ufoType: kind ? undefined : o.ufo || 'small_scout', terrain, kind: kind || undefined, night: !!o.night,
     difficulty: o.diff === undefined ? 1 : o.diff, month: o.month | 0, squadSize: o.squad || 8, seed: o.seed >>> 0,
+    race: o.race || (kind === 'terror' ? terrorRace(o.month | 0, o.seed >>> 0) : undefined),
   });
+  // base alienígena e Marte são escuros (sombra > DARK_SHADE): a equipa leva very-lights como numa missão noturna
+  const dark = OV.Battle.normalizeMission(mission).night;
+  if (dark && !o.night) for (const s of mission.squad) if (s.loadout.belt.indexOf('electro_flare') < 0) s.loadout.belt.push('electro_flare');
+  // granadas de fumo (5 nas reservas iniciais): duas na mochila de dois soldados, como um jogador as levaria
+  mission.squad.forEach((s, k) => {
+    if (k === 1 || k === 2) s.loadout.pack.push('smoke_grenade');
+  });
+  // --vet: equipa com a experiência típica do mês de campanha (ganhos de atributos por missões, até aos limites)
+  if (o.vet) veteranSquad(mission.squad, o.month | 0);
   if (kind === 'cydonia') {
     for (const s of mission.squad) {
       s.armour = 'power_suit';
@@ -237,7 +271,7 @@ function main() {
   const common = {
     terrain: args.terrain || 'FARM', night: args.night === undefined ? false : args.night === true || +args.night === 1,
     diff: args.diff === undefined ? 1 : +args.diff, squad: args.squad === undefined ? 8 : +args.squad,
-    turns: args.turns === undefined ? 40 : +args.turns,
+    turns: args.turns === undefined ? 40 : +args.turns, vet: !!args.vet,
   };
   const failures = [];
   const sums = [];

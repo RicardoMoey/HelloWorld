@@ -32,6 +32,10 @@ body { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none
 .hidden { display: none !important; }
 button { font-family: inherit; color: inherit; }
 #view { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+/* toque: nada amplia nem desloca a página (o iOS ignora user-scalable=no); só as listas que rolam aceitam
+   arrasto vertical. A pinça no canvas amplia a câmara (input.js). */
+html, body, #hud, #modals, #toasts, #tooltip { touch-action: none; }
+[data-scroll], .scroll, .modal, .boot-err { touch-action: pan-y; }
 #hud { position: fixed; inset: 0; pointer-events: none; }
 #hud > * { pointer-events: auto; }
 #hud .passthru { pointer-events: none; }

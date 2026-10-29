@@ -233,8 +233,104 @@
     if (B._ && B._.dirty) B._.dirty.los = true;
   }
 
-  // a unidade 2×2 (ou 1×1) cabe com o canto em i? (tiles livres, mesmo nível, sem paredes internas)
+  /* Segurança da desova (só na preparação, B.phase 'setup', para alienígenas ainda fora do mapa): nenhum
+     alienígena a menos de SPAWN_SAFE_DIST (10) tiles de Chebyshev de um início X-COM no mesmo nível ou a ±1;
+     unidades de terror (Data.TERROR_UNITS) a menos de SPAWN_TERROR_DIST (14); na base alienígena, também fora do
+     módulo do elevador e dos módulos vizinhos. Recuo determinístico: cada limiar desce 1 tile de cada vez (até 6,
+     a distância antiga) enquanto não houver tiles alcançáveis suficientes; sem nenhum, não há restrição. */
+  const SPAWN_MIN = 6;
+  function spawnZones(B) {
+    const caches = B._ && B._.caches;
+    if (!caches) return null;
+    if (caches.spawn && caches.spawn.n === B.map.n) return caches.spawn;
+    const m = B.map, BM = OV.BMap;
+    const starts = B.xcomStarts || [];
+    if (!starts.length || !OV.MapGen || !OV.MapGen.startDistance) return null;
+    const dist = OV.MapGen.startDistance(m, starts);
+    const reach = OV.MapGen.flood(m, starts);
+    // módulos 10×10 do elevador (células com inícios X-COM) e vizinhos — só na base alienígena
+    const cw = Math.ceil(m.w / 10);
+    let liftCells = null;
+    if (B.mission && B.mission.kind === 'alienBase') {
+      liftCells = new Set();
+      for (const i of starts) {
+        const [x, y] = BM.xyz(m, i);
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) liftCells.add((((y / 10) | 0) + dy) * cw + ((x / 10) | 0) + dx);
+      }
+    }
+    const inLift = (x, y) => !!liftCells && liftCells.has(((y / 10) | 0) * cw + ((x / 10) | 0));
+    // histogramas de distância dos cantos onde cabe uma unidade 1×1 / 2×2 (alcançáveis; com/sem módulos do elevador)
+    const hist = { 1: new Int32Array(256), 2: new Int32Array(256), lift1: new Int32Array(256), lift2: new Int32Array(256) };
+    const probe = { id: -1, size: 1 };
+    for (let i = 0; i < m.n; i++) {
+      if (!reach[i]) continue;
+      const [x, y] = BM.xyz(m, i);
+      for (const sz of [1, 2]) {
+        probe.size = sz;
+        if (!fitsGeom(B, probe, i, true)) continue;
+        const d = unitStartDist(m, dist, i, sz);
+        hist[sz][d]++;
+        if (!inLift(x, y) && !(sz === 2 && (inLift(x + 1, y) || inLift(x, y + 1) || inLift(x + 1, y + 1)))) hist['lift' + sz][d]++;
+      }
+    }
+    const crew = crewMax(B);
+    const need = { 1: 2 * crew + 8, 2: 12 };
+    const pick = (h, want, n) => {
+      const cum = new Int32Array(257);
+      for (let d = 255; d >= 0; d--) cum[d] = cum[d + 1] + h[d];
+      for (let L = want; L >= SPAWN_MIN; L--) if (cum[L] >= n) return L;
+      return -1;
+    };
+    const lim = {};
+    for (const sz of [1, 2]) {
+      const normal = pick(hist[sz], tune('SPAWN_SAFE_DIST', 10), need[sz]);
+      let terror = liftCells ? pick(hist['lift' + sz], tune('SPAWN_TERROR_DIST', 14), need[sz]) : -1;
+      const lift = terror >= 0;
+      if (!lift) terror = pick(hist[sz], tune('SPAWN_TERROR_DIST', 14), need[sz]);
+      lim[sz] = { normal: Math.max(0, normal), terror: Math.max(0, terror), lift };
+    }
+    caches.spawn = { n: m.n, dist, lim, inLift };
+    return caches.spawn;
+  }
+  function crewMax(B) {
+    const Data = D();
+    const dep = B.mission && Data.deployments[B.mission.deploymentId];
+    if (!dep || !Data.deploymentRange) return 20;
+    const r = Data.deploymentRange(B.mission.deploymentId, 2);
+    return Math.max(4, (r && r.max) | 0);
+  }
+  // menor distância aos inícios entre os tiles da unidade com o canto em i
+  function unitStartDist(m, dist, i, size) {
+    if (size <= 1) return dist[i];
+    const x = i % m.w, y = ((i / m.w) | 0) % m.h;
+    let d = 255;
+    for (let dy = 0; dy < size; dy++) for (let dx = 0; dx < size; dx++) if (x + dx < m.w && y + dy < m.h) d = Math.min(d, dist[i + dy * m.w + dx]);
+    return d;
+  }
+  const isTerror = (u) => (D().TERROR_UNITS || []).indexOf(u.type) >= 0;
+  // tile i é uma desova permitida para u? (fora da preparação: sempre)
+  function spawnAllowed(B, u, i) {
+    if (!B || B.phase !== 'setup' || !u || u.side !== 'alien' || u.onMap) return true;
+    const z = spawnZones(B);
+    if (!z) return true;
+    const sz = (u.size | 0) > 1 ? 2 : 1;
+    const terror = isTerror(u);
+    const lim = z.lim[sz];
+    if (unitStartDist(B.map, z.dist, i, sz) < (terror ? lim.terror : lim.normal)) return false;
+    if (terror && lim.lift) {
+      const m = B.map;
+      const x = i % m.w, y = ((i / m.w) | 0) % m.h;
+      for (let dy = 0; dy < sz; dy++) for (let dx = 0; dx < sz; dx++) if (z.inLift(x + dx, y + dy)) return false;
+    }
+    return true;
+  }
+
+  // a unidade 2×2 (ou 1×1) cabe com o canto em i? (tiles livres, mesmo nível, sem paredes internas; alienígenas
+  // na preparação: também spawnAllowed)
   function fits(B, u, i, ignoreUnits) {
+    return fitsGeom(B, u, i, ignoreUnits) && spawnAllowed(B, u, i);
+  }
+  function fitsGeom(B, u, i, ignoreUnits) {
     const m = B.map, BM = OV.BMap;
     if (i < 0 || i >= m.n) return false;
     const [x, y, z] = BM.xyz(m, i);
@@ -382,6 +478,6 @@
   OV.BUnits = {
     SLOTS, nextId, newItem, deleteItem, findItem, findUnit, item, handItems, allItems, giveItem, dropItem, slotOf,
     takeFromUnit, weight, turnTU, actionTU, invMoveCost, canKneel, eyeHeight, isConscious, unitTiles, unitTile,
-    placeUnit, removeUnitFromMap, fits, autoLoad, fromSoldier, fromAlien, fromCivilian,
+    placeUnit, removeUnitFromMap, fits, spawnAllowed, autoLoad, fromSoldier, fromAlien, fromCivilian,
   };
 })(globalThis.OV || (globalThis.OV = {}));

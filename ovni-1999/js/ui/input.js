@@ -12,7 +12,11 @@
      'wheelnotch'{delta,x,y}                roda de rato "clássica" (±1 por entalhe): nível ou zoom (decide a cena)
      'key'       {key,code,mods,repeat}     a cena devolve true se consumiu (preventDefault)
      'keyup'     {key,code}
-   mods = {shift, alt, ctrl, meta}. A cena recebe ev e pode devolver true. */
+   mods = {shift, alt, ctrl, meta}. A cena recebe ev e pode devolver true.
+   Fora do canvas (HUD, modais): pinça/ctrl+roda dá 'zoom' e nunca amplia a página; roda sem ctrl só desloca
+   listas que realmente rolam ([data-scroll] ou overflow auto/scroll); menu de contexto nativo e gestos do Safari
+   bloqueados no documento inteiro. Roda: entalhe = evento isolado com wheelDeltaY múltiplo de 120 fora de uma
+   rajada de trackpad; usedTrackpad liga-se com qualquer evento de trackpad e desliga-se com um entalhe. */
 (function (OV) {
   'use strict';
 
@@ -25,7 +29,42 @@
     lastPointerType: 'mouse',
     usedTrackpad: false,
     keysDown: new Set(),
+    _wheelT: -1e9, // último evento de roda
+    _tpAt: -1e9, // último evento claramente de trackpad
+    _streakTP: false, // a rajada atual contém eventos de trackpad
   };
+  const WHEEL_STREAK_MS = 150, TP_QUIET_MS = 300;
+
+  // classificação de um evento de roda: {notch} (entalhe de rato) ou deslocação contínua (trackpad / roda livre)
+  I.classifyWheel = function (e, now) {
+    const gap = now - I._wheelT;
+    I._wheelT = now;
+    if (gap > WHEEL_STREAK_MS) I._streakTP = false;
+    const wd = e.wheelDeltaY;
+    const notchLike = e.deltaMode === 1 || (e.deltaMode === 0 && e.deltaX === 0 && e.deltaY !== 0
+      && typeof wd === 'number' && Math.abs(wd) >= 120 && wd % 120 === 0);
+    if (!notchLike && e.deltaMode === 0) {
+      I._streakTP = true;
+      I._tpAt = now;
+      I.usedTrackpad = true;
+    }
+    const notch = notchLike && (e.deltaMode === 1 || (!I._streakTP && now - I._tpAt > TP_QUIET_MS));
+    // um entalhe verdadeiro: há um rato — comportamento de rato (sem confirmação, roda = nível)
+    if (notch) I.usedTrackpad = false;
+    return notch;
+  };
+  // antepassado (até ao corpo) que consegue rolar na direção pedida
+  function scrollerFor(t, dx, dy) {
+    for (let n = t; n && n.nodeType === 1 && n !== document.body && n !== document.documentElement; n = n.parentElement) {
+      const force = n.hasAttribute && n.hasAttribute('data-scroll');
+      const cs = force ? null : getComputedStyle(n);
+      const oy = force || /(auto|scroll)/.test(cs.overflowY), ox = !force && /(auto|scroll)/.test(cs.overflowX);
+      if (Math.abs(dy) >= Math.abs(dx) && oy && n.scrollHeight > n.clientHeight + 1) return n;
+      if (Math.abs(dx) > Math.abs(dy) && ox && n.scrollWidth > n.clientWidth + 1) return n;
+    }
+    return null;
+  }
+  const editable = (t) => !!t && !!t.closest && !!t.closest('input, textarea, select, [contenteditable]');
 
   const mods = (e) => ({ shift: e.shiftKey, alt: e.altKey, ctrl: e.ctrlKey, meta: e.metaKey });
   function emit(ev) {
@@ -45,6 +84,8 @@
     let longTimer = 0;
 
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+    // menu de contexto nativo (clique direito / dois dedos no trackpad) nunca aparece por cima do jogo
+    window.addEventListener('contextmenu', (e) => { if (!editable(e.target)) e.preventDefault(); });
 
     canvas.addEventListener('pointerdown', (e) => {
       const p = pos(e);
@@ -162,39 +203,53 @@
         emit({ kind: 'zoom', factor: Math.exp(-e.deltaY * 0.01), x: p.x, y: p.y });
         return;
       }
-      const wd = e.wheelDeltaY;
-      const notch = e.deltaMode === 1 || (typeof wd === 'number' && wd !== 0 && wd % 120 === 0 && e.deltaX === 0 && !I.usedTrackpad);
-      if (notch) {
+      if (I.classifyWheel(e, performance.now())) {
         emit({ kind: 'wheelnotch', delta: e.deltaY < 0 ? 1 : -1, x: p.x, y: p.y });
         return;
       }
-      if (Math.abs(e.deltaX) > 0 && Math.abs(e.deltaY) > 0) I.usedTrackpad = true;
       const mul = e.deltaMode === 1 ? 24 : e.deltaMode === 2 ? 400 : 1;
       emit({ kind: 'pan', cx: e.deltaX * mul, cy: e.deltaY * mul });
     }, { passive: false });
+    // por cima do HUD/modais: a pinça amplia a câmara (nunca a página); a roda só rola listas que rolam e nunca
+    // dispara o «voltar» por gesto horizontal
+    window.addEventListener('wheel', (e) => {
+      if (e.target === canvas) return;
+      if (e.ctrlKey) {
+        e.preventDefault();
+        const p = pos(e);
+        emit({ kind: 'zoom', factor: Math.exp(-e.deltaY * 0.01), x: p.x, y: p.y });
+        return;
+      }
+      if (!scrollerFor(e.target, e.deltaX, e.deltaY)) e.preventDefault();
+    }, { passive: false });
 
-    // Safari: gestos de pinça
+    // Safari (macOS e iPadOS): gestos de pinça. No canvas ampliam a câmara; em qualquer outro sítio só se
+    // cancelam — o iOS ignora user-scalable=no e ampliaria a página sem forma de voltar
     let gScale = 1;
-    canvas.addEventListener('gesturestart', (e) => { e.preventDefault(); gScale = 1; });
-    canvas.addEventListener('gesturechange', (e) => {
+    const gesture = (e) => {
       e.preventDefault();
+      if (e.type === 'gesturestart') { gScale = 1; return; }
+      if (e.type !== 'gesturechange' || e.target !== canvas) return;
       const r = canvas.getBoundingClientRect();
       emit({ kind: 'zoom', factor: e.scale / gScale, x: (e.clientX || r.width / 2 + r.left) - r.left, y: (e.clientY || r.height / 2 + r.top) - r.top });
       gScale = e.scale;
-    });
-    canvas.addEventListener('gestureend', (e) => e.preventDefault());
+    };
+    for (const t of ['gesturestart', 'gesturechange', 'gestureend']) document.addEventListener(t, gesture, { passive: false });
 
     window.addEventListener('keydown', (e) => {
       const tag = (e.target && e.target.tagName) || '';
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target && e.target.isContentEditable)) return;
-      // nunca roubar atalhos do navegador/macOS (⌘W/Q/R/T/1–9/setas)
-      if (e.metaKey && !e.shiftKey) return;
+      // nunca roubar atalhos do navegador/macOS (⌘W/Q/R/T/1–9/setas, ⌘⇧⌫…); só a tecla ⌘ sozinha passa
+      // (pré-visualização do tiro forçado)
+      if (e.metaKey && e.key !== 'Meta') return;
       I.keysDown.add(e.code);
       const handled = emit({ kind: 'key', key: e.key, code: e.code, mods: mods(e), repeat: e.repeat });
       if (handled) e.preventDefault();
     });
     window.addEventListener('keyup', (e) => {
       I.keysDown.delete(e.code);
+      // o macOS não envia keyup das teclas largadas com ⌘ premido: esquecer tudo ao largar ⌘
+      if (e.key === 'Meta') I.keysDown.clear();
       emit({ kind: 'keyup', key: e.key, code: e.code });
     });
     window.addEventListener('blur', () => I.keysDown.clear());

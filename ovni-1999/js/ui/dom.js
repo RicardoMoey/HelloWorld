@@ -57,6 +57,8 @@
         resolve(v);
       };
       const onKey = (e) => {
+        // repetição automática de uma tecla premida antes do modal abrir (Enter longo) nunca o confirma
+        if (e.repeat && (e.key === 'Enter' || e.key === 'Escape' || e.key === ' ')) { e.preventDefault(); e.stopPropagation(); return; }
         if (e.key === 'Escape' && spec.dismissible !== false) { e.preventDefault(); e.stopPropagation(); close(null); }
         if (e.key === 'Enter') {
           const prim = (spec.buttons || []).find((b) => b.kind === 'primary');

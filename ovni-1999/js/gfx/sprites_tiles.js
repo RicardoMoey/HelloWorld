@@ -8,7 +8,10 @@
      e = camada emissiva (luzes, ecrãs, núcleos) ou null — o renderizador repõe-na sobre a sombra noturna.
      variant: inteiro qualquer (reduzido ao número de variantes da arte); scale quantizada a 0.25;
      state: fotograma de animação 0..3 (fonte de energia, consolas, elevador, núcleo) ou orientação
-     'x'|'y' da parede onde está a porta de OVNI (a linha do casco corre ao longo de x ou de y).
+     'x'|'y' da parede onde está a porta de OVNI (a linha do casco corre ao longo de x ou de y); nos chãos de OVNI/nave
+     1..4 = metade que fica junto a um casco diagonal e 7 = cúpula; nos cascos diagonais 1..4 = metade interior.
+   floorState(m, x, y, z) / objectState(m, x, y, z) → estado a pedir para o chão / objeto desse tile (m = B.map);
+     sem eles os cascos diagonais são lajes centradas e os chãos ficam inteiros (o OVNI continua octogonal).
    blit(ctx, spr, x, y, zoom, dark, gray) desenha em px CSS; blitDev(...) em px do dispositivo (transformação
    identidade); silhouette(spr) / gray(spr) camadas para sombra noturna (rgb 5,10,30) e névoa dessaturada. */
 (function (OV) {
@@ -41,6 +44,8 @@
   // fotogramas por papel animado
   const ANIM = { powerSource: 4, navigation: 4, objective: 4, gravlift: 4, device: 4 };
   const FLOOR_VARIANTS = 4;
+  const HULL_VARIANTS = 4;
+  const HULL_ARTS = new Set(['hull', 'hullDiag2', 'hullDiag3', 'ufoDoor', 'rock']);
 
   // ---- aleatório determinístico (só cosmético) ------------------------------------------------------------
   function rng(seed) {
@@ -740,14 +745,108 @@
     FLOOR_TEX.alloy(g, col, R, 0);
     for (let k = 1; k < 16; k += 2) dot(g, k, 4, 0.2, shade(col, 0.4), 0.8);
   };
+  // convés de OVNI: favo hexagonal (período 16 nos dois eixos) com pistas de circuito
+  const HEX_DX = 16 / 3, HEX_DY = 4, HEX_S = 2.62;
+  function hexPath(g, cx, cy, sc) {
+    const s = HEX_S * sc, w = (HEX_DX / 2) * sc;
+    g.moveTo(cx, cy - s);
+    g.lineTo(cx + w, cy - s / 2);
+    g.lineTo(cx + w, cy + s / 2);
+    g.lineTo(cx, cy + s);
+    g.lineTo(cx - w, cy + s / 2);
+    g.lineTo(cx - w, cy - s / 2);
+    g.closePath();
+  }
+  FLOOR_TEX.hex = (g, col, R, v) => {
+    const gr = g.createRadialGradient(4, 4, 0, 8, 8, 13);
+    gr.addColorStop(0, css(shade(col, 0.1), 0.6));
+    gr.addColorStop(1, css(shade(col, -0.14), 0.5));
+    g.fillStyle = gr;
+    g.fillRect(0, 0, 16, 16);
+    for (let j = -1; j <= 4; j++) {
+      for (let i = -1; i <= 3; i++) {
+        const cx = i * HEX_DX + (j & 1 ? HEX_DX / 2 : 0), cy = j * HEX_DY;
+        // células com tom próprio, mas função só da posição (o padrão encaixa entre tiles)
+        const k = ((((i % 3) + 3) % 3) * 5 + (((j % 4) + 4) % 4) * 3) % 7;
+        g.beginPath();
+        hexPath(g, cx, cy, 0.86);
+        g.fillStyle = css(shade(col, k === 0 ? -0.16 : k === 3 ? 0.08 : -0.03), 0.85);
+        g.fill();
+        g.beginPath();
+        hexPath(g, cx, cy, 0.86);
+        g.strokeStyle = css(shade(col, 0.28), 0.45);
+        g.lineWidth = 0.14;
+        g.stroke();
+      }
+    }
+    // pistas de circuito ao longo das juntas
+    if (v === 1) {
+      g.strokeStyle = css(0x60d0ff, 0.35);
+      g.lineWidth = 0.18;
+      g.beginPath();
+      g.moveTo(0, 6); g.lineTo(4.5, 6); g.lineTo(7, 8.5); g.lineTo(16, 8.5);
+      g.stroke();
+      dot(g, 4.5, 6, 0.3, 0x9ae8ff, 0.7);
+    }
+  };
+  // tejadilho do casco: chapa abaulada (realce largo a partir do centro) com costuras e rebites nas arestas
+  FLOOR_TEX.hullRoof = (g, col, R, v) => {
+    const gr = g.createRadialGradient(6.5, 6.5, 0.5, 8, 8, 12);
+    gr.addColorStop(0, css(shade(col, 0.12), 0.8));
+    gr.addColorStop(0.6, css(shade(col, 0.02), 0.4));
+    gr.addColorStop(1, css(shade(col, -0.1), 0.6));
+    g.fillStyle = gr;
+    g.fillRect(0, 0, 16, 16);
+    line(g, 0, 0.15, 16, 0.15, shade(col, 0.35), 0.5, 0.25);
+    line(g, 0.15, 0, 0.15, 16, shade(col, 0.35), 0.5, 0.25);
+    line(g, 0, 15.85, 16, 15.85, shade(col, -0.5), 0.55, 0.25);
+    line(g, 15.85, 0, 15.85, 16, shade(col, -0.5), 0.55, 0.25);
+    for (let k = 2; k < 16; k += 4) {
+      dot(g, k, 1, 0.16, shade(col, 0.45), 0.7);
+      dot(g, 1, k, 0.16, shade(col, 0.45), 0.7);
+    }
+    if (v === 2 && R() < 0.4) {
+      // grelha de ventilação
+      g.fillStyle = css(shade(col, -0.35), 0.8);
+      g.fillRect(6, 6.5, 4, 3);
+      for (let k = 0; k < 4; k++) line(g, 6.4 + k, 6.7, 6.4 + k, 9.3, shade(col, 0.2), 0.6, 0.2);
+    }
+  };
+  // porão das naves X-COM: chapa estriada, linhas amarelas de delimitação e argolas de amarração
+  FLOOR_TEX.cargo = (g, col, R, v) => {
+    FLOOR_TEX.metal(g, col, R);
+    g.fillStyle = css(0xe0b020, 0.85);
+    g.fillRect(0, 0, 16, 0.55);
+    g.fillRect(0, 0, 0.55, 16);
+    for (const [a, b] of [[2.2, 2.2], [13.8, 2.2], [2.2, 13.8], [13.8, 13.8]]) {
+      g.beginPath();
+      g.arc(a, b, 0.75, 0, TAU);
+      g.strokeStyle = css(shade(col, 0.45), 0.9);
+      g.lineWidth = 0.25;
+      g.stroke();
+      dot(g, a, b, 0.25, shade(col, -0.5), 1);
+    }
+    if (v === 1) {
+      // seta de embarque
+      g.fillStyle = css(0xe0b020, 0.55);
+      g.beginPath();
+      g.moveTo(8, 11.5); g.lineTo(10.5, 8.5); g.lineTo(9, 8.5); g.lineTo(9, 5); g.lineTo(7, 5); g.lineTo(7, 8.5); g.lineTo(5.5, 8.5);
+      g.closePath();
+      g.fill();
+    }
+  };
 
   // ---- pintores por papel ----------------------------------------------------------------------------------
   // ctx de pintura: {def, v, st, R, pal, glow(fn)} — glow desenha na camada base e na emissiva
   const PAINT = {};
 
-  function paintFloor(g, P) {
+  function paintFloorBase(g, P) {
     const d = P.def;
-    const col = shade(d.colour, (P.R() - 0.5) * 0.06 + (P.v - 1.5) * 0.012);
+    let base = d.colour;
+    // convés e tejadilho de OVNI na mesma liga cinzento-violeta do casco
+    if (d.set === 'UFO' && d.mat === 'alloy') base = d.role === 'roof' ? shade(mix(base, 0x8a82b4, 0.4), -0.1) : mix(base, 0x8a82b4, 0.22);
+    const flat = d.role === 'roof' && (d.mat === 'alloy' || d.mat === 'hull');
+    const col = shade(base, flat ? (P.R() - 0.5) * 0.02 : (P.R() - 0.5) * 0.06 + (P.v - 1.5) * 0.012);
     const e = 0.6; // losango ligeiramente expandido (sem frestas)
     g.beginPath();
     g.moveTo(0, -e);
@@ -761,6 +860,9 @@
     g.clip();
     let mat = d.mat;
     if (d.role === 'craftRamp' && mat !== 'pad') mat = 'ramp';
+    if (mat === 'alloy' && (d.role === 'inner' || (d.role === 'craftFloor' && d.set === 'UFO'))) mat = 'hex';
+    if (d.role === 'roof' && (mat === 'alloy' || mat === 'hull')) mat = 'hullRoof';
+    if (d.role === 'craftFloor' && d.set === 'CRAFT') mat = 'cargo';
     if (d.role === 'scorched') mat = mat === 'alloy' ? 'alloyBurnt' : 'burnt';
     const fn = mat === 'alloyBurnt' ? (gg, c, R, v) => { FLOOR_TEX.alloy(gg, c, R, v); FLOOR_TEX.burnt(gg, shade(c, -0.3), R, v); }
       : FLOOR_TEX[mat] || FLOOR_TEX.dirt;
@@ -772,6 +874,66 @@
     if (d.role === 'craftFloor' || d.role === 'craftRamp') {
       line(g, 0, 0, 32, 16, shade(col, 0.3), 0.35, 0.5);
     }
+  }
+  // chão recortado junto a um casco diagonal (estado 1..4 = metade que fica; ver floorState) e cúpula (estado 7)
+  const CUT_TRI = {
+    1: [[0, 0], [16, 0], [0, 16]], 2: [[16, 0], [16, 16], [0, 16]],
+    3: [[0, 0], [16, 0], [16, 16]], 4: [[0, 0], [16, 16], [0, 16]],
+  };
+  const CUT_EDGE = { 1: [[16, 0], [0, 16]], 2: [[16, 0], [0, 16]], 3: [[0, 0], [16, 16]], 4: [[0, 0], [16, 16]] };
+  function paintFloor(g, P) {
+    const d = P.def, st = P.st | 0;
+    const tri = CUT_TRI[st];
+    if (!tri) {
+      paintFloorBase(g, P);
+      if (st === DOME_STATE) domeCap(g, P);
+      return;
+    }
+    const upper = d.role === 'roof' || /\.up$/.test(d.key);
+    if (!upper) {
+      // no nível do chão a metade exterior é o terreno queimado do próprio conjunto
+      const byKey = (OV.Data && OV.Data.tileDefByKey) || {};
+      const gd = byKey[d.set + '.ground'];
+      if (gd) paintFloorBase(g, Object.assign({}, P, { def: gd }));
+    }
+    g.save();
+    poly(g, tri);
+    g.clip();
+    paintFloorBase(g, P);
+    g.restore();
+    // aro do tejadilho ao longo do corte
+    const [a, b] = CUT_EDGE[st];
+    const rim = d.role === 'roof' ? shade(mix(d.colour, 0x8a82b4, 0.4), 0.35) : shade(d.colour, -0.45);
+    line(g, PX(a[0], a[1]), PY(a[0], a[1], 0), PX(b[0], b[1]), PY(b[0], b[1], 0), rim, 0.85, 0.7);
+  }
+  // cúpula sobre o poço do elevador gravítico (tejadilho do convés superior)
+  const DOME_STATE = 7;
+  function domeCap(g, P) {
+    const X = PX(8, 8), Y = PY(8, 8, 0);
+    const base = shade(mix(P.def.colour, 0x8a82b4, 0.4), -0.05);
+    g.beginPath();
+    g.ellipse(X, Y, 20, 10, 0, 0, TAU);
+    g.fillStyle = css(shade(base, -0.35));
+    g.fill();
+    const gr = g.createRadialGradient(X - 6, Y - 9, 1, X, Y - 3, 20);
+    gr.addColorStop(0, css(shade(base, 0.55)));
+    gr.addColorStop(0.45, css(shade(base, 0.12)));
+    gr.addColorStop(1, css(shade(base, -0.3)));
+    g.beginPath();
+    g.ellipse(X, Y - 1.5, 17, 8.5, 0, 0, Math.PI);
+    g.ellipse(X, Y - 1.5, 17, 11.5, 0, Math.PI, TAU);
+    g.fillStyle = gr;
+    g.fill();
+    g.strokeStyle = css(shade(base, -0.55), 0.6);
+    g.lineWidth = 0.5;
+    g.stroke();
+    P.glow((e) => {
+      for (let k = 0; k < 8; k++) {
+        const a = (k / 8) * TAU;
+        dot(e, X + Math.cos(a) * 18.5, Y + Math.sin(a) * 9.2, 0.8, k & 1 ? UFO_VIOLET : P.pal.accent || 0x60d0ff, 0.9);
+      }
+      dot(e, X - 3, Y - 8, 1.6, 0xffffff, 0.35);
+    });
   }
   for (const r of ['ground', 'road', 'inner', 'roof', 'craftFloor', 'craftRamp', 'scorched']) PAINT[r] = paintFloor;
 
@@ -793,11 +955,14 @@
     const tex = texFor(mat);
     const alien = P.def.set === 'UFO' || P.def.set === 'ALIENBASE';
     const glow = alien && isAlloyMat(mat) ? P.pal.accent : null;
+    const sty = isAlloyMat(mat) ? hullStyleOf(Object.assign({}, P.def, { mat })) : null;
+    if (sty) col = sty.base(col);
     const face = mainShade(side, col);
     edgeBox(g, side, a === undefined ? 0 : a, b === undefined ? 16 : b, z0, z1, col, {
       face, cap: side === 'west' ? shade(col, 0.06) : shade(col, -0.32), top: shade(col, 0.28),
-      tex: (W, H, c) => tex(g, W, H, c, P.R, glow),
+      tex: sty ? (W, H, c) => sty.face(g, P, W, H, c, z0, z1) : (W, H, c) => tex(g, W, H, c, P.R, glow),
     });
+    if (sty && sty.glow && (!sty.glowIf || sty.glowIf(P))) P.glow((e) => edgeFace(e, side, a === undefined ? 0 : a, b === undefined ? 16 : b, z0, z1, (W, H) => sty.glow(e, P, W, H, z0, z1)));
   }
 
   PAINT.wall = (g, P, side) => {
@@ -1084,6 +1249,11 @@
   }
   PAINT.rock = (g, P) => {
     const d = P.def, mat = d.mat;
+    const sty = hullStyleOf(d);
+    if (sty) {
+      hullPrism(g, P, sty, SQUARE, 0, 24, { base: sty.base(shade(P.wallCol, -0.06)) });
+      return;
+    }
     if (mat === 'concrete' || mat === 'bulkhead' || isAlloyMat(mat)) {
       const glow = (d.set === 'UFO' || d.set === 'ALIENBASE') ? P.pal.accent : null;
       block(g, P, shade(P.wallCol, mat === 'concrete' ? -0.05 : -0.12), mat, 0, 0, 16, 16, 24, glow);
@@ -1521,116 +1691,612 @@
     });
   };
 
+  // ---- cascos estilizados: OVNI (liga cinzento-violeta), nave X-COM (chumbo com faixa azul), base alienígena (orgânico)
+  // Os sprites não conhecem os vizinhos: tudo o que tem de ligar entre tiles (costuras, faixas de luz, rebordo do
+  // equador) é desenhado em coordenadas absolutas do tile (z em voxels; s periódico em 16), sem contornos nas
+  // arestas do tile, para que uma fila de cascos se leia como uma só chapa contínua.
+  const LEDGE_Z0 = 10, LEDGE_Z1 = 11.4, LEDGE_OUT = 0.9;
+  const ELERIUM = 0xd468ff, UFO_VIOLET = 0xb478ff, XCOM_BLUE = 0x2f6fd8;
+  const DIAG_K = 7; // largura (em x+y ou x−y) da laje diagonal
+  // laje diagonal: retângulo rodado com topos perpendiculares que encostam aos vizinhos sem estrangulamento
+  const DIAG_PTS = {
+    2: [[16 - DIAG_K / 2, -DIAG_K / 2], [16 + DIAG_K / 2, DIAG_K / 2], [DIAG_K / 2, 16 + DIAG_K / 2], [-DIAG_K / 2, 16 - DIAG_K / 2]],
+    3: [[-DIAG_K / 2, DIAG_K / 2], [DIAG_K / 2, -DIAG_K / 2], [16 + DIAG_K / 2, 16 - DIAG_K / 2], [16 - DIAG_K / 2, 16 + DIAG_K / 2]],
+  };
+  const SQUARE = [[0, 0], [16, 0], [16, 16], [0, 16]];
+
+  // faces visíveis (normal com componente +x+y) de uma pegada convexa, de trás para a frente
+  function frontFaces(pts) {
+    const n = pts.length;
+    let cx = 0, cy = 0;
+    for (const p of pts) { cx += p[0]; cy += p[1]; }
+    cx /= n;
+    cy /= n;
+    const out = [];
+    for (let k = 0; k < n; k++) {
+      const a = pts[k], b = pts[(k + 1) % n];
+      let nx = b[1] - a[1], ny = -(b[0] - a[0]);
+      if (nx * ((a[0] + b[0]) / 2 - cx) + ny * ((a[1] + b[1]) / 2 - cy) < 0) { nx = -nx; ny = -ny; }
+      const l = Math.hypot(nx, ny) || 1;
+      nx /= l;
+      ny /= l;
+      if (nx + ny > 0.02) out.push({ a, b, nx, ny, d: (a[0] + b[0] + a[1] + b[1]) / 2 });
+    }
+    return out.sort((p, q) => p.d - q.d);
+  }
+  // pegada convexa afastada d voxels para fora
+  function offsetPoly(pts, d, mask) {
+    const n = pts.length;
+    let cx = 0, cy = 0;
+    for (const p of pts) { cx += p[0]; cy += p[1]; }
+    cx /= n;
+    cy /= n;
+    const lines = [];
+    for (let k = 0; k < n; k++) {
+      const a = pts[k], b = pts[(k + 1) % n];
+      let nx = b[1] - a[1], ny = -(b[0] - a[0]);
+      if (nx * ((a[0] + b[0]) / 2 - cx) + ny * ((a[1] + b[1]) / 2 - cy) < 0) { nx = -nx; ny = -ny; }
+      const l = Math.hypot(nx, ny) || 1;
+      nx /= l;
+      ny /= l;
+      const dd = mask === 'front' ? (nx + ny > 0.02 ? d : 0) : mask ? d * mask[k] : d;
+      lines.push({ px: a[0] + nx * dd, py: a[1] + ny * dd, dx: b[0] - a[0], dy: b[1] - a[1] });
+    }
+    const out = [];
+    for (let k = 0; k < n; k++) {
+      const p = lines[(k + n - 1) % n], q = lines[k];
+      const den = p.dx * q.dy - p.dy * q.dx;
+      if (Math.abs(den) < 1e-9) { out.push([q.px, q.py]); continue; }
+      const t = ((q.px - p.px) * q.dy - (q.py - p.py) * q.dx) / den;
+      out.push([p.px + p.dx * t, p.py + p.dy * t]);
+    }
+    return out;
+  }
+  // transformação para desenhar em coordenadas do tile no plano z (sem recorte)
+  function onPlane(g, z) {
+    g.transform(2, 1, -2, 1, 0, -2 * z);
+  }
+
+  // linhas de costura numa face (espaço da face) — vertical em s, horizontal em t
+  function seamV(g, s, t0, t1, c, a) {
+    line(g, s, t0, s, t1, shade(c, -0.5), a, 0.22);
+    line(g, s + 0.25, t0, s + 0.25, t1, shade(c, 0.35), a * 0.7, 0.15);
+  }
+  function seamH(g, t, W, c, a) {
+    line(g, 0, t, W, t, shade(c, -0.5), a, 0.22);
+    line(g, 0, t + 0.25, W, t + 0.25, shade(c, 0.35), a * 0.7, 0.15);
+  }
+
+  const HULL_STYLE = {};
+  // OVNI: liga polida com curvatura vertical (claro em cima, escuro na saia), rebordo do equador, faixa de luz
+  HULL_STYLE.ufo = {
+    ledge: true,
+    base: (col) => mix(col, 0x8a82b4, 0.38),
+    face(g, P, W, H, c, z0, z1) {
+      const T = (z) => z1 - z;
+      const gr = g.createLinearGradient(0, T(24), 0, T(0));
+      gr.addColorStop(0, css(shade(c, 0.42)));
+      gr.addColorStop(0.05, css(shade(c, 0.18)));
+      gr.addColorStop(0.3, css(shade(c, 0.06)));
+      gr.addColorStop(0.5, css(shade(c, -0.08)));
+      gr.addColorStop(0.56, css(shade(c, -0.42)));
+      gr.addColorStop(0.62, css(shade(c, 0.04)));
+      gr.addColorStop(0.84, css(shade(c, -0.2)));
+      gr.addColorStop(0.94, css(shade(c, -0.45)));
+      gr.addColorStop(1, css(shade(c, -0.62)));
+      g.fillStyle = gr;
+      g.fillRect(0, 0, W, H);
+      // reflexo especular difuso (faixa clara inclinada)
+      const sp = g.createLinearGradient(0, 0, W, 0);
+      sp.addColorStop(0, 'rgba(255,255,255,0)');
+      sp.addColorStop(0.35, 'rgba(255,255,255,0.07)');
+      sp.addColorStop(0.5, 'rgba(255,255,255,0)');
+      g.fillStyle = sp;
+      g.fillRect(0, T(24), W, T(12) - T(24));
+      // painéis: costuras subtis (centro e aresta), cinta horizontal superior e inferior
+      for (const s of [0, W / 2]) {
+        seamV(g, s, T(22.6), T(LEDGE_Z1), c, 0.3);
+        seamV(g, s, T(LEDGE_Z0), T(1.5), c, 0.3);
+      }
+      seamH(g, T(18), W, c, 0.4);
+      seamH(g, T(4.5), W, c, 0.35);
+      for (let s = 2; s < W - 1; s += 4) dot(g, s, T(20.6), 0.18, shade(c, 0.5), 0.7);
+      // aro do topo
+      line(g, 0, T(23.75), W, T(23.75), shade(c, 0.6), 0.9, 0.35);
+      if (P.v === 2) {
+        // grelha de ventilação
+        g.fillStyle = css(shade(c, -0.55), 0.85);
+        g.fillRect(W / 2 - 3, T(16.6), 6, 2.6);
+        for (let k = 0; k < 5; k++) line(g, W / 2 - 2.6 + k * 1.3, T(16.4), W / 2 - 2.6 + k * 1.3, T(14.2), shade(c, 0.2), 0.7, 0.2);
+      }
+    },
+    glow(e, P, W, H, z0, z1) {
+      const T = (z) => z1 - z;
+      if (z0 <= 9 && z1 >= 9.6) {
+        e.fillStyle = css(P.pal.accent, 0.9);
+        e.fillRect(0, T(9.6), W, 0.5);
+        e.fillStyle = css(P.pal.accent, 0.25);
+        e.fillRect(0, T(9.6) - 0.5, W, 1.5);
+      }
+      if ((P.v & 1) && z0 <= 15 && z1 >= 16) {
+        for (const s of [W * 0.25, W * 0.75]) {
+          dot(e, s, T(15.4), 0.9, UFO_VIOLET, 0.35);
+          dot(e, s, T(15.4), 0.45, 0xf0d8ff, 0.95);
+        }
+      }
+    },
+    top(g, P, pts, z1, c) {
+      // tampo liso sem contorno nem gradiente por tile: a fila de cascos lê-se como um aro contínuo
+      g.fillStyle = css(shade(c, 0.15));
+      g.fillRect(-4, -4, 24, 24);
+      for (let k = 0; k < 18; k++) dot(g, P.R() * 16, P.R() * 16, 0.12, shade(c, (P.R() - 0.5) * 0.5), 0.45);
+    },
+    ledgeCol: (c) => shade(c, 0.1),
+  };
+  // nave X-COM: chapa de chumbo com rebites, faixa azul X-COM com filete branco, pormenores por variante
+  HULL_STYLE.craft = {
+    ledge: false,
+    base: (col) => mix(col, 0x3a414a, 0.6),
+    face(g, P, W, H, c, z0, z1) {
+      const T = (z) => z1 - z;
+      const gr = g.createLinearGradient(0, T(24), 0, T(0));
+      gr.addColorStop(0, css(shade(c, 0.34)));
+      gr.addColorStop(0.06, css(shade(c, 0.12)));
+      gr.addColorStop(0.55, css(c));
+      gr.addColorStop(0.92, css(shade(c, -0.3)));
+      gr.addColorStop(1, css(shade(c, -0.55)));
+      g.fillStyle = gr;
+      g.fillRect(0, 0, W, H);
+      for (const s of [0, W / 2]) seamV(g, s, T(23.5), T(0.5), c, 0.45);
+      for (const z of [17, 6]) seamH(g, T(z), W, c, 0.45);
+      for (let s = 1; s < W; s += 2) {
+        dot(g, s, T(16.6), 0.14, shade(c, 0.5), 0.75);
+        dot(g, s, T(6.4), 0.14, shade(c, 0.5), 0.75);
+      }
+      // faixa azul X-COM com filetes brancos
+      g.fillStyle = css(XCOM_BLUE);
+      g.fillRect(0, T(14.4), W, 2.2);
+      g.fillStyle = css(shade(XCOM_BLUE, 0.35), 0.8);
+      g.fillRect(0, T(14.4), W, 0.35);
+      g.fillStyle = css(0xe8eef4, 0.9);
+      g.fillRect(0, T(11.7), W, 0.4);
+      line(g, 0, T(23.75), W, T(23.75), shade(c, 0.55), 0.8, 0.3);
+      if (P.v === 2 && W >= 10) {
+        // insígnia X-COM: disco azul, aro branco, X branco
+        const X = W / 2, Y = T(19.6);
+        dot(g, X, Y, 2.3, 0xe8eef4, 1);
+        dot(g, X, Y, 1.8, XCOM_BLUE, 1);
+        line(g, X - 1.1, Y - 1.1, X + 1.1, Y + 1.1, 0xffffff, 1, 0.45);
+        line(g, X + 1.1, Y - 1.1, X - 1.1, Y + 1.1, 0xffffff, 1, 0.45);
+      } else if (P.v === 3) {
+        g.fillStyle = css(shade(c, -0.55));
+        g.fillRect(W / 2 - 3, T(9.6), 6, 2.4);
+        for (let k = 0; k < 6; k++) line(g, W / 2 - 3, T(9.4) + k * 0.4, W / 2 + 3, T(9.4) + k * 0.4, shade(c, 0.15), 0.6, 0.15);
+      } else if (P.v === 1) {
+        // aviso de perigo junto à base
+        g.fillStyle = css(0x1a1a1a);
+        g.fillRect(0, T(2.2), W, 1.4);
+        g.fillStyle = css(0xe0b020);
+        for (let s = -2; s < W; s += 2) {
+          g.beginPath();
+          g.moveTo(s, T(0.8)); g.lineTo(s + 0.9, T(0.8)); g.lineTo(s + 1.8, T(2.2)); g.lineTo(s + 0.9, T(2.2));
+          g.closePath();
+          g.fill();
+        }
+      }
+    },
+    glowIf: (P) => P.v === 3,
+    glow(e, P, W, H, z0, z1) {
+      if (z1 < 23) return;
+      dot(e, W * 0.3, z1 - 22.2, 0.5, 0xff4a3a, 0.95);
+      dot(e, W * 0.3, z1 - 22.2, 1.2, 0xff4a3a, 0.3);
+    },
+    top(g, P, pts, z1, c) {
+      g.fillStyle = css(shade(c, 0.14));
+      g.fillRect(-4, -4, 24, 24);
+      for (const [a, b] of [[4, 4], [12, 4], [4, 12], [12, 12]]) dot(g, a, b, 0.2, shade(c, 0.4), 0.6);
+    },
+  };
+  // base alienígena: resina orgânica violeta com nervuras, veias e nódulos luminosos
+  HULL_STYLE.organic = {
+    ledge: false,
+    base: (col) => mix(col, 0x5e3a7c, 0.5),
+    face(g, P, W, H, c, z0, z1) {
+      const R = P.R, T = (z) => z1 - z;
+      const gr = g.createLinearGradient(0, T(24), 0, T(0));
+      gr.addColorStop(0, css(shade(c, 0.3)));
+      gr.addColorStop(0.1, css(shade(c, 0.05)));
+      gr.addColorStop(0.7, css(shade(c, -0.08)));
+      gr.addColorStop(1, css(shade(c, -0.55)));
+      g.fillStyle = gr;
+      g.fillRect(0, 0, W, H);
+      // nervuras verticais arredondadas
+      for (let s = 0; s < W; s += 4) {
+        const rg = g.createLinearGradient(s, 0, s + 4, 0);
+        rg.addColorStop(0, css(shade(c, -0.45), 0.55));
+        rg.addColorStop(0.35, css(shade(c, 0.28), 0.35));
+        rg.addColorStop(0.7, css(shade(c, 0), 0));
+        rg.addColorStop(1, css(shade(c, -0.45), 0.5));
+        g.fillStyle = rg;
+        g.fillRect(s, 0, 4, H);
+      }
+      // veias
+      for (let k = 0; k < 3; k++) {
+        let s = R() * W, t = T(24) + R() * 4;
+        g.beginPath();
+        g.moveTo(s, t);
+        for (let j = 0; j < 6; j++) { s += (R() - 0.5) * 3; t += 2 + R() * 2.5; g.lineTo(s, t); }
+        g.strokeStyle = css(shade(mix(c, 0x9a3a8a, 0.5), -0.25), 0.7);
+        g.lineWidth = 0.3;
+        g.stroke();
+      }
+      // lábio superior (bolbo arredondado)
+      const lip = g.createLinearGradient(0, T(24), 0, T(21.5));
+      lip.addColorStop(0, css(shade(c, 0.45), 0.8));
+      lip.addColorStop(1, css(shade(c, 0), 0));
+      g.fillStyle = lip;
+      g.fillRect(0, T(24), W, T(21.5) - T(24));
+    },
+    glow(e, P, W, H, z0, z1) {
+      const R = rng(P.v * 7919 + Math.round(W * 13));
+      const n = 1 + ((P.v + Math.round(W)) & 1);
+      for (let k = 0; k < n; k++) {
+        const s = 2 + R() * (W - 4), z = 6 + R() * 12;
+        if (z < z0 || z > z1) continue;
+        dot(e, s, z1 - z, 1.1, 0x50e0c0, 0.25);
+        dot(e, s, z1 - z, 0.5, 0x9affe8, 0.9);
+      }
+    },
+    top(g, P, pts, z1, c) {
+      const R = P.R;
+      g.fillStyle = css(shade(c, 0.06));
+      g.fillRect(-4, -4, 24, 24);
+      // manchas suaves (pele) e duas veias curvas
+      for (let k = 0; k < 5; k++) {
+        const x = R() * 16, y = R() * 16, r = 1.5 + R() * 2.5;
+        const gr = g.createRadialGradient(x, y, 0, x, y, r);
+        gr.addColorStop(0, css(shade(c, R() < 0.5 ? 0.14 : -0.2), 0.45));
+        gr.addColorStop(1, css(c, 0));
+        g.fillStyle = gr;
+        g.fillRect(x - r, y - r, r * 2, r * 2);
+      }
+      for (let k = 0; k < 2; k++) {
+        const x0 = R() * 16, y0 = R() * 16;
+        g.beginPath();
+        g.moveTo(x0, y0);
+        g.bezierCurveTo(x0 + (R() - 0.5) * 10, y0 + (R() - 0.5) * 10, x0 + (R() - 0.5) * 12, y0 + (R() - 0.5) * 12, x0 + (R() - 0.5) * 14, y0 + (R() - 0.5) * 14);
+        g.strokeStyle = css(shade(mix(c, 0x9a3a8a, 0.55), -0.15), 0.55);
+        g.lineWidth = 0.3;
+        g.stroke();
+      }
+      for (let k = 0; k < 3; k++) dot(g, R() * 16, R() * 16, 0.35 + R() * 0.4, shade(c, -0.35), 0.4);
+    },
+  };
+  const STYLE_OF = { UFO: 'ufo', CRAFT: 'craft', ALIENBASE: 'organic' };
+  const hullStyleOf = (d) => (STYLE_OF[d.set] && isAlloyMat(d.mat) ? HULL_STYLE[STYLE_OF[d.set]] : null);
+
+  // prisma de casco estilizado entre z0 e z1; o.faceExtra(g, W, H, c, face) desenha por cima de cada face
+  function hullPrism(g, P, sty, pts, z0, z1, o) {
+    o = o || {};
+    const c = o.base !== undefined ? o.base : sty.base(P.def.colour);
+    if (sty.ledge && !o.noLedge && z0 < LEDGE_Z0 && z1 > LEDGE_Z1) {
+      hullPrism(g, P, sty, pts, z0, LEDGE_Z0, Object.assign({}, o, { base: c, noTop: true }));
+      const lc = sty.ledgeCol(c);
+      const lp = offsetPoly(pts, LEDGE_OUT, 'front');
+      for (const f of frontFaces(lp)) {
+        const fc = shade(lc, -0.3 * f.nx + 0.06 * f.ny);
+        const q = [[f.a[0], f.a[1], LEDGE_Z0], [f.b[0], f.b[1], LEDGE_Z0], [f.b[0], f.b[1], LEDGE_Z1], [f.a[0], f.a[1], LEDGE_Z1]];
+        fillPoly(g, q, fc);
+        faceEdge(g, f.a, f.b, LEDGE_Z0, LEDGE_Z1, (W, H) => {
+          line(g, 0, 0.12, W, 0.12, shade(fc, 0.6), 0.9, 0.25);
+          g.fillStyle = 'rgba(0,0,0,0.3)';
+          g.fillRect(0, H - 0.35, W, 0.35);
+        });
+      }
+      fillPoly(g, lp.map((p) => [p[0], p[1], LEDGE_Z1]), shade(lc, 0.3));
+      hullPrism(g, P, sty, pts, LEDGE_Z1, z1, Object.assign({}, o, { base: c, noLedge: true }));
+      return;
+    }
+    const faces = frontFaces(pts);
+    for (const f of faces) {
+      const fc = shade(c, -0.32 * f.nx + 0.04 * f.ny);
+      fillPoly(g, [[f.a[0], f.a[1], z0], [f.b[0], f.b[1], z0], [f.b[0], f.b[1], z1], [f.a[0], f.a[1], z1]], fc);
+      faceEdge(g, f.a, f.b, z0, z1, (W, H) => {
+        sty.face(g, P, W, H, fc, z0, z1, f);
+        if (o.faceExtra) o.faceExtra(g, W, H, fc, f, z0, z1);
+      });
+    }
+    // tampo sem contorno (a fila de cascos funde-se num aro contínuo)
+    if (!o.noTop) {
+      const top = pts.map((p) => [p[0], p[1], z1]);
+      fillPoly(g, top, shade(c, 0.18));
+      g.save();
+      poly(g, top);
+      g.clip();
+      onPlane(g, z1);
+      sty.top(g, P, pts, z1, c);
+      g.restore();
+    }
+    const own = !!sty.glow && (!sty.glowIf || sty.glowIf(P));
+    if (own || o.glowExtra) {
+      P.glow((e) => {
+        for (const f of faces) {
+          faceEdge(e, f.a, f.b, z0, z1, (W, H) => {
+            if (own) sty.glow(e, P, W, H, z0, z1, f);
+            if (o.glowExtra) o.glowExtra(e, W, H, f, z0, z1);
+          });
+        }
+      });
+    }
+  }
+
+  // painéis de correr de uma porta de OVNI (espaço da face; t = 0 em z = 24)
+  function doorPanels(g, P, W, H, c, z1, style) {
+    const T = (z) => z1 - z;
+    const x0 = 2.6, x1 = W - 2.6, top = T(19.4), bot = T(0);
+    const craft = style === HULL_STYLE.craft, organic = style === HULL_STYLE.organic;
+    g.fillStyle = css(shade(c, -0.68));
+    g.fillRect(x0 - 0.8, top - 0.8, x1 - x0 + 1.6, bot - top + 0.8);
+    const leaf = organic ? mix(c, 0x3a2a4a, 0.4) : craft ? shade(c, 0.08) : mix(c, 0xa8b0c8, 0.3);
+    for (const [a, b] of [[x0, W / 2 - 0.15], [W / 2 + 0.15, x1]]) {
+      const gr = g.createLinearGradient(a, 0, b, 0);
+      gr.addColorStop(0, css(shade(leaf, 0.22)));
+      gr.addColorStop(0.5, css(leaf));
+      gr.addColorStop(1, css(shade(leaf, -0.28)));
+      g.fillStyle = gr;
+      g.fillRect(a, top, b - a, bot - top);
+      // frisos horizontais
+      for (let z = 4; z < 19; z += 3.2) line(g, a + 0.5, T(z), b - 0.5, T(z), shade(leaf, -0.4), 0.55, 0.2);
+    }
+    // junta central e puxadores
+    line(g, W / 2, top, W / 2, bot, shade(c, -0.75), 1, 0.35);
+    for (const s of [W / 2 - 1.2, W / 2 + 1.2]) line(g, s, T(11), s, T(8), shade(leaf, -0.5), 0.9, 0.35);
+    if (craft) {
+      g.fillStyle = css(0xe0b020);
+      g.fillRect(x0, top, x1 - x0, 0.7);
+    }
+  }
+  function doorFrameGlow(e, P, W, z1, style) {
+    if (style === HULL_STYLE.craft) return;
+    const T = (z) => z1 - z;
+    const acc = P.pal.accent, x0 = 2.6 - 0.8, x1 = W - 2.6 + 0.8, top = T(19.4) - 0.8;
+    e.strokeStyle = css(acc, 0.85);
+    e.lineWidth = 0.35;
+    e.beginPath();
+    e.moveTo(x0, T(0));
+    e.lineTo(x0, top);
+    e.lineTo(x1, top);
+    e.lineTo(x1, T(0));
+    e.stroke();
+    e.strokeStyle = css(acc, 0.22);
+    e.lineWidth = 1.2;
+    e.stroke();
+    // chevron de estado por cima da porta
+    e.beginPath();
+    e.moveTo(W / 2 - 1.2, top - 1.6);
+    e.lineTo(W / 2, top - 0.9);
+    e.lineTo(W / 2 + 1.2, top - 1.6);
+    e.strokeStyle = css(acc, 0.95);
+    e.lineWidth = 0.35;
+    e.stroke();
+  }
+
+  // casco genérico (terrenos: pedra, betão, gelo…) — bloco texturado sem estilo de nave
   function hullBlock(g, P, door) {
     const d = P.def, col = d.colour;
-    const alien = d.set === 'UFO' || d.set === 'ALIENBASE';
-    const glow = alien && isAlloyMat(d.mat) ? P.pal.accent : null;
     const tex = texFor(d.mat);
     const doorFace = (W, H, c) => {
-      tex(g, W, H, c, P.R, glow);
+      tex(g, W, H, c, P.R, null);
       g.fillStyle = css(shade(c, -0.5));
       g.fillRect(2.6, 2.6, W - 5.2, H - 2.6);
       g.fillStyle = css(shade(c, 0.12));
       g.fillRect(3.1, 3.1, W / 2 - 3.3, H - 3.1);
       g.fillRect(W / 2 + 0.2, 3.1, W / 2 - 3.3, H - 3.1);
-      for (const s of [5, W - 5]) for (let t = 6; t < H; t += 4) line(g, s - 1, t, s + 1, t, shade(c, -0.35), 0.7, 0.3);
-      if (glow !== null) { g.fillStyle = css(glow, 0.9); g.fillRect(2.6, 2.6, W - 5.2, 0.5); }
     };
     const ori = door ? P.st : null;
     box(g, 0, 0, 0, 16, 16, 24, col, {
-      texX: ori === 'y' || ori === 'b' ? doorFace : (W, H, c) => tex(g, W, H, c, P.R, glow),
-      texY: ori === 'x' || ori === 'b' ? doorFace : (W, H, c) => tex(g, W, H, c, P.R, glow),
-      texTop: (W, H, c) => (isAlloyMat(d.mat) ? FLOOR_TEX.hull(g, c, P.R) : TEX.concrete(g, W, H, c, P.R)),
+      texX: ori === 'y' || ori === 'b' ? doorFace : (W, H, c) => tex(g, W, H, c, P.R, null),
+      texY: ori === 'x' || ori === 'b' ? doorFace : (W, H, c) => tex(g, W, H, c, P.R, null),
+      texTop: (W, H, c) => TEX.concrete(g, W, H, c, P.R),
     });
-    if (glow !== null && door) {
-      P.glow((e) => {
-        if (ori === 'x' || ori === 'b') faceY(e, 16, 0, 16, 0, 24, (W) => { e.fillStyle = css(glow, 0.8); e.fillRect(2.6, 2.6, W - 5.2, 0.5); });
-        if (ori === 'y' || ori === 'b') faceX(e, 16, 0, 16, 0, 24, (W) => { e.fillStyle = css(glow, 0.8); e.fillRect(2.6, 2.6, W - 5.2, 0.5); });
-      });
-    }
   }
-  PAINT.hull = (g, P) => hullBlock(g, P, false);
-  PAINT.ufoDoor = (g, P) => hullBlock(g, P, true);
-  function diagHull(g, P, pts) {
-    const d = P.def, col = d.colour;
-    const alien = d.set === 'UFO' || d.set === 'ALIENBASE';
-    const glow = alien && isAlloyMat(d.mat) ? P.pal.accent : null;
-    const tex = texFor(d.mat);
-    prism(g, pts, 0, 24, col, { tex: (W, H, c) => tex(g, W, H, c, P.R, glow), texTop: (W, H, c) => (isAlloyMat(d.mat) ? FLOOR_TEX.hull(g, c, P.R) : null) });
+  // face onde fica a porta: linha do casco ao longo de x ⇒ porta na face +y; ao longo de y ⇒ face +x
+  const doorOnFace = (ori, f) => ((ori === 'x' || ori === 'b') && f.ny > 0.9) || ((ori === 'y' || ori === 'b') && f.nx > 0.9);
+  function styledHull(g, P, door) {
+    const sty = hullStyleOf(P.def);
+    if (!sty) { hullBlock(g, P, door); return; }
+    const ori = door ? P.st : null;
+    hullPrism(g, P, sty, SQUARE, 0, 24, door ? {
+      faceExtra: (gg, W, H, c, f, z0, z1) => { if (doorOnFace(ori, f) && z1 >= 19.4) doorPanels(gg, P, W, H, c, z1, sty); },
+      glowExtra: (e, W, H, f, z0, z1) => { if (doorOnFace(ori, f) && z1 >= 19.4) doorFrameGlow(e, P, W, z1, sty); },
+    } : null);
+  }
+  PAINT.hull = (g, P) => styledHull(g, P, false);
+  PAINT.ufoDoor = (g, P) => styledHull(g, P, true);
+  // com o lado de dentro conhecido (estado 1..4, ver objectState) a diagonal enche a metade interior do tile, rente
+  // às faces dos cascos vizinhos; sem ele é uma laje centrada na diagonal
+  const DIAG_HALF = {
+    1: [[0, 0], [16, 0], [0, 16]], 2: [[16, 0], [16, 16], [0, 16]],
+    3: [[0, 0], [16, 0], [16, 16]], 4: [[0, 0], [16, 16], [0, 16]],
+  };
+  function diagHull(g, P, which) {
+    const half = DIAG_HALF[P.st | 0];
+    const pts = half && (which === 2 ? P.st <= 2 : P.st >= 3) ? half : DIAG_PTS[which];
+    const sty = hullStyleOf(P.def);
+    if (sty) { hullPrism(g, P, sty, pts, 0, 24); return; }
+    const d = P.def, tex = texFor(d.mat);
+    prism(g, pts, 0, 24, d.colour, { tex: (W, H, c) => tex(g, W, H, c, P.R, null), texTop: (W, H, c) => TEX.concrete(g, W, H, c, P.R) });
   }
   // 2: NE–SO (canto direito ↔ canto esquerdo do losango); 3: NO–SE (cima ↔ baixo)
-  PAINT.hullDiag2 = (g, P) => diagHull(g, P, [[11, 0], [16, 0], [16, 5], [5, 16], [0, 16], [0, 11]]);
-  PAINT.hullDiag3 = (g, P) => diagHull(g, P, [[0, 0], [5, 0], [16, 11], [16, 16], [11, 16], [0, 5]]);
+  PAINT.hullDiag2 = (g, P) => diagHull(g, P, 2);
+  PAINT.hullDiag3 = (g, P) => diagHull(g, P, 3);
   PAINT.ufoDoorOpen = (g, P) => {
-    const d = P.def, col = d.colour;
+    const d = P.def;
+    const sty = hullStyleOf(d) || null;
     const alien = d.set === 'UFO' || d.set === 'ALIENBASE';
     const acc = alien ? P.pal.accent : 0xe0c060;
-    const tex = texFor(d.mat);
-    const t = (W, H, c) => tex(g, W, H, c, P.R, null);
-    if (P.st === 'y') {
-      box(g, 4, 0, 0, 12, 2.4, 24, col, { texY: t });
-      box(g, 4, 2.4, 20, 12, 13.6, 24, col, { texY: t, texX: t });
-      box(g, 4, 13.6, 0, 12, 16, 24, col, { texY: t, texX: t });
-    } else {
-      box(g, 0, 4, 0, 2.4, 12, 24, col, { texX: t });
-      box(g, 2.4, 4, 20, 13.6, 12, 24, col, { texY: t, texX: t });
-      box(g, 13.6, 4, 0, 16, 12, 24, col, { texY: t, texX: t });
-    }
-    const track = P.st === 'y' ? [[7.5, 2, 0.05], [8.5, 2, 0.05], [8.5, 14, 0.05], [7.5, 14, 0.05]] : [[2, 7.5, 0.05], [14, 7.5, 0.05], [14, 8.5, 0.05], [2, 8.5, 0.05]];
-    fillPoly(g, track, acc, 0.6);
-    P.glow((e) => { poly(e, track); e.fillStyle = css(acc, 0.5); e.fill(); });
+    // ombreiras e verga com a espessura do casco; painéis recolhidos dentro das ombreiras
+    const along = P.st === 'y';
+    const piece = (a0, a1, z0, z1) => {
+      const pts = along ? [[0, a0], [16, a0], [16, a1], [0, a1]] : [[a0, 0], [a1, 0], [a1, 16], [a0, 16]];
+      if (sty) hullPrism(g, P, sty, pts, z0, z1);
+      else {
+        const tex = texFor(d.mat);
+        prism(g, pts, z0, z1, d.colour, { tex: (W, H, c) => tex(g, W, H, c, P.R, null) });
+      }
+    };
+    // trilho no chão (atrás das ombreiras da frente)
+    const track = along ? [[7.4, 2.4, 0.05], [8.6, 2.4, 0.05], [8.6, 13.6, 0.05], [7.4, 13.6, 0.05]] : [[2.4, 7.4, 0.05], [13.6, 7.4, 0.05], [13.6, 8.6, 0.05], [2.4, 8.6, 0.05]];
+    fillPoly(g, track, shade(acc, -0.5), 0.9);
+    P.glow((e) => { poly(e, track); e.fillStyle = css(acc, 0.55); e.fill(); });
+    piece(0, 2.4, 0, 24);
+    piece(2.4, 13.6, 19.4, 24);
+    piece(13.6, 16, 0, 24);
   };
 
+  // fonte de energia: reator de Elerium — plinto octogonal, cilindro de contenção de vidro, cristal a pulsar
   PAINT.powerSource = (g, P) => {
-    const pulse = [0, 0.5, 1, 0.5][P.st | 0];
-    const base = shade(P.pal.wall || 0x7a8798, -0.2);
-    contact(g, 8, 8, 8, 0.35);
-    cyl(g, 8, 8, 6, 0, 3, base, {});
-    cyl(g, 8, 8, 4.2, 3, 7, shade(base, -0.15), {});
-    for (const a of [0.8, 2.4, 4, 5.6]) {
-      const x = 8 + Math.cos(a) * 4.6, y = 8 + Math.sin(a) * 4.6;
-      if (x + y > 15) cyl(g, x, y, 0.5, 3, 14, shade(base, 0.1), {});
+    const f = P.st | 0;
+    const pulse = [0, 0.5, 1, 0.5][f];
+    const base = shade(mix(P.pal.wall || 0x7a8798, 0x6a6290, 0.4), -0.22);
+    const X = PX(8, 8);
+    contact(g, 8, 8, 8.5, 0.4);
+    const oct = [];
+    for (let k = 0; k < 8; k++) {
+      const a = (k / 8) * TAU + Math.PI / 8;
+      oct.push([8 + Math.cos(a) * 7, 8 + Math.sin(a) * 7]);
     }
-    const core = 0xff9a30;
-    ball(g, 8, 8, 11.5, 3.6, core, { hi: 0.6, edgeA: 0.2 });
-    for (const a of [0.8, 2.4, 4, 5.6]) {
-      const x = 8 + Math.cos(a) * 4.6, y = 8 + Math.sin(a) * 4.6;
-      if (x + y <= 15) cyl(g, x, y, 0.5, 3, 14, shade(base, 0.1), {});
-    }
-    cyl(g, 8, 8, 4.6, 14, 15.5, base, {});
+    prism(g, oct, 0, 2.6, base, { ao: false, edge: 0.35, top: shade(base, 0.2) });
+    // anel de bobinas
+    cyl(g, 8, 8, 5.4, 2.6, 4.6, shade(base, -0.1), { topCol: shade(base, 0.12) });
     P.glow((e) => {
-      glowAt(e, PX(8, 8), PY(8, 8, 11.5), 16 + pulse * 6, core, 0.55 + pulse * 0.25);
-      dot(e, PX(8, 8) - 1.5, PY(8, 8, 12.5), 2.2, 0xfff0c0, 0.7);
+      e.save();
+      e.translate(X, PY(8, 8, 4.6));
+      e.scale(1, 0.5);
+      e.beginPath();
+      e.arc(0, 0, 13.5, 0, TAU);
+      e.strokeStyle = css(ELERIUM, 0.55 + pulse * 0.3);
+      e.lineWidth = 1;
+      e.stroke();
+      e.restore();
     });
+    // montantes de trás
+    const posts = [0.6, 2.2, 3.8, 5.4].map((a) => [8 + Math.cos(a) * 4.9, 8 + Math.sin(a) * 4.9]);
+    for (const [x, y] of posts) if (x + y <= 16) cyl(g, x, y, 0.55, 4.6, 14, shade(base, 0.15), { top: false });
+    // câmara de vidro (fundo), cristal, frente translúcida
+    cyl(g, 8, 8, 3.6, 4.6, 13.6, mix(0x3a2a58, ELERIUM, 0.15), { top: false, edge: false });
+    const cz0 = 6, cz1 = 12.4;
+    const crystal = [[8, 8, cz1], [9.6, 8, 9.2], [8, 9.6, 9.2], [6.4, 8, 9.2], [8, 6.4, 9.2], [8, 8, cz0]];
+    const cpt = (p) => [PX(p[0], p[1]), PY(p[0], p[1], p[2])];
+    const tri = (a, b, c, col) => {
+      const A = cpt(a), Bq = cpt(b), C = cpt(c);
+      g.beginPath();
+      g.moveTo(A[0], A[1]); g.lineTo(Bq[0], Bq[1]); g.lineTo(C[0], C[1]);
+      g.closePath();
+      g.fillStyle = css(col);
+      g.fill();
+    };
+    const [T0, E, S, W, N, B0] = crystal;
+    tri(T0, N, E, shade(ELERIUM, 0.3));
+    tri(T0, W, N, shade(ELERIUM, 0.45));
+    tri(T0, E, S, shade(ELERIUM, -0.15));
+    tri(T0, S, W, shade(ELERIUM, 0.1));
+    tri(B0, E, S, shade(ELERIUM, -0.45));
+    tri(B0, S, W, shade(ELERIUM, -0.3));
+    P.glow((e) => {
+      glowAt(e, X, PY(8, 8, 9.2), 15 + pulse * 7, ELERIUM, 0.5 + pulse * 0.3);
+      glowAt(e, X, PY(8, 8, 9.6), 5 + pulse * 2, 0xffe8ff, 0.7);
+      // arcos de energia entre o cristal e os montantes
+      e.strokeStyle = css(0xf0c8ff, 0.55 + pulse * 0.35);
+      e.lineWidth = 0.45;
+      for (let k = 0; k < 3; k++) {
+        const a = ((k + f) * 2.1) % TAU;
+        const tx = 8 + Math.cos(a) * 3.4, ty = 8 + Math.sin(a) * 3.4, tz = 7 + ((k * 3 + f) % 5);
+        e.beginPath();
+        e.moveTo(X, PY(8, 8, 9.2));
+        e.lineTo((X + PX(tx, ty)) / 2 + (k - 1) * 1.5, (PY(8, 8, 9.2) + PY(tx, ty, tz)) / 2 - 1);
+        e.lineTo(PX(tx, ty), PY(tx, ty, tz));
+        e.stroke();
+      }
+    });
+    // vidro da frente com reflexo
+    const rx = 3.6 * 2.83, ry = 3.6 * 1.41, Yb = PY(8, 8, 4.6), Yt = PY(8, 8, 13.6);
+    g.beginPath();
+    g.moveTo(X - rx, Yt);
+    g.lineTo(X - rx, Yb);
+    g.ellipse(X, Yb, rx, ry, 0, Math.PI, 0, true);
+    g.lineTo(X + rx, Yt);
+    g.ellipse(X, Yt, rx, ry, 0, 0, Math.PI, false);
+    g.closePath();
+    const gl = g.createLinearGradient(X - rx, 0, X + rx, 0);
+    gl.addColorStop(0, 'rgba(220,200,255,0.3)');
+    gl.addColorStop(0.22, 'rgba(255,255,255,0.42)');
+    gl.addColorStop(0.32, 'rgba(220,200,255,0.06)');
+    gl.addColorStop(1, 'rgba(120,90,180,0.22)');
+    g.fillStyle = gl;
+    g.fill();
+    for (const [x, y] of posts) if (x + y > 16) cyl(g, x, y, 0.55, 4.6, 14, shade(base, 0.15), { top: false });
+    // tampa
+    cyl(g, 8, 8, 4.4, 13.6, 16, base, { topCol: shade(base, 0.25) });
+    cyl(g, 8, 8, 1.6, 16, 16.8, shade(base, 0.1), { topCol: shade(base, 0.35) });
+    P.glow((e) => dot(e, X, PY(8, 8, 16.8), 0.9, ELERIUM, 0.6 + pulse * 0.4));
   };
+  // consola de navegação: pedestal inclinado com ecrã e holograma rotativo do sistema estelar
   PAINT.navigation = (g, P) => {
-    const R = P.R;
-    const base = shade(P.pal.wall || 0x7a8798, -0.25);
-    contact(g, 8, 8, 8, 0.3);
-    box(g, 3, 4, 0, 13, 12, 7, base, { texY: (W, H, c) => TEX.panel(g, W, H, c, R) });
-    const top = [[3, 4, 7], [13, 4, 11], [13, 12, 11], [3, 12, 7]];
-    fillPoly(g, [[13, 4, 7], [13, 12, 7], [13, 12, 11], [13, 4, 11]], shade(base, -0.25));
-    fillPoly(g, top, shade(base, 0.15));
+    const R = P.R, f = P.st | 0;
+    const base = shade(mix(P.pal.wall || 0x7a8798, 0x6a6290, 0.35), -0.28);
+    const acc = P.pal.accent;
+    contact(g, 8, 8, 8, 0.32);
+    cyl(g, 8, 8, 6.2, 0, 1.6, shade(base, -0.1), { topCol: shade(base, 0.1) });
+    box(g, 3.5, 4.5, 1.6, 12.5, 11.5, 7, base, { texY: (W, H, c) => TEX.panel(g, W, H, c, R) });
+    const top = [[3.5, 4.5, 7], [12.5, 4.5, 10.2], [12.5, 11.5, 10.2], [3.5, 11.5, 7]];
+    fillPoly(g, [[12.5, 4.5, 7], [12.5, 11.5, 7], [12.5, 11.5, 10.2], [12.5, 4.5, 10.2]], shade(base, -0.3));
+    fillPoly(g, top, shade(base, 0.2));
     poly(g, top);
     edgeStroke(g, base, 0.5);
-    const acc = P.pal.accent;
-    const scr = [[4.5, 5, 7.7], [11.5, 5, 10.3], [11.5, 11, 10.3], [4.5, 11, 7.7]];
-    fillPoly(g, scr, shade(acc, -0.6));
+    const scr = [[4.6, 5.4, 7.6], [11.4, 5.4, 10], [11.4, 10.6, 10], [4.6, 10.6, 7.6]];
+    fillPoly(g, scr, shade(acc, -0.65));
+    // emissor do holograma
+    cyl(g, 8, 8, 1.2, 10.2, 11, shade(base, 0.2), { topCol: shade(acc, 0.2) });
     P.glow((e) => {
       poly(e, scr);
-      e.fillStyle = css(acc, 0.45);
+      e.fillStyle = css(acc, 0.42);
       e.fill();
-      // traços do ecrã (gráfico a passar)
       e.beginPath();
       for (let k = 0; k <= 8; k++) {
-        const x = 5 + k * 0.8, y = 8 + Math.sin(k * 1.3 + P.st * 1.6) * 2;
-        const X = PX(x, y), Y = PY(x, y, 7.7 + (x - 4.5) * 0.37 + 0.1);
+        const x = 5 + k * 0.78, y = 8 + Math.sin(k * 1.3 + f * 1.6) * 1.8;
+        const X = PX(x, y), Y = PY(x, y, 7.6 + (x - 4.6) * 0.353 + 0.1);
         if (k) e.lineTo(X, Y);
         else e.moveTo(X, Y);
       }
       e.strokeStyle = css(0xffffff, 0.7);
       e.lineWidth = 0.5;
       e.stroke();
+      // cone de luz e esfera holográfica
+      const X = PX(8, 8), Y0 = PY(8, 8, 11), Yc = PY(8, 8, 17);
+      const cone = e.createLinearGradient(0, Y0, 0, Yc - 8);
+      cone.addColorStop(0, css(acc, 0.45));
+      cone.addColorStop(1, css(acc, 0));
+      e.fillStyle = cone;
+      e.beginPath();
+      e.moveTo(X - 1.5, Y0);
+      e.lineTo(X - 9, Yc);
+      e.lineTo(X + 9, Yc);
+      e.lineTo(X + 1.5, Y0);
+      e.closePath();
+      e.fill();
+      e.lineWidth = 0.4;
+      for (let k = 0; k < 3; k++) {
+        const a = f * (Math.PI / 8) + (k * Math.PI) / 3;
+        e.beginPath();
+        e.ellipse(X, Yc, 7.5, 7.5 * (0.25 + 0.75 * Math.abs(Math.cos(a))), k * 1.05 + f * 0.2, 0, TAU);
+        e.strokeStyle = css(acc, 0.6);
+        e.stroke();
+      }
+      dot(e, X, Yc, 1.6, 0xffffff, 0.8);
+      dot(e, X, Yc, 3.4, acc, 0.35);
+      const a = f * (TAU / 4);
+      dot(e, X + Math.cos(a) * 7.5, Yc + Math.sin(a) * 2.6, 0.7, 0xffffff, 0.9);
     });
   };
   PAINT.device = (g, P) => {
@@ -1718,6 +2384,8 @@
   function variantsOf(def) {
     if (!def) return 1;
     if (def.part === 'floor') return Math.max(FLOOR_VARIANTS, def.variantCount | 0);
+    // cascos estilizados: pormenores por variante (luzes, grelhas, insígnias)
+    if (HULL_ARTS.has(def.art) && hullStyleOf(def)) return Math.max(HULL_VARIANTS, def.variantCount | 0);
     return Math.max(1, def.variantCount | 0);
   }
   const framesOf = (def) => {
@@ -1726,8 +2394,19 @@
     return ANIM[def.art] || 1;
   };
   const isOriented = (def) => !!def && (def.art === 'ufoDoor' || def.art === 'ufoDoorOpen');
+  const isDiag = (def) => !!def && (def.art === 'hullDiag2' || def.art === 'hullDiag3');
+  const CUT_SETS = { UFO: 1, CRAFT: 1 };
+  const cuttable = (def) => def.part === 'floor' && !!CUT_SETS[def.set] && def.role !== 'ground' && def.role !== 'scorched' && def.role !== 'road';
   function normState(def, st) {
     if (isOriented(def)) return st === 'y' || st === 'b' ? st : 'x';
+    if (isDiag(def)) {
+      const n = Math.round(+st || 0);
+      return n >= 1 && n <= 4 ? n : 0;
+    }
+    if (cuttable(def)) {
+      const n = Math.round(+st || 0);
+      return (n >= 1 && n <= 4) || (n === DOME_STATE && def.role === 'roof') ? n : 0;
+    }
     const f = framesOf(def);
     if (f <= 1) return 0;
     const n = Math.round(+st || 0);
@@ -1829,7 +2508,7 @@
   const cache = new Map();
   let pixels = 0;
   let budget = 40e6;
-  const area = (s) => s.c.width * s.c.height * (1 + (s.e ? 1 : 0) + (s.sil ? 1 : 0) + (s.gray ? 1 : 0));
+  const area = (s) => s.c.width * s.c.height * (1 + (s.e ? 1 : 0) + (s.sil ? 1 : 0) + (s.gray ? 1 : 0)) + (s.shadePx || 0);
   function remember(k, spr) {
     cache.set(k, spr);
     pixels += area(spr);
@@ -1890,10 +2569,45 @@
 
   // desenho em px do dispositivo (contexto com transformação identidade); X, Y = âncora; S = px por px CSS
   // dark 0..1 = sombra noturna; grayA 0..1 = dessaturação (névoa); a camada emissiva repõe as luzes
+  // variante já sombreada (sprite + névoa + sombra + emissiva compostas numa só tela): uma cópia por fotograma em vez
+  // de três; o operador «over» é associativo, por isso o resultado é o mesmo. Até SHADE_MAX variantes por sprite.
+  const SHADE_Q = 32, SHADE_MAX = 12;
+  function shaded(spr, dark, grayA) {
+    const q = Math.min(SHADE_Q, Math.round(dark * SHADE_Q)), gq = Math.min(10, Math.round(grayA * 10));
+    const k = q * 16 + gq;
+    const m = spr.shades || (spr.shades = new Map());
+    let c = m.get(k);
+    if (c) return c;
+    if (m.size >= SHADE_MAX) return null;
+    c = makeCanvas(spr.c.width, spr.c.height);
+    const g = c.getContext('2d');
+    g.drawImage(spr.c, 0, 0);
+    if (gq) {
+      g.globalAlpha = gq / 10;
+      g.drawImage(gray(spr), 0, 0);
+    }
+    if (q) {
+      g.globalAlpha = q / SHADE_Q;
+      g.drawImage(silhouette(spr), 0, 0);
+      if (spr.e && !gq) g.drawImage(spr.e, 0, 0);
+    }
+    m.set(k, c);
+    const px = c.width * c.height;
+    spr.shadePx = (spr.shadePx || 0) + px;
+    if (spr.key && cache.get(spr.key) === spr) pixels += px;
+    return c;
+  }
   function blitDev(ctx, spr, X, Y, S, dark, grayA) {
     const same = Math.abs(S - spr.scale) < 1e-6;
     const dx = Math.round(X - spr.ax * S), dy = Math.round(Y - spr.ay * S);
     const dw = same ? spr.c.width : Math.round(spr.w * S), dh = same ? spr.c.height : Math.round(spr.h * S);
+    if (dark > 0.01 || grayA > 0.01) {
+      const c = shaded(spr, dark > 0.01 ? Math.min(1, dark) : 0, grayA > 0.01 ? Math.min(1, grayA) : 0);
+      if (c) {
+        ctx.drawImage(c, dx, dy, dw, dh);
+        return;
+      }
+    }
     ctx.drawImage(spr.c, dx, dy, dw, dh);
     if (grayA > 0.01) {
       ctx.globalAlpha = Math.min(1, grayA);
@@ -1923,6 +2637,47 @@
     return spr;
   }
 
+  // estado do sprite de chão a partir da vizinhança (m = B.map com w, h, d, parts): 1..4 = metade que fica junto a
+  // um casco diagonal no próprio tile (convés) ou no nível de baixo (tejadilho), 7 = cúpula sobre o elevador, 0 = inteiro
+  function floorState(m, x, y, z) {
+    const D = defs();
+    if (!m || !m.parts || x < 0 || y < 0 || z < 0 || x >= m.w || y >= m.h || z >= m.d) return 0;
+    const plane = m.w * m.h, i = (z * m.h + y) * m.w + x;
+    const fd = D[m.parts[i * 4]];
+    if (!fd || !cuttable(fd)) return 0;
+    let o = D[m.parts[i * 4 + 3]];
+    if (!(o && o.diagonal) && z > 0) {
+      const below = D[m.parts[(i - plane) * 4 + 3]];
+      // cúpula: sobre o poço do elevador ou, nos OVNIs de um só convés, sobre a fonte de energia
+      if (below && fd.role === 'roof' && (below.gravlift || (z === 1 && below.special === 'POWER_SOURCE'))) return DOME_STATE;
+      o = below;
+    }
+    if (!o || !o.diagonal || !CUT_SETS[o.set]) return 0;
+    return diagSide(m, x, y, z, o.diagonal);
+  }
+  // metade interior de um casco diagonal em (x, y, z): 1/2 para '/', 3/4 para '\' (0 = indeterminado)
+  function diagSide(m, x, y, z, diagonal) {
+    const D = defs();
+    const inside = (xx, yy) => {
+      if (xx < 0 || yy < 0 || xx >= m.w || yy >= m.h) return 0;
+      const j = (z * m.h + yy) * m.w + xx;
+      const ob = D[m.parts[j * 4 + 3]];
+      if (ob && CUT_SETS[ob.set] && (ob.fullBlock || ob.door === 'ufo' || ob.diagonal)) return 1;
+      const f = D[m.parts[j * 4]];
+      return f && cuttable(f) ? 1 : 0;
+    };
+    const a = inside(x + 1, y) + (diagonal === 2 ? inside(x, y + 1) : inside(x, y - 1));
+    const b = inside(x - 1, y) + (diagonal === 2 ? inside(x, y - 1) : inside(x, y + 1));
+    if (a === b) return 0;
+    return diagonal === 2 ? (a > b ? 2 : 1) : (a > b ? 3 : 4);
+  }
+  // estado do sprite de objeto a partir da vizinhança: cascos diagonais → metade interior (1..4), resto 0
+  function objectState(m, x, y, z) {
+    if (!m || !m.parts || x < 0 || y < 0 || z < 0 || x >= m.w || y >= m.h || z >= m.d) return 0;
+    const o = defs()[m.parts[((z * m.h + y) * m.w + x) * 4 + 3]];
+    return isDiag(o) && hullStyleOf(o) ? diagSide(m, x, y, z, o.diagonal) : 0;
+  }
+
   function clearCache() {
     cache.clear();
     pixels = 0;
@@ -1930,6 +2685,7 @@
 
   OV.TileSprites = {
     BOX, get, blit, blitDev, draw, silhouette, gray, clearCache,
+    floorState, objectState,
     variants: (defId) => variantsOf(defs()[defId | 0]),
     frames: (defId) => framesOf(defs()[defId | 0]),
     oriented: (defId) => isOriented(defs()[defId | 0]),

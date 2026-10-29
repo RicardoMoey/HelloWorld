@@ -317,18 +317,28 @@
     const arc = [from.slice()];
     let prev = from.slice();
     let landV = to.slice();
+    // quem está no tile de destino não trava o arco: a granada cai-lhe aos pés (como no original)
+    const goalTile = dropTile(m, voxelTile(m, to));
+    const goalUnit = OV.Battle && OV.Battle.unitAt ? OV.Battle.unitAt(B, goalTile) : null;
+    const ignore = goalUnit && (!u || goalUnit.id !== u.id) ? (u ? [u.id, goalUnit.id] : goalUnit.id) : (u ? u.id : null);
     for (let k = 1; k <= N; k++) {
       const p = [
         from[0] + idiv(hx * k, N), from[1] + idiv(hy * k, N),
         from[2] + idiv(hz * k, N) + idiv(4 * apex * k * (N - k), N * N),
       ];
-      const hit = OV.LOS.traceShot(B, prev, p, u ? u.id : null, 0);
+      const hit = OV.LOS.traceShot(B, prev, p, ignore, 0);
       if (hit.kind === 'none') {
         arc.push(p);
         prev = p;
         continue;
       }
       const falling = p[2] <= prev[2];
+      // objeto baixo (seara, caixote) ou unidade no próprio tile de destino: o item fica nesse tile
+      if (falling && (hit.kind === 'object' || hit.kind === 'unit') && dropTile(m, hit.i) === goalTile) {
+        arc.push(hit.voxel.slice());
+        landV = to.slice();
+        break;
+      }
       landV = hit.kind === 'floor' && falling ? hit.voxel.slice() : prev.slice();
       arc.push(hit.voxel.slice());
       break;

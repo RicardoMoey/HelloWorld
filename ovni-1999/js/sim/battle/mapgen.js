@@ -5,12 +5,18 @@
      ufo:{x,y,w,h,blockId,rot}|null, craft:{x,y,w,h,blockId,rot}|null, objectiveTiles:[i],
      specials:{POWER_SOURCE,NAVIGATION,DEVICE,OBJECTIVE,START,CRAFT:[i]}, layout:[{blockId,x,y,rot,kind}],
      explosions:[{i,part,power,radius,dmg,voxel,cause}], breaches:[i], footprint:Uint8Array(n) (1 nave, 2 OVNI),
-     reach:Uint8Array(n) (1 = alcançável a partir dos inícios X-COM), terrain, size:[w,h,d], attempts, validated}
+     reach:Uint8Array(n) (1 = alcançável a partir dos inícios X-COM), startDist:Uint8Array(n), terrain, size:[w,h,d],
+     attempts, validated}
    spec = {deploymentId, terrain, ufoType|null, crashed, craftType, size:'small'|'medium'|'large' | w,h,d, shade, seed}
    rng  = stream 'map' (OV.RNG); sem rng usa OV.RNG.create(spec.seed).
-   Validação: a partir dos inícios X-COM chega-se a todos os nós; até 5 variantes (o mesmo rng continua).
+   Validação: a partir dos inícios X-COM chega-se a todos os nós e nenhum nó dentro do OVNI fica a menos de
+   TUNE.SPAWN_SAFE_DIST (10) tiles dos inícios; até 5 variantes (o mesmo rng continua), senão a melhor.
+   Segurança da desova: res.startDist = startDistance(map, xcomStarts); os nós exteriores a menos de
+   TUNE.SPAWN_PREFER_DIST (12) tiles dos inícios descem para prio 0 (a desova escolhe primeiro os mais afastados).
    OV.MapGen.flood(map, starts) → Uint8Array(n) de tiles alcançáveis a pé (portas abrem, elevadores, escadas,
-   quedas). OV.MapGen.resolveSize(spec) → [w,h,d]. */
+   quedas). OV.MapGen.resolveSize(spec) → [w,h,d].
+   OV.MapGen.startDistance(map, starts) → Uint8Array(n): distância de Chebyshev (no plano) ao início X-COM mais
+   próximo no mesmo nível ou a ±1; 255 sem nenhum início ao alcance. */
 (function (OV) {
   'use strict';
 
@@ -20,6 +26,7 @@
   const MAX_VARIANTS = 5;
   const SCOUTS_PER_CELL = 2;
   const SCOUT_PRIO = 2;
+  const tune = (k, def) => (OV.TUNE && OV.TUNE[k] !== undefined ? OV.TUNE[k] : def);
 
   // ---- tamanho ----------------------------------------------------------------------------------------
   function resolveSize(spec) {
@@ -415,6 +422,67 @@
     return out;
   }
 
+  // ---- distância aos inícios X-COM (segurança da desova) -------------------------------------------------------
+  function startDistance(map, starts) {
+    const B = BM();
+    const W = map.w, H = map.h, DZ = map.d, plane = W * H;
+    const out = new Uint8Array(map.n).fill(255);
+    // por nível: distância de Chebyshev aos inícios desse nível (duas passagens, transformada de distância)
+    const lvl = [];
+    for (let z = 0; z < DZ; z++) {
+      const d = new Uint8Array(plane).fill(255);
+      let any = false;
+      for (const i of starts) {
+        const [x, y, sz] = B.xyz(map, i);
+        if (sz === z) { d[y * W + x] = 0; any = true; }
+      }
+      if (any) {
+        for (let y = 0; y < H; y++) {
+          for (let x = 0; x < W; x++) {
+            let v = d[y * W + x];
+            if (x > 0) v = Math.min(v, d[y * W + x - 1] + 1);
+            if (y > 0) {
+              v = Math.min(v, d[(y - 1) * W + x] + 1);
+              if (x > 0) v = Math.min(v, d[(y - 1) * W + x - 1] + 1);
+              if (x + 1 < W) v = Math.min(v, d[(y - 1) * W + x + 1] + 1);
+            }
+            d[y * W + x] = Math.min(255, v);
+          }
+        }
+        for (let y = H - 1; y >= 0; y--) {
+          for (let x = W - 1; x >= 0; x--) {
+            let v = d[y * W + x];
+            if (x + 1 < W) v = Math.min(v, d[y * W + x + 1] + 1);
+            if (y + 1 < H) {
+              v = Math.min(v, d[(y + 1) * W + x] + 1);
+              if (x + 1 < W) v = Math.min(v, d[(y + 1) * W + x + 1] + 1);
+              if (x > 0) v = Math.min(v, d[(y + 1) * W + x - 1] + 1);
+            }
+            d[y * W + x] = Math.min(255, v);
+          }
+        }
+      }
+      lvl.push(any ? d : null);
+    }
+    for (let z = 0; z < DZ; z++) {
+      for (let dz = -1; dz <= 1; dz++) {
+        const d = lvl[z + dz];
+        if (!d) continue;
+        const o = z * plane;
+        for (let k = 0; k < plane; k++) if (d[k] < out[o + k]) out[o + k] = d[k];
+      }
+    }
+    return out;
+  }
+  // nós exteriores perto dos inícios: prioridade mínima (a desova prefere os afastados; a patrulha mantém-nos)
+  function demoteNearNodes(map, nodes, dist) {
+    const prefer = tune('SPAWN_PREFER_DIST', 12);
+    for (const n of nodes) {
+      if (n.inside) continue;
+      if (dist[BM().idx(map, n.x, n.y, n.z)] < prefer) n.prio = 0;
+    }
+  }
+
   // ---- gerador --------------------------------------------------------------------------------------------
   function generate(spec, rng) {
     const Data = D();
@@ -445,14 +513,20 @@
       const reach = flood(map, xcomStarts);
       const nodes = st.nodes.concat(scoutNodes(map, st.terrainCells, st.footprint, reach, st.nodes, rng));
       const lost = nodes.filter((n) => !reach[B.idx(map, n.x, n.y, n.z)]);
+      const startDist = startDistance(map, xcomStarts);
+      // nós do OVNI à distância de um tiro da nave: a tripulação ficaria fora do OVNI (procura outra variante)
+      const safe = tune('SPAWN_SAFE_DIST', 10);
+      const close = nodes.filter((n) => n.inside && startDist[B.idx(map, n.x, n.y, n.z)] < safe).length;
+      demoteNearNodes(map, nodes, startDist);
       const res = {
         map, nodes, xcomStarts, craftTiles, ufo: st.ufo, craft: st.craft, craftRot: st.craftRot,
         objectiveTiles: specials.OBJECTIVE.slice(), specials, layout: st.layout, explosions, breaches,
-        footprint: st.footprint, reach, terrain: spec.terrain, tileset: s.tileset, size, attempts, validated: lost.length === 0,
+        footprint: st.footprint, reach, startDist, terrain: spec.terrain, tileset: s.tileset, size, attempts, validated: lost.length === 0,
       };
-      if (!lost.length) return res;
-      if (!best || lost.length < best.lostCount) {
-        res.lostCount = lost.length;
+      if (!lost.length && !close) return res;
+      const score = lost.length * 1000 + close;
+      if (!best || score < best.badness) {
+        res.badness = score;
         best = res;
       }
     }
@@ -460,9 +534,10 @@
     // último recurso: descarta os nós inacessíveis (nunca bloqueia a missão)
     best.nodes = best.nodes.filter((n) => best.reach[B.idx(best.map, n.x, n.y, n.z)]);
     best.attempts = attempts;
-    delete best.lostCount;
+    best.validated = best.badness < 1000;
+    delete best.badness;
     return best;
   }
 
-  OV.MapGen = { generate, flood, resolveSize, runScript, MAX_VARIANTS };
+  OV.MapGen = { generate, flood, resolveSize, runScript, startDistance, MAX_VARIANTS };
 })(globalThis.OV || (globalThis.OV = {}));

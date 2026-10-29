@@ -74,7 +74,7 @@
 <script>
 /* Página de QA do renderizador do Battlescape. Parâmetros:
    ?mode=scene|tiles|fx  &ufo=abductor &terrain=FARM &kind=crash|landed|terror|alienBase|cydonia &night=0|1
-   &zoom=1 &viewZ=0 &seed=5 &month=0 &flare=1 &overlays=1 &reveal=1 &focus=ufo|craft|centre &w=1280 &h=800
+   &zoom=1 &viewZ=0|top &seed=5 &craft=skyranger|avenger &month=0 &flare=1 &overlays=1 &reveal=1 &focus=ufo|craft|centre &w=1280 &h=800
    &set=FARM (mode=tiles) &fog=1 (meio mapa fora de vista) &sel=1 (unidade selecionada) &draw=0 (só limpa: referência de fps)
    Expõe window.__ready, window.__info e window.__perf(frames) → Promise<{fps, avgMs, maxMs, p95}>. */
 (function () {
@@ -110,7 +110,7 @@
   const night = q.get('night') === '1';
   const opts = {
     ufoType: q.get('ufo') || 'abductor', terrain: q.get('terrain') || 'FARM', night, seed: +(q.get('seed') || 5),
-    month: +(q.get('month') || 0), difficulty: 1, kind,
+    month: +(q.get('month') || 0), difficulty: 1, kind, craftType: q.get('craft') || undefined,
   };
   if (kind === 'terror' || kind === 'alienBase' || kind === 'cydonia') delete opts.ufoType;
   const t0 = performance.now();
@@ -153,7 +153,7 @@
   }
 
   const view = {
-    cam: { x: 0, y: 0, zoom: +(q.get('zoom') || 1) }, w: W, h: H, viewZ: +(q.get('viewZ') || 0), time: 1000,
+    cam: { x: 0, y: 0, zoom: +(q.get('zoom') || 1) }, w: W, h: H, viewZ: q.get('viewZ') === 'top' ? m.d - 1 : +(q.get('viewZ') || 0), time: 1000,
     selectedId: lead && q.get('sel') !== '0' ? lead.id : null, hover: null, cursor: 'move', path: null, reach: null, target: null,
     throwArc: null, anim: { units: {}, hidden: new Set() }, showAll: q.get('showAll') === '1', nodes: q.get('nodes') === '1',
   };

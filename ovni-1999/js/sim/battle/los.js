@@ -273,18 +273,21 @@
     return sightClear(c, ex, ey, ez, cx - lat, cy, base + mid, vx0, vy0, vz0, vs);
   }
 
-  /* traço de vista em voxels, passo ≤ 4: chãos atravessados (ponto exato de passagem do nível) e caixas de
-     objetos parciais (caixotes, sebes, consolas…). Paredes e blocos inteiros já foram decididos pela linha de
-     tiles (regra das arestas/diagonais); os tiles do observador não contam. */
+  /* traço de vista em voxels: chãos atravessados (ponto exato de passagem do nível) e caixas de objetos parciais
+     (caixotes, sebes) e blocos inteiros (árvores, rochas). Passo de 1 voxel nos primeiros SIGHT_FINE voxels (o objeto mesmo à frente do
+     observador é testado como o traço de tiro o testa: ver ⇒ há pelo menos uma linha de tiro possível), depois
+     ≤ 4. Paredes já foram decididas pela linha de tiles (regra das arestas/diagonais); os tiles do observador
+     não contam. */
+  const SIGHT_FINE = 2 * VX;
   function sightClear(c, ax, ay, az, bx, by, bz, vx0, vy0, vz0, vs) {
     const dx = bx - ax, dy = by - ay, dz = bz - az;
     const N = Math.max(Math.abs(dx), Math.abs(dy), Math.abs(dz));
     if (!N) return true;
-    const K = (N + 3) >> 2;
+    const fine = Math.min(N, SIGHT_FINE);
     const W = c.w * VX, H = c.h * VX, DZ = c.d * VZ;
     let px = ax, py = ay, pz = az, ptz = (az / VZ) | 0;
-    for (let j = 1; j <= K; j++) {
-      const qx = ax + rdiv(dx * j, K), qy = ay + rdiv(dy * j, K), qz = az + rdiv(dz * j, K);
+    for (let k = 1; k <= N; k = k < fine ? k + 1 : k === N ? N + 1 : Math.min(N, k + 4)) {
+      const qx = ax + rdiv(dx * k, N), qy = ay + rdiv(dy * k, N), qz = az + rdiv(dz * k, N);
       if (qx < 0 || qy < 0 || qz < 0 || qx >= W || qy >= H || qz >= DZ) return false;
       const qtx = qx >> 4, qty = qy >> 4, qtz = (qz / VZ) | 0;
       if (qtz !== ptz) {
@@ -296,7 +299,9 @@
       }
       if (!(qtz === vz0 && qtx >= vx0 && qtx < vx0 + vs && qty >= vy0 && qty < vy0 + vs)) {
         const o = objAt(c, (qtz * c.h + qty) * c.w + qtx);
-        if (o && !(c.fl[o] & O_FULL) && boxHit(c, o, qx & 15, qy & 15, qz - qtz * VZ)) return false;
+        // também blocos inteiros (árvores, rochas): a linha de tiles pode passar ao lado do tile cujo canto o raio
+        // atravessa — e o traço de tiro acerta-lhe (DESIGN §8: caixa = tile inteiro se fullBlock)
+        if (o && boxHit(c, o, qx & 15, qy & 15, qz - qtz * VZ)) return false;
       }
       px = qx; py = qy; pz = qz; ptz = qtz;
     }
