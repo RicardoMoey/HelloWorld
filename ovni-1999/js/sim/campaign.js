@@ -385,3 +385,465 @@
    availableResearch, availableManufacture, equipPool, applyEquip, baseDefence. Acrescentar abaixo deste marcador num
    IIFE próprio com Object.assign(OV.Campaign, {...}); a secção A acima não muda sem rever o contrato.
    ================================================================================================================== */
+(function (OV) {
+  'use strict';
+
+  /* OV.Campaign (secção B) = {
+       availableResearch(G, baseId) → [topicId] ; availableManufacture(G, baseId) → [manufactureId]
+       equipPool(G, craftId) → {squad, stores} ; applyEquip(G, craftId, {loadouts, stores}) → {ok, reason?}
+       siteRefOf(mission) → siteRef ; briefingMeta(G, mission) → meta
+       startMission(G, siteRef, craftId, {settings}?) → missão para OV.Battle.create (marca G.activeMission)
+       cancelMission(G) → bool (sai do briefing sem batalha) ; abortMission(G, B) → modelo (abortar + finishMission)
+       finishMission(G, B) → modelo do debriefing
+       baseDefence(G, baseId, ufoId) → {result, shots, soldiersLost} }
+     Erros de pré-condição: Error('campaign.err.<motivo>'). */
+  const U = OV.U;
+  const D = () => OV.Data;
+  const C = OV.Campaign;
+  const tune = (k, d) => (OV.TUNE && OV.TUNE[k] !== undefined ? OV.TUNE[k] : d);
+  const AIRBORNE = { out: 1, patrol: 1, returning: 1 };
+  const fail = (reason) => new Error('campaign.err.' + reason);
+
+  // ---- multiconjuntos {id: n} sem chaves a zero ------------------------------------------------------------
+  function bagAdd(bag, id, n) {
+    const v = (bag[id] | 0) + (n | 0);
+    if (v > 0) bag[id] = v;
+    else delete bag[id];
+  }
+  const bagOf = (o) => {
+    const out = {};
+    for (const k of Object.keys(o || {})) if ((o[k] | 0) > 0) out[k] = o[k] | 0;
+    return out;
+  };
+  // itens de um modelo de equipamento pela ordem R, L, cinto…, mochila…
+  function loadoutItems(lo) {
+    const out = [];
+    if (!lo) return out;
+    if (lo.R) out.push(lo.R);
+    if (lo.L) out.push(lo.L);
+    for (const it of lo.belt || []) if (it) out.push(it);
+    for (const it of lo.pack || []) if (it) out.push(it);
+    return out;
+  }
+  const cloneLo = (lo) => ({ R: (lo && lo.R) || null, L: (lo && lo.L) || null, belt: ((lo && lo.belt) || []).slice(), pack: ((lo && lo.pack) || []).slice() });
+  function templatesOf(G, craft) {
+    const bag = {};
+    for (const sid of craft.soldiers) {
+      const s = C.findSoldier(G, sid);
+      if (s) for (const it of loadoutItems(s.loadout)) bagAdd(bag, it, 1);
+    }
+    return bag;
+  }
+  // carga solta = equipamento − Σ modelos (limitada a 0)
+  function looseOf(G, craft) {
+    const loose = bagOf(craft.equipment);
+    const tpl = templatesOf(G, craft);
+    for (const k of Object.keys(tpl)) bagAdd(loose, k, -Math.min(tpl[k], loose[k] | 0));
+    return loose;
+  }
+  // item que a equipa pode levar para o terreno (sem cadáveres, fixos, componentes, armas de nave)
+  function equipUsable(id) {
+    const def = D().items[id];
+    return !!def && def.battle !== false && def.kind !== 'corpse' && !def.fixed && String(def.kind || '').indexOf('craft_') !== 0;
+  }
+  // nave no hangar da sua base (equipar mexe no armazém)
+  function inHangar(G, craft) {
+    const b = C.findBase(G, craft.baseId);
+    return !!b && !AIRBORNE[craft.status] && b.crafts.indexOf(craft.id) >= 0;
+  }
+  const fitSoldiers = (G, craft) => craft.soldiers.map((id) => C.findSoldier(G, id)).filter((s) => s && !(s.woundDays > 0));
+
+  // ---- investigação e fabrico disponíveis ---------------------------------------------------------------------
+  function availableResearch(G, baseId) {
+    const base = C.findBase(G, baseId);
+    if (!base) return [];
+    const running = new Set();
+    for (const b of G.bases) for (const r of b.research) running.add(r.topic);
+    return D().researchAvailable(G.researched, G.flags, base.stores, base.aliens).filter((t) => !running.has(t));
+  }
+  function availableManufacture(G) {
+    return D().manufactureAvailable(G.researched);
+  }
+
+  // ---- ecrã «Equipar» -----------------------------------------------------------------------------------------
+  function equipPool(G, craftId) {
+    const craft = C.findCraft(G, craftId);
+    if (!craft) throw fail('noCraft');
+    const squad = [];
+    for (const sid of craft.soldiers) {
+      const s = C.findSoldier(G, sid);
+      if (!s) continue;
+      squad.push({
+        id: s.id, name: s.name, rank: s.rank, stats: U.clone(s.stats), armour: s.armour, portraitSeed: s.portraitSeed,
+        female: s.female, nat: s.nat, loadout: cloneLo(s.loadout),
+      });
+    }
+    const stores = looseOf(G, craft);
+    if (inHangar(G, craft)) {
+      const base = C.findBase(G, craft.baseId);
+      for (const k of Object.keys(base.stores)) if (equipUsable(k)) bagAdd(stores, k, base.stores[k]);
+    }
+    return { squad, stores };
+  }
+
+  /* Aplica o resultado do ecrã «Equipar» (contrato §5.9). Recusa um resultado que crie ou destrua itens
+     (conservação por tipo entre modelos, carga solta e, no hangar, o armazém utilizável). */
+  function applyEquip(G, craftId, res) {
+    const craft = C.findCraft(G, craftId);
+    if (!craft) return { ok: false, reason: 'noCraft' };
+    const r = res || {};
+    const loadouts = r.loadouts || {};
+    const R = bagOf(r.stores);
+    const hangar = inHangar(G, craft);
+    const base = C.findBase(G, craft.baseId);
+    const team = craft.soldiers.map((id) => C.findSoldier(G, id)).filter(Boolean);
+    const newLo = {};
+    for (const s of team) newLo[s.id] = loadouts[s.id] ? cloneLo(loadouts[s.id]) : cloneLo(s.loadout);
+    for (const id of Object.keys(newLo)) for (const it of loadoutItems(newLo[id])) if (!D().items[it]) return { ok: false, reason: 'item' };
+    // antes: modelos + equipamento solto + armazém utilizável ; depois: modelos novos + R
+    const before = bagOf(craft.equipment);
+    if (hangar) for (const k of Object.keys(base.stores)) if (equipUsable(k)) bagAdd(before, k, base.stores[k]);
+    const tplOld = templatesOf(G, craft);
+    for (const k of Object.keys(tplOld)) if ((tplOld[k] | 0) > (craft.equipment[k] | 0)) bagAdd(before, k, tplOld[k] - (craft.equipment[k] | 0));
+    const tplNew = {};
+    for (const id of Object.keys(newLo)) for (const it of loadoutItems(newLo[id])) bagAdd(tplNew, it, 1);
+    const after = bagOf(R);
+    for (const k of Object.keys(tplNew)) bagAdd(after, k, tplNew[k]);
+    const keys = new Set(Object.keys(before).concat(Object.keys(after)));
+    for (const k of keys) if ((before[k] | 0) !== (after[k] | 0)) return { ok: false, reason: 'mismatch' };
+
+    const oldLoose = looseOf(G, craft);
+    for (const s of team) s.loadout = newLo[s.id];
+    const equipment = U.clone(tplNew);
+    if (hangar) {
+      const loose = {};
+      for (const k of Object.keys(oldLoose)) bagAdd(loose, k, Math.min(oldLoose[k], R[k] | 0));
+      for (const k of Object.keys(loose)) bagAdd(equipment, k, loose[k]);
+      for (const k of Object.keys(base.stores)) if (equipUsable(k)) delete base.stores[k];
+      for (const k of Object.keys(R)) bagAdd(base.stores, k, R[k] - (loose[k] | 0));
+    } else {
+      for (const k of Object.keys(R)) bagAdd(equipment, k, R[k]);
+    }
+    craft.equipment = equipment;
+    return { ok: true };
+  }
+
+  // ---- missões ------------------------------------------------------------------------------------------------
+  const UFO_KIND = { crashed: 'crash', landed: 'landed' };
+  function siteRefOf(mission) {
+    const m = mission || {};
+    if (m.meta && m.meta.campaign && m.meta.campaign.siteRef) return U.clone(m.meta.campaign.siteRef);
+    if (m.kind === 'crash' || m.kind === 'landed') return { kind: 'ufo', id: m.siteId };
+    if (m.kind === 'terror') return { kind: 'site', id: m.siteId };
+    if (m.kind === 'alienBase') return { kind: 'alienBase', id: m.siteId };
+    return { kind: 'cydonia' };
+  }
+  // local da missão → {kind, obj, lon, lat}; Cidónia: ponto da base da nave
+  function siteOf(G, siteRef, craft) {
+    if (siteRef && siteRef.kind === 'cydonia') {
+      const b = craft ? C.findBase(G, craft.baseId) : G.bases[0] || null;
+      return { kind: 'cydonia', obj: null, lon: b ? b.lon : 0, lat: b ? b.lat : 0 };
+    }
+    const tg = C.targetOf(G, siteRef);
+    return tg && (tg.kind === 'ufo' || tg.kind === 'site' || tg.kind === 'alienBase') ? tg : null;
+  }
+
+  function metaFor(G, siteRef, craftId, site, phase) {
+    const Data = D();
+    const ref = siteRef.kind === 'cydonia' ? { kind: 'cydonia' } : { kind: siteRef.kind, id: siteRef.id };
+    const meta = { time: phase, cityKey: null, regionKey: null, countryKey: null, race: null, campaign: { siteRef: ref, craftId } };
+    if (siteRef.kind === 'cydonia') return meta;
+    const o = site.obj;
+    if (o.cityId) meta.cityKey = (Data.citiesById[o.cityId] && Data.citiesById[o.cityId].nameKey) || 'city.' + o.cityId;
+    const region = OV.GMath.regionAt(site.lon, site.lat);
+    if (region && Data.regions[region]) meta.regionKey = Data.regions[region].nameKey;
+    const country = OV.GMath.countryAt(site.lon, site.lat);
+    if (country && Data.countries[country]) meta.countryKey = Data.countries[country].nameKey;
+    // raça conhecida: terror e bases sempre; OVNIs só identificados (hiperonda) ou já vistos no terreno
+    const known = siteRef.kind !== 'ufo' || o.hyper || (G.seen.ufoTypes.indexOf(o.type) >= 0 && G.seen.races.indexOf(o.race) >= 0);
+    if (known && Data.races[o.race]) meta.race = o.race;
+    return meta;
+  }
+  // fase do dia no local; base alienígena e Cidónia têm luz própria (sombra da batalha por omissão)
+  function phaseAt(G, siteRef, site) {
+    if (siteRef.kind === 'cydonia' || siteRef.kind === 'alienBase') {
+      const shade = siteRef.kind === 'cydonia' ? tune('SHADE_MARS', 8) : tune('SHADE_ALIEN_BASE', 8);
+      return shade > tune('DARK_SHADE', 9) ? 'night' : shade > tune('SHADE_DAY', 0) ? 'dusk' : 'day';
+    }
+    return OV.GMath.dayPhase(G, site.lon, site.lat);
+  }
+
+  function briefingMeta(G, mission) {
+    const ref = siteRefOf(mission);
+    const craft = C.findCraft(G, mission && mission.craftId);
+    const site = siteOf(G, ref, craft);
+    if (!site) throw fail('noTarget');
+    return metaFor(G, ref, craft ? craft.id : null, site, phaseAt(G, ref, site));
+  }
+
+  // equipa financiada pelo equipamento a bordo (contrato: «funded(template)»)
+  function fundSquad(G, craft) {
+    const def = D().crafts[craft.type];
+    const pool = bagOf(craft.equipment);
+    const take = (it) => {
+      if (!it || !((pool[it] | 0) > 0)) return false;
+      bagAdd(pool, it, -1);
+      return true;
+    };
+    const squad = [];
+    for (const s of fitSoldiers(G, craft).slice(0, def.seatsUI | 0)) {
+      const lo = s.loadout || C.emptyLoadout();
+      const funded = {
+        R: take(lo.R) ? lo.R : null, L: take(lo.L) ? lo.L : null,
+        belt: (lo.belt || []).filter(take), pack: (lo.pack || []).filter(take),
+      };
+      squad.push({
+        soldierId: s.id, name: s.name, nat: s.nat, female: s.female, rank: s.rank, stats: U.clone(s.stats), armour: s.armour,
+        portraitSeed: s.portraitSeed, missions: s.missions, loadout: funded,
+      });
+    }
+    return { squad, craftItems: pool };
+  }
+
+  function checkStart(G, siteRef, craft) {
+    if (G.activeMission) throw fail('busy');
+    if (G.flags.won || G.flags.lost) throw fail('ended');
+    if (!craft) throw fail('noCraft');
+    const def = D().crafts[craft.type];
+    if (!def || !def.transport || !def.block) throw fail('notTransport');
+    if (craft.dogfightId) throw fail('inDogfight');
+    if (!fitSoldiers(G, craft).length) throw fail('noSoldiers');
+    if (!siteRef || typeof siteRef !== 'object') throw fail('noTarget');
+    if (siteRef.kind === 'cydonia') {
+      if (!G.flags.cydoniaUnlocked) throw fail('locked');
+      if (craft.type !== 'avenger' && !def.spacecraft) throw fail('craftType');
+      if (craft.status !== 'ready' || !inHangar(G, craft)) throw fail('notReady');
+      return siteOf(G, siteRef, craft);
+    }
+    const site = siteOf(G, siteRef, craft);
+    if (!site) throw fail('noTarget');
+    if (site.kind === 'ufo' && !UFO_KIND[site.obj.status]) throw fail('noTarget');
+    if (site.kind === 'alienBase' && !site.obj.discovered) throw fail('noTarget');
+    const d = craft.dest;
+    const aimed = !!d && d.kind === siteRef.kind && d.id === siteRef.id;
+    const near = OV.GMath.distNm(craft, site) <= tune('MISSION_ARRIVE_NM', 5);
+    if (!(craft.status === 'patrol' && (aimed || near))) throw fail('notAtSite');
+    return site;
+  }
+
+  /* Missão para OV.Battle.create (contrato §5.9). Tira um u32 da stream map e marca G.activeMission. */
+  function startMission(G, siteRef, craftId, opts) {
+    const o = opts || {};
+    const Data = D();
+    const craft = C.findCraft(G, craftId);
+    const site = checkStart(G, siteRef, craft);
+    const ref = siteRef.kind === 'cydonia' ? { kind: 'cydonia' } : { kind: siteRef.kind, id: site.obj.id };
+    const obj = site.obj;
+    const kind = ref.kind === 'ufo' ? UFO_KIND[obj.status] : ref.kind === 'site' ? 'terror' : ref.kind;
+    const surface = kind === 'crash' || kind === 'landed' || kind === 'terror';
+    const phase = phaseAt(G, ref, site);
+    const { squad, craftItems } = fundSquad(G, craft);
+    const mission = {
+      kind, siteId: obj ? obj.id : null, craftId: craft.id, ufoType: ref.kind === 'ufo' ? obj.type : null,
+      terrain: kind === 'terror' ? 'URBAN' : kind === 'alienBase' ? 'ALIENBASE' : kind === 'cydonia' ? 'MARS' : Data.terrainAt(site.lon, site.lat),
+      night: surface ? phase === 'night' : false,
+      race: obj && Data.races[obj.race] ? obj.race : 'mixed',
+      month: G.month | 0, difficulty: G.difficulty | 0, seed: C.rng(G, 'map').u32(), deploymentId: null, craftType: craft.type,
+      squad, craftItems, researched: G.researched.slice(), settings: U.clone(o.settings || {}),
+      meta: metaFor(G, ref, craft.id, site, phase),
+    };
+    if (surface) mission.shade = OV.GMath.missionShade(G, site.lon, site.lat);
+    G.activeMission = { siteRef: ref, craftId: craft.id, startedT: G.t };
+    return mission;
+  }
+
+  // saída do briefing sem batalha: a nave fica no local (a semente já tirada não volta)
+  function cancelMission(G) {
+    if (!G.activeMission) return false;
+    G.activeMission = null;
+    return true;
+  }
+
+  function containmentRoom(G, baseId) {
+    const cap = OV.BaseSim.capacities(G, baseId).aliens;
+    return Math.max(0, (cap.cap | 0) - (cap.used | 0));
+  }
+
+  /* Aplica o resultado de uma batalha da campanha a G (contrato §5.9, passos 1–10) → modelo do debriefing. */
+  function finishMission(G, B) {
+    const Data = D();
+    const am = G.activeMission;
+    if (!B || !B.mission) throw fail('noBattle');
+    if (!OV.Battle.outcome(B)) OV.Battle.abort(B);
+    const ref = am ? U.clone(am.siteRef) : siteRefOf(B.mission);
+    const craftId = am ? am.craftId : B.mission.craftId;
+    const craft = C.findCraft(G, craftId);
+    if (!craft) throw fail('noCraft');
+    const baseId = craft.baseId;
+    const base = C.findBase(G, baseId);
+    const site = siteOf(G, ref, craft) || { kind: ref.kind, obj: null, lon: craft.lon, lat: craft.lat };
+    const meta = site.obj || ref.kind === 'cydonia' ? metaFor(G, ref, craftId, site, phaseAt(G, ref, site)) : { time: null, cityKey: null, regionKey: null, countryKey: null, race: null, campaign: { siteRef: ref, craftId } };
+    const where = { kind: ref.kind, lon: site.lon, lat: site.lat };
+
+    // 1–2) relatório da batalha e pontuação (a nave perdida é descontada por World.loseCraft, não duas vezes)
+    const deb = OV.Battle.debrief(B, { researched: G.researched });
+    const craftLine = deb.craftLost ? deb.lines.filter((l) => l.key === 'bs.debrief.craftLost').reduce((s, l) => s + l.points, 0) : 0;
+    OV.Economy.addScore(G, 'xcom', deb.score - craftLine, site.lon, site.lat);
+
+    // 3) material e alienígenas vivos para a base (sem contenção com espaço, morrem: fica o cadáver)
+    const stored = {}, capturedStored = {}, capturedLost = {};
+    if (!deb.craftLost && base) {
+      for (const k of Object.keys(deb.recovered).sort()) { bagAdd(base.stores, k, deb.recovered[k]); bagAdd(stored, k, deb.recovered[k]); }
+      let room = containmentRoom(G, baseId);
+      for (const cap of deb.captured) {
+        if (room > 0) {
+          room--;
+          bagAdd(base.aliens, cap.unitType, 1);
+          bagAdd(capturedStored, cap.unitType, 1);
+        } else {
+          bagAdd(capturedLost, cap.unitType, 1);
+          const corpse = Data.units[cap.unitType] && Data.units[cap.unitType].corpse;
+          if (corpse && Data.items[corpse]) { bagAdd(base.stores, corpse, 1); bagAdd(stored, corpse, 1); }
+        }
+      }
+    }
+    // 4) equipamento perdido sai da nave
+    for (const k of Object.keys(deb.equipmentLost)) bagAdd(craft.equipment, k, -Math.min(deb.equipmentLost[k], craft.equipment[k] | 0));
+
+    // 5) soldados: experiência/feridas, mortos e desaparecidos; depois as promoções por quotas
+    const progression = [];
+    const combat = C.rng(G, 'combat');
+    for (const s of deb.soldiers) {
+      if (!C.findSoldier(G, s.soldierId)) continue;
+      if (s.status === 'ok') {
+        const r = OV.Soldiers.applyMission(G, s.soldierId, { exp: s.exp || {}, hpLost: s.hpLost | 0, kills: s.kills | 0 }, combat) || {};
+        const pt = r.promotedTo;
+        progression.push({ soldierId: s.soldierId, gains: r.gains || {}, promoted: pt === undefined || pt === null ? null : pt, kills: s.kills | 0 });
+      } else OV.Soldiers.kill(G, s.soldierId, s.status === 'dead' ? 'kia' : 'mia', where);
+    }
+    const promotions = OV.Soldiers.promotions(G) || [];
+    for (const p of promotions) {
+      const row = progression.find((g) => g.soldierId === p.id);
+      if (row) row.promoted = Math.max(row.promoted === null ? -1 : row.promoted, p.to);
+    }
+
+    // 6) nave: perdida, ou regressa à base (Cidónia: já está no hangar → manutenção)
+    if (deb.craftLost) OV.World.loseCraft(G, craftId, 'mission');
+    else if (ref.kind === 'cydonia') {
+      Object.assign(craft, { dest: null, speed: 0, patrol: false });
+      OV.BaseSim.checkup(G, craftId);
+    } else {
+      craft.dest = { kind: 'base', id: baseId };
+      craft.status = 'returning';
+      craft.patrol = false;
+      craft.speed = D().crafts[craft.type].speed;
+    }
+
+    // 7) o local desaparece numa vitória
+    if (ref.kind !== 'cydonia') OV.Missions.onSiteCleared(G, ref, deb.result);
+
+    // 8) estatísticas e registos vistos
+    const st = G.stats;
+    if (deb.result === 'win') st.missionsWon++;
+    else if (deb.result === 'loss') st.missionsLost++;
+    else st.missionsAborted++;
+    st.aliensKilled += deb.kills | 0;
+    for (const k of Object.keys(capturedStored)) st.aliensCaptured += capturedStored[k];
+    st.civiliansSaved += (deb.civilians && deb.civilians.saved) | 0;
+    const race = B.mission.race;
+    if (Data.races[race] && G.seen.races.indexOf(race) < 0) G.seen.races.push(race);
+    const ufoType = B.mission.ufoType;
+    if ((B.mission.kind === 'crash' || B.mission.kind === 'landed') && Data.ufos[ufoType] && G.seen.ufoTypes.indexOf(ufoType) < 0) G.seen.ufoTypes.push(ufoType);
+
+    // 9) Cidónia decide o jogo
+    if (ref.kind === 'cydonia') {
+      if (deb.result === 'win') C.endGame(G, 'won');
+      else C.endGame(G, 'lost', 'cydonia');
+    }
+    // 10) fim
+    G.activeMission = null;
+
+    let storage = null;
+    if (base && !deb.craftLost) {
+      const cap = OV.BaseSim.capacities(G, baseId).storage;
+      storage = { cap: cap.cap, used: cap.used, over: cap.used > cap.cap };
+    }
+    return {
+      debrief: deb, mission: B.mission, meta, outcome: G.flags.won ? 'victory' : G.flags.lost ? 'gameOver' : 'continue',
+      progression, promotions, stored, capturedStored, capturedLost, craftLost: !!deb.craftLost, scoreAdded: deb.score | 0, storage,
+    };
+  }
+
+  // «Abortar missão» na batalha: sobreviventes e material da nave regressam (OV.Battle.abort) e aplica-se o resultado
+  function abortMission(G, B) {
+    if (B && B.phase !== 'over' && !B.aborted) OV.Battle.abort(B);
+    return finishMission(G, B);
+  }
+
+  /* Ataque a uma base X-COM, resolvido automaticamente (MVP; contrato §5.9 baseDefence; stream combat). */
+  function baseDefence(G, baseId, ufoId) {
+    const Data = D();
+    const base = C.findBase(G, baseId);
+    const ufo = C.findUfo(G, ufoId);
+    if (!base || !ufo) throw fail('noTarget');
+    const ufoDef = Data.ufos[ufo.type];
+    const r = C.rng(G, 'combat');
+    const shots = [];
+    for (const d of OV.BaseSim.capacities(G, baseId).defences) {
+      const hit = r.pct(d.hit | 0);
+      const dmg = hit ? U.idiv(d.power | 0, 2) + r.int(0, d.power | 0) : 0;
+      if (hit) ufo.dmg = (ufo.dmg | 0) + dmg;
+      shots.push({ type: d.type, hit, dmg });
+    }
+    const soldiersLost = [];
+    let result;
+    if ((ufo.dmg | 0) >= ufoDef.hp) {
+      result = 'ufoDestroyed';
+      OV.Missions.onUfoDown(G, ufoId, 'destroyed', null);
+    } else {
+      const garrison = Object.keys(G.soldiers).map((id) => G.soldiers[id]).filter((s) => {
+        if (s.baseId !== baseId || s.woundDays > 0) return false;
+        const c = s.craftId ? C.findCraft(G, s.craftId) : null;
+        return !c || !AIRBORNE[c.status];
+      });
+      const strength = garrison.reduce((sum, s) => sum + (s.stats.tu | 0) + (s.stats.fire | 0) + (s.stats.hp | 0), 0);
+      const need = tune('BASE_DEFENCE_BASE', 1800) + tune('BASE_DEFENCE_PER_COEF', 300) * 2 * (G.difficulty | 0);
+      if (garrison.length && strength >= need) {
+        result = 'repelled';
+        const n = Math.min(r.int(1, 3), garrison.length);
+        const pool = garrison.slice();
+        for (let k = 0; k < n; k++) {
+          const s = pool.splice(r.int(0, pool.length - 1), 1)[0];
+          soldiersLost.push(s.id);
+          OV.Soldiers.kill(G, s.id, 'base', { kind: 'base', lon: base.lon, lat: base.lat });
+        }
+        OV.Economy.addScore(G, 'xcom', ufoDef.score | 0, base.lon, base.lat);
+        OV.Missions.onSiteCleared(G, { kind: 'ufo', id: ufoId }, 'win');
+      } else {
+        result = 'lost';
+        for (const s of garrison) {
+          soldiersLost.push(s.id);
+          OV.Soldiers.kill(G, s.id, 'base', { kind: 'base', lon: base.lon, lat: base.lat });
+        }
+      }
+    }
+    C.event(G, 'baseDefence', { baseId, ufoId, shots, result, soldiersLost });
+    if (result === 'lost') destroyBase(G, baseId);
+    return { result, shots, soldiersLost };
+  }
+
+  // base perdida: naves e pessoal desaparecem; sem bases o jogo acaba ('baseLost')
+  function destroyBase(G, baseId) {
+    const base = C.findBase(G, baseId);
+    if (!base) return;
+    for (const cid of base.crafts.slice()) if (C.findCraft(G, cid)) OV.World.loseCraft(G, cid, 'base');
+    for (const sid of base.soldiers.slice()) if (C.findSoldier(G, sid)) OV.Soldiers.kill(G, sid, 'base', { kind: 'base', lon: base.lon, lat: base.lat });
+    C.removeById(G.bases, baseId);
+    if (!G.bases.length) C.endGame(G, 'lost', 'baseLost');
+  }
+
+  Object.assign(OV.Campaign, {
+    availableResearch, availableManufacture, equipPool, applyEquip, siteRefOf, briefingMeta,
+    startMission, cancelMission, abortMission, finishMission, baseDefence,
+  });
+})(globalThis.OV || (globalThis.OV = {}));
