@@ -55,6 +55,8 @@
       { type: 'small_radar', x: 1, y: 3 },
     ],
     soldiers: 8,
+    // ours: Recruta e Veterano começam com a Skyranger cheia (10); Super-humano fica com os 8 orig
+    soldiersByDifficulty: [10, 10, 8],
     scientists: 10,
     engineers: 10,
     soldierArmour: 'coveralls',

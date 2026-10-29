@@ -135,7 +135,8 @@ countries. `total` is the sum of every point added (= Σ regions).
 ### 1.7 Countries
 `countries[i] = {id, funding:int $ (multiple of 1000), history:[funding at each month end, ≤ 12], pact:bool,
 mood:'pleased'|'unhappy'|'same' (last month-end change), lastDelta:int $}`. A country with a pact has funding 0
-forever.
+forever. There are 17 funding countries: the 16 orig ones plus Portugal (ours, §11.6), in `OV.Data.countries` key
+order (Portugal last).
 
 ### 1.8 Bases
 ```js
@@ -234,7 +235,8 @@ Missions owns `G.alien`. Its content may grow (plain JSON only) if this table do
 
 ### 1.13 Terror sites
 `site = {id, kind:'terror', missionId, deployment:'dep_terror_site', cityId, lon, lat, race, region, country,
-leftS}`. A terror site is always visible. Each 30-min check does `leftS −= 1800`. At ≤ 0 the site expires (§3.2).
+leftS}`. A terror site is always visible. Each 30-min check does `leftS −= 1800`. At ≤ 0 the site expires (§3.2) for
+`Missions.expiredPoints(G)` alien points: −500 in months 0–1, −1 000 from month 2 (ours, §11.6).
 Ours: a craft flying to the site does **not** stop the timer (the orig "cheeky exploit" is removed).
 A terror site is removed after **any** battle there (win, loss or abort; OpenXcom): the battle score already holds the
 civilian losses, so there is no `terrorSiteExpired` on top.
@@ -337,7 +339,8 @@ The result must be **identical** to stepping 5 s at a time. World ships a test p
 `hash` after `step(G1, N)` equals `hash` after N× `step(G2, 1)`, from the same state over one game week.
 
 ### 3.2 Expiry and removal rules
-- Terror site expires: `Economy.addScore(G,'alien', scoring.terrorSiteExpired, site)`, `stats.terrorIgnored++`, the
+- Terror site expires: `Economy.addScore(G,'alien', Missions.expiredPoints(G), site)` (`scoring.terrorSiteExpiredByMonth[month]`
+  while the month has an entry — 500 in months 0–1 — else `scoring.terrorSiteExpired` 1 000), `stats.terrorIgnored++`, the
   site is removed, and `terrorSiteExpired {siteId, cityId, points}` is pushed. Crafts whose dest was the site get
   `targetLost`.
 - Crash site expires: the UFO is removed and `crashSiteExpired {ufoId}` is pushed (non-stop). Crafts get `targetLost`.
@@ -428,7 +431,7 @@ and stays paused while the popup is open (only the top scene thinks). **stop:fal
 | `transferArrived` | – | `baseId, kind, itemId, n` | BaseSim (P1) | toast | `ev.transferArrived` |
 | `soldierRecovered` | – | `soldierId, baseId` | Soldiers | toast | `ev.soldierRecovered` |
 | `terrorSite` | ✔ | `siteId, cityId, lon, lat, race` | Missions | red popup with siren, «Enviar equipa» | `ev.terrorSite` |
-| `terrorSiteExpired` | ✔ | `siteId, cityId, points` | Missions | popup (−1 000) | `ev.terrorSiteExpired` |
+| `terrorSiteExpired` | ✔ | `siteId, cityId, points` | Missions | popup (−`points`: 500 in months 0–1, 1 000 after; the UI shows `points`, and `Missions.expiredPoints(G)` gives the current stake for the `terrorSite` popup) | `ev.terrorSiteExpired` |
 | `crashSiteExpired` | – | `ufoId` | Missions | toast | `ev.crashSiteExpired` |
 | `landedUfoGone` | – | `ufoId` | Missions | toast (a landed UFO we targeted lifted off and was lost) | `ev.landedUfoGone` |
 | `alienBaseFound` | ✔ | `alienBaseId, how:'patrol'\|'agents'\|'supply'` | World / Missions | popup + centre the globe | `ev.alienBaseFound` |
@@ -517,10 +520,13 @@ onSiteCleared(G, siteRef, result:'win'|'abort'|'loss')
        win: remove the UFO / alien base (+ end its mission; alien base: also +scoring.alienBaseDestroyed is already
        inside the battle score, do not add again); crash/landed/alien base abort or loss: nothing (keeps its timer)
 onResearch(G, topicId)                         'immediate' scripts (researchRetaliation after martian_solution)
+expiredPoints(G) → int                         alien points of a terror site ignored now (ours: 500 in months 0–1, else 1 000)
+regionWeights(G) → {regionId: weight}          table-mission region weights (tests, debugging)
 ```
 Mission rules follow `Data.alienMissions`, `Data.missionScripts`, `Data.missionRules`, `Data.raceWeights` and
-DESIGN §3.18. Region choice: `missionRules.nearBaseWeightMul` applies to regions whose centroid is within `nearBaseNm`
-of any X-COM base. Alien bases and Battleships do not pick the Muton race when the mission needs a commander
+DESIGN §3.18. Region choice: `missionRules.nearBaseWeightMul` (4) applies to regions whose centroid is within `nearBaseNm`
+(2 600 nm, the Large Radar range; ours §11.6) of any X-COM base; terror cities use `terrorNearBaseWeightMul` (4) within
+`terrorNearBaseNm` (4 000 nm). Alien bases and Battleships do not pick the Muton race when the mission needs a commander
 (DATA_API "win-path risk"): if `ai.weighted` returns `muton` for an `alien_base` mission or a battleship wave, reroll
 once without Muton.
 
@@ -671,7 +677,8 @@ defaultLoadouts(G, craftId)
    6 Electro-flares.
 4. Crafts `c1` Skyranger-1 (orig cargo), `c2`/`c3` Interceptor-1/2 (Stingray 6 + Cannon 200). 1 Medi-Kit and 4
    Electro-flares move from stores to the Skyranger (ours: teach triage and night play on mission 1).
-5. 8 soldiers (`OV.Soldiers.generate` if present, else `makeSoldier`; same draws), all seated on the Skyranger, then
+5. `Data.startingBase.soldiersByDifficulty[difficulty]` soldiers — 10 / 10 / 8 (ours §11.6; orig 8) —
+   (`OV.Soldiers.generate` if present, else `makeSoldier`; same draws), seated on the Skyranger up to its `seatsUI`, then
    `defaultLoadouts`:
    - strongest soldier: Heavy Cannon + AP/HE;
    - worst Firing: pistol;
@@ -736,7 +743,8 @@ mission = {
 4. `craft.equipment −= deb.equipmentLost`, clamped at 0 and with no zero keys.
 5. Soldiers, from `deb.soldiers`:
    - `ok` → `Soldiers.applyMission(G, id, {exp, hpLost, kills}, rng(G,'combat'))`;
-   - `dead` → `Soldiers.kill(G, id, 'kia', where)`;
+   - `dead` → `Soldiers.kill(G, id, 'kia', where)`; ours (§11.6): on a won battle whose craft survived, the dead
+     soldier's armour (`armours[a].storeItem`) goes back to `base.stores` and into `model.stored`;
    - `mia` → `Soldiers.kill(G, id, 'mia', where)`.
 
    Then run `Soldiers.promotions(G)`.
@@ -780,7 +788,7 @@ scrambles the base's ready armed crafts (§3.1 step 3), then calls `baseDefence`
    `+ Σ floor(power × TUNE.BASE_DEFENCE_FACILITY_PCT / 100)` over the completed defence facilities, against
    `floor((TUNE.BASE_DEFENCE_BASE + TUNE.BASE_DEFENCE_PER_COEF × 2·difficulty) × (hp − ufo.dmg) / hp)` (the hull the
    defences and interceptors left standing). Values: 850 + 100/coef (850 / 1 050 / 1 250), defences at 100 % of their
-   power (§11). 8 starting rookies (1 105–1 198) hold on Veterano; Super-humano needs a defence, more or better
+   power (§11). The 10 starting rookies of Veterano (8 rookies already 1 105–1 198) hold; Super-humano (8) needs a defence, more or better
    soldiers, or hull damage from interceptors. With no fit soldier at home the base is always lost.
    - Win: `'repelled'`. `int(1,3)` random fit soldiers die (cause `'base'`), the UFO is removed with
      `+ufo.score`, the retaliation mission ends.
@@ -940,25 +948,27 @@ The overlay ticks every open dogfight once per 30 ms of real time (`Data.dogfigh
 | `TU_ALIEN_MELEE` | tuning.js | 22 (§11; orig 15) | Chryssalid/Reaper/Zombie attack cost |
 | `SHADE_DAY/DUSK/NIGHT`, `CHEAT_TURN`, `SQUAD_MAX_UI` | tuning.js | 0/6/13, [12,10,8], 10 | battle feel |
 | facility `cost`, `days`, `upkeep`, radar `radarChance`/`radarRange` | data/base.js `FAC` | §3.14 | build pace, detection |
-| `startingBase` (layout, personnel, crafts, stores) | data/base.js | orig + extras | opening |
+| `startingBase` (layout, personnel, crafts, stores), `soldiersByDifficulty` | data/base.js | orig + extras; 10 / 10 / 8 soldiers (§11.6) | opening |
 | craft `speed`, `fuel`, `hp`, `refuel`; `craftRules.*`; `dogfight.*` | data/crafts.js | §3.13 | interception |
 | craft `sell` | data/crafts.js | Skyranger 375 000, Interceptor 450 000, Firestorm 300 000, Avenger 675 000 (ours: 75 % of the purchase or of the $ production cost) | `BaseSim.sellCraft` |
 | craft weapon `dmg`, `acc`, `ammoMax`, `reload` | data/crafts.js | §3.13 | interception |
-| UFO `hp`, `speed`, `weapon`, `breakOff`, `score`; `ufoRules.*` | data/ufos.js | §3.12 | interception, recovery |
+| UFO `hp`, `speed`, `weapon`, `breakOff`, `score`; `ufoRules.*` | data/ufos.js | §3.12; Small Scout `breakOff` 360 (§11.6) | interception, recovery |
 | research `cost`, `points`; `researchRules.costRandPct` | data/research.js | ×0.25 orig | tech pace |
 | manufacture `hours`, `cost`, `materials`, `space` | data/research.js | ×0.1–0.2 orig | production pace |
 | `alienMissions[*].waves[*].timer` (`WAVE_TIMER_SCALE`) | data/geo.js | ×0.5 orig | alien tempo |
-| `missionScripts` (`startDelay`, `firstMonth`, `seedAlienBase.maxBaseDistNm`) | data/geo.js | §3.18 | escalation |
+| `missionScripts` (`startDelay`, `firstMonth`, `seedAlienBase.maxBaseDistNm`) | data/geo.js | §3.18; `firstTerror` +10 days, `regionalScouts` months 0–2 +14 days (§11.6) | escalation, dead time |
 | `raceSchedule` | data/geo.js | §3.18 | enemy progression |
-| `missionRules` (`shootDownDelay`, `nearBaseNm`, `nearBaseWeightMul`, `terrorNearBaseWeightMul`, `crashCoastNm`, `shootDownRetaliationFromMonth`, `landPointTries`, `alienBaseRevealMonthlyPct`, `patrolReveal`) | data/geo.js | §3.18, §11 | alien pressure, crash sites on land, reachable terror |
-| `scoring` (`ufoActivity` incl. `everyMin`, `alienBasePerDay`, `terrorSiteExpired`, `alienBaseDestroyed`, `rating`) | data/geo.js | §3.17, §11 | council pressure |
+| `missionRules` (`shootDownDelay`, `nearBaseNm`, `nearBaseWeightMul`, `terrorNearBaseNm`, `terrorNearBaseWeightMul`, `crashCoastNm`, `shootDownRetaliationFromMonth`, `landPointTries`, `alienBaseRevealMonthlyPct`, `patrolReveal`) | data/geo.js | §3.18, §11 (2 600 nm ×4; terror 4 000 nm ×4) | alien pressure, UFOs in radar range, crash sites on land, reachable terror |
+| `scoring` (`ufoActivity` incl. `everyMin`, `alienBasePerDay`, `terrorSiteExpired`, `terrorSiteExpiredByMonth`, `alienBaseDestroyed`, `rating`) | data/geo.js | §3.17, §11 (expired terror 500 in months 0–1) | council pressure |
 | `geoConst.entryRingDeg`, `geoConst.sun` | data/geo.js | [25,35], no seasons | UFO entry, day and night |
-| country `fundingBase`, `fundingCap` | data/geo.js | orig | funding |
-| `alienItemTiers`, deployments `rows[*].qty` | data/units.js | §3.12 | battle difficulty |
+| country `fundingBase`, `fundingCap` | data/geo.js | orig + Portugal 120 / 2 500 k$ (§11.6) | funding |
+| `alienItemTiers`, deployments `rows[*].qty`, `crewRules` (`earlyMonths` 1, `earlyDiffStep` 1) | data/units.js | §3.12; month-0 UFO crews one difficulty lower (§11.6) | battle difficulty |
+| manufacture `avenger.materials` | data/research.js | 25 alloys, 2 power sources, 1 navigation (§11.6) | ending gate |
 | starting Skyranger extras (1 Medi-Kit, 4 flares) and `defaultLoadouts` roles | campaign.js section A | ours | first-mission teaching |
 
-The campaign bot (`tools/sim.js campaign`) reports these targets from DESIGN §14: victory day (100–170), number of
-battles (12–18), council defeats (≤ 20 % on Veterano).
+The campaign bot (`tools/sim.js campaign`) reports these targets from DESIGN §14: victory day (100–170), victories
+(Recruta ≥ 80 %, Veterano ≥ 55 %), median battles (14–18), council defeats (≤ 20 % on Veterano), first battle by day 3
+(≥ 80 % of seeds) and the longest stretch without a newly detected UFO in months 0–2 (≤ 15 days, `gapDays`).
 
 ---
 
@@ -970,8 +980,8 @@ battles (12–18), council defeats (≤ 20 % on Veterano).
   - detection probability over 2 000 rolls within ±3 % of the formula;
   - idle coalescing equals per-tick stepping (`hash`);
   - JSON round-trip after a simulated week.
-- **Missions**: month 0 plan (gameStart + firstTerror); a full wave cycle spawns UFOs on schedule; a terror site
-  appears and expires (−1 000); onUfoDown (crash over water ⇒ destroyed); alien base creation and reveal.
+- **Missions**: month 0 plan (gameStart + firstTerror + regionalScouts); a full wave cycle spawns UFOs on schedule; a terror
+  site appears and expires (−500 in months 0–1, −1 000 after); onUfoDown (crash over water ⇒ destroyed); alien base creation and reveal.
 - **Dogfight**: the hit-chance table (REA §6.2); a Stingray interceptor vs a Small Scout crashes it in ≤ N ticks over
   20 seeds; the cautious retreat at 50 %; escape timing; finish outcomes.
 - **BaseSim**: build/dismantle connectivity; capacities; the research cost range and the completion path (flags,
@@ -1042,7 +1052,7 @@ one Skyranger reach any city; the terror city weighting does most of that job in
 - ~~A lost terror battle keeps the site~~ — applied in §11.5.
 - Council constants (`geo_economy.test.js`).
 
-### 11.4 Results (bot, `--days 240`)
+### 11.4 Results (bot, `--days 240`) — stage 3, superseded by §11.6
 10 seeds per difficulty (4 for Super-humano), `node ovni-1999/tools/sim.js campaign --seeds 10 --diff 0|1 --days 240`:
 
 | | Recruta | Veterano | Super-humano (4) | DESIGN §14 target |
@@ -1110,3 +1120,64 @@ Bot sweep, `node ovni-1999/tools/sim.js campaign --seeds 6 --diff 0,1 --days 240
 
 Six seeds are noisy: the Veterano victory lost is seed 2, where the bot's Cydonia battle failed (the bot has no Blaster
 Launchers; Cydonia 67 % → 33 % on 3 attempts). Seed 5 now survives the council to day 240 (was defeated on day 119).
+
+### 11.6 Pacing pass 2 (wave 4): fair opening, no dead time, Portugal, bot endgame
+Inputs: the verified findings (unfair first terror site, late-January dead time, stale §11.4) and the full-campaign
+playtest notes (cannon-only Small Scout, January council, first Large Scout on Veterano, Portugal). Tests:
+`tools/tests/campaign_pacing2.test.js` (plus the pinned values updated in `data_geo`, `data_strategy`, `data_crossref`,
+`geo_core`, `geo_base`, `geo_economy`, `geo_missions`, `geo_soldiers`, `geo_dogfight`, `geo_wave4fix`, `campaign_flow`).
+No new event type and no new reason code. **rule** = contract-level change; DESIGN §22 lists every deviation.
+
+| Change | Where | Before → after | Why / measured |
+|---|---|---|---|
+| **rule** Portugal funds X-COM | `Data.countries.portugal` (geo.js), outline already in `world.js` | 16 → 17 funding countries; Portugal `fundingBase` 120 k$, `fundingCap` 2 500 k$, Europe; rectangles `[-9.6,-8.2,36.75,42.15]`, `[-8.2,-7,36.75,41.85]` | The default Lisbon base read «Fora dos países financiadores» on the first decision. Start funding still normalised to exactly $6 000 000 (Portugal ≈ $150 000). Nationality `pt` → country `portugal`. |
+| Starting soldiers | `startingBase.soldiersByDifficulty` (base.js), `newCampaign` step 5 | 8 → 10 / 10 / 8 (Recruta / Veterano / Super-humano) | Skyranger leaves full. Month-0 day terror with 8 rookies on Veterano 46 % → 83 % with 10 (finding). Upkeep $2 579 000 → $2 619 000. |
+| **rule** Month-0 UFO crews | `Data.crewRules`, `Data.crewDifficulty(depId, diff, month)`, `Data.deploymentRange(depId, diff, month?)`, `Battle.create` | crew table of the mission difficulty → one difficulty lower in month 0, UFO deployments only (stats and weapons unchanged) | Veterano Large Scout month 0: 5–6 → 4–5 aliens; day 96 % / 2.5 losses → 100 % / 1.4 (24 seeds). Night stays hard (58 %): the briefing says it is night. |
+| First terror | `missionScripts.firstTerror.startDelay` | 3 → 10 days (Terror Ship ≈ days 12–15) | Was days 5–10, often before the first battle and at night. |
+| Mid-month scouts, months 0–2 | new script `regionalScouts` (Alien Research, base region, +14 days, months 0–2) | — | Late January had ≈ 20 days with no UFO; months 1–2 had 30–43-day holes when the table missions went out of radar range. |
+| Region weighting | `missionRules.nearBaseNm` / `nearBaseWeightMul`; new `terrorNearBaseNm` | ×3 within 4 000 nm → ×4 within 2 600 nm (Large Radar range); terror keeps ×4 within 4 000 nm | 4 000 nm counted North America and the Arctic as «near» Lisbon, where no radar reaches. |
+| Opening Medium Scout | `alienMissions.alien_research.waves[1].timer` | 3 900 → 2 400 min | First battle by day 3: 70 % → 90 % (Recruta), 70 % → 80 % (Veterano). |
+| Ignored terror in months 0–1 | `scoring.terrorSiteExpiredByMonth` [500, 500]; `Missions.expiredPoints(G)` | −1 000 → −500 (months 0–1), −1 000 after | A new player survives the first missed site: one missed site no longer makes January «Terrível» on its own. |
+| Small Scout escape | `ufos.small_scout.breakOff` | 200 → 360 | Stingray off + cannon on Veterano: always escaped → 20/20 crash sites (`campaign_pacing2`). |
+| Avenger materials | `manufacture.avenger.materials.alien_alloys` | 40 → 25 | The Avenger was the ending gate (Cydonia researched, no Avenger 100 days later). |
+| **rule** Armour of the fallen | `Campaign.finishMission` step 5 | lost → back to `base.stores` and `model.stored` when the battle is won and the craft survives (KIA only; MIA and lost battles still lose it) | Each death cost 2–3 Alien Alloys; on Veterano the armour drain starved every alloy use (alien-base kit, Cydonia suits, Avenger). |
+
+Campaign bot (`tools/campaign_bot.js`; the header lists the full policy): Blaster Launchers researched (priority 85),
+built (2 + 6 bombs) and carried to Cydonia; Heavy Plasma built for the Cydonia team; the Cydonia team boards the Avenger
+only with the final kit (12 power suits; after 20 days 12 armours; after 40 days 10 — before, it launched after 12 days
+with whatever it had, often 4–12 in coveralls); a lost
+Skyranger is always replaced (the Avenger stays for Cydonia); reserve soldiers hand their armour to the craft team;
+loads stay within Strength (above it the turn's TU drop); personal armour keeps refilling the squad after losses; alien
+bases only while the story needs a commander, with lasers and ≥ 8 armoured (Recruta 4; Veterano and Snakemen: plasma;
+Ethereals: 6 suits), retried after 12 days; the Avenger alloy reserve starts only once a commander is held; big ships
+and Muton or Ethereal crews only with plasma and ≥ 6 armoured; at most 2 optional crash/landed battles a month, plus
+one when the story stalls (live alien, Avenger or Cydonia kit, alien-base armour); medium crash sites never at night.
+New report fields: `gapDays` (longest stretch without a newly detected UFO in days 0–90) and `detectDays`.
+
+Results, `node ovni-1999/tools/sim.js campaign --seeds 10 --diff 0|1 --days 240 --det` (both exit 0; before = the
+same sweep on the code at the start of this pass, without `--det`):
+
+| | Recruta before | Recruta after | Veterano before | Veterano after | Target (DESIGN §14) |
+|---|---|---|---|---|---|
+| Victories | 90 % | 80 % | 20 % | 40 % | ≥ 80 % / ≥ 55 % |
+| Median victory day | 135.5 | 139 | 133 | 141 | 100–170 |
+| Council defeats | 0 % | 0 % | 10 % | 0 % | ≤ 20 % (Veterano) |
+| Other endings | 1 timeout | 1 Cydonia lost, 1 timeout | 4 Cydonia lost, 3 timeouts | 2 Cydonia lost, 4 timeouts | – |
+| Median battles (in victories) | 19 (19) | 22.5 (22.5) | 18.5 (20.5) | 24 (22) | 14–18 |
+| First battle by day 3 | 70 % | 90 % | 70 % | 80 % | ≥ 80 % |
+| Longest gap without a detected UFO, months 0–2 (> 15 days) | ≈ 20 days in month 0 (finding), 30–43 in months 1–2 | 1/10 (max 15.6, median 8.9) | same | 0/10 (max 13, median 8.6) | none > 15 days |
+| Battle wins: crash / landed / terror / alien base / Cydonia | 94 / 91 / 81 / 84 / 100 % | 100 / 93 / 89 / 80 / 89 % | 92 / 76 / 67 / 69 / 33 % | 98 / 89 / 86 / 65 / 67 % | – |
+| Terror sites expired (all seeds) | 6 | 3 | 11 | 6 | – |
+| Month-0 rating (median) | 623 | 745 | 528.5 | 740.5 | – |
+| Soldiers lost (median) | 57 | 43 | 68.5 | 76 | – |
+
+Not met, and why:
+- **Veterano victories** (40 %, target 55 %; 20 % before). The 6 other runs are 2 lost Cydonia assaults (4 of 6 won)
+  and 4 timeouts in which no alien base fell early enough (alien-base assaults: 13 of 20 won), so there was no commander
+  and no Martian Solution. These are battles the headless X-COM player loses: in `sim.js battle` (12 seeds each) the
+  Cydonia squad wins 83 % with Blaster Launchers, 67 % without them and 92 % with veteran stats, but the bot loses ≈ 75
+  soldiers a campaign and fights the finale with recent recruits. The remaining levers are the battle AI (OV.AI, X-COM
+  side) or a gentler Veterano alien base and finale; pacing data alone did not close the gap.
+- **Battles** (median ≈ 22.5–24 against 14–18). Two optional battles a month plus the story exceptions; one a
+  month from month 2 brought the median to 19.5 but cost 2–3 Recruta victories (fewer alloys), so it was not kept. The
+  count includes the bot's retries after failed alien-base assaults and its alloy hunts.

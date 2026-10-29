@@ -356,7 +356,8 @@
 
     // 4) soldados (stream geo: 16 números cada) — OV.Soldiers.generate quando existe (mesmo contrato e ordem)
     const gen = OV.Soldiers && typeof OV.Soldiers.generate === 'function' ? OV.Soldiers.generate : makeSoldier;
-    for (let k = 0; k < (sb.soldiers | 0); k++) {
+    const nSol = Array.isArray(sb.soldiersByDifficulty) ? sb.soldiersByDifficulty[G.difficulty] | 0 : sb.soldiers | 0;
+    for (let k = 0; k < nSol; k++) {
       const s = gen(G, { baseId: base.id });
       s.armour = sb.soldierArmour || s.armour;
       addSoldier(G, s);
@@ -609,6 +610,8 @@
   function checkStart(G, siteRef, craft) {
     if (G.activeMission) throw fail('busy');
     if (G.flags.won || G.flags.lost) throw fail('ended');
+    // nunca uma batalha por cima de uma interceção em curso
+    if (G.dogfights && G.dogfights.some((d) => !d.over)) throw fail('busy');
     if (!craft) throw fail('noCraft');
     const def = D().crafts[craft.type];
     if (!def || !def.transport || !def.block) throw fail('notTransport');
@@ -739,7 +742,16 @@
         const r = OV.Soldiers.applyMission(G, s.soldierId, { exp: s.exp || {}, hpLost: s.hpLost | 0, kills: s.kills | 0 }, combat) || {};
         const pt = r.promotedTo;
         progression.push({ soldierId: s.soldierId, gains: r.gains || {}, promoted: pt === undefined || pt === null ? null : pt, kills: s.kills | 0 });
-      } else OV.Soldiers.kill(G, s.soldierId, s.status === 'dead' ? 'kia' : 'mia', where);
+      } else {
+        // missão ganha: o corpo é recuperado e a armadura volta ao armazém (como no OpenXcom; desaparecidos não)
+        const sol = C.findSoldier(G, s.soldierId);
+        const item = sol && Data.armours[sol.armour] ? Data.armours[sol.armour].storeItem : null;
+        if (s.status === 'dead' && deb.result === 'win' && !deb.craftLost && base && item && Data.items[item]) {
+          bagAdd(base.stores, item, 1);
+          bagAdd(stored, item, 1);
+        }
+        OV.Soldiers.kill(G, s.soldierId, s.status === 'dead' ? 'kia' : 'mia', where);
+      }
     }
     const promotions = OV.Soldiers.promotions(G) || [];
     for (const p of promotions) {

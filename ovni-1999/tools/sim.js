@@ -317,7 +317,9 @@ function diffList(v) {
 const DIFF_NAME = ['Recruta', 'Veterano', 'Super-humano'];
 const KINDS = ['crash', 'landed', 'terror', 'alienBase', 'cydonia'];
 // metas de DESIGN §14 / CAMPAIGN_API §8
-const CAMPAIGN_TARGETS = { victoryDay: [100, 170], battles: [12, 16], councilPctVeterano: 20 };
+const CAMPAIGN_TARGETS = {
+  victoryDay: [100, 170], battles: [14, 18], councilPctVeterano: 20, victoryPct: [80, 55, 0], firstBattle3Pct: 80, gapDays: 15,
+};
 
 function campaignLine(r) {
   const kinds = KINDS.filter((k) => r.byKind[k]).map((k) => k + ' ' + r.byKind[k].won + '/' + r.byKind[k].n).join(', ');
@@ -326,7 +328,8 @@ function campaignLine(r) {
   return [
     '  semente ' + pad(r.seed, 4) + DIFF_NAME[r.difficulty] + ': fim dia ' + r.endDay + ' — ' + r.reason + ' (meses ' + r.monthsSurvived + ')',
     '    batalhas ' + r.battles + ' [' + kinds + '] vitórias ' + (r.battles ? Math.round((100 * r.battleLog.filter((b) => b.result === 'win').length) / r.battles) : 0) +
-      ' %, soldados perdidos ' + r.soldiersLost + ', 1.ª deteção dia ' + r.firstDetectDay + ', 1.ª queda dia ' + r.firstCrashDay + ', 1.ª batalha dia ' + r.firstBattleDay,
+      ' %, soldados perdidos ' + r.soldiersLost + ', 1.ª deteção dia ' + r.firstDetectDay + ', 1.ª queda dia ' + r.firstCrashDay + ', 1.ª batalha dia ' + r.firstBattleDay +
+      ', maior intervalo sem OVNIs (meses 0–2) ' + r.gapDays + ' dias',
     '    avaliações [' + r.ratings.join(', ') + '] fundos [' + r.funds.map((f) => (f / 1e6).toFixed(2) + 'M').join(', ') + '] vendas $' + (r.sold / 1e6).toFixed(2) + 'M',
     '    OVNIs: detetados ' + u.detected + ', intercetados ' + u.intercepted + ', abatidos ' + u.crashed + ' (no mar ' + u.crashedAtSea + '), destruídos ' + u.destroyed +
       ', fugiram ' + u.escaped + ', naves perdidas ' + u.craftLost + '; terror ' + r.terror.won + '/' + r.terror.fought + ' (vistos ' + r.terror.seen + ', expirados ' + r.terror.expired + ')' +
@@ -400,13 +403,17 @@ function campaignSummary(label, rows) {
   const firstCrash3 = pct((r) => r.firstCrashDay !== null && r.firstCrashDay <= 3);
   const firstBattle3 = pct((r) => r.firstBattleDay !== null && r.firstBattleDay <= 3);
   const T = CAMPAIGN_TARGETS;
+  const di = DIFF_NAME.indexOf(label);
+  const gaps = rows.map((r) => r.gapDays);
   return [
-    '= ' + label + ': ' + n + ' campanhas — vitória ' + pct((r) => r.reason === 'victory') + ' % (dia mediano ' + (won.length ? median(won.map((r) => r.endDay)) : '–') +
+    '= ' + label + ': ' + n + ' campanhas — vitória ' + pct((r) => r.reason === 'victory') + ' %' + (T.victoryPct[di] ? ' (meta ≥ ' + T.victoryPct[di] + ' %)' : '') +
+      ' (dia mediano ' + (won.length ? median(won.map((r) => r.endDay)) : '–') +
       ', meta ' + T.victoryDay.join('–') + '), Conselho ' + pct((r) => r.reason === 'council') + ' %' + (label === 'Veterano' ? ' (meta ≤ ' + T.councilPctVeterano + ' %)' : '') +
       ', fins ' + JSON.stringify(reasons),
     '  batalhas medianas ' + median(rows.map((r) => r.battles)) + ' (meta ' + T.battles.join('–') + '; nas vitórias ' + (won.length ? median(won.map((r) => r.battles)) : '–') + ') — ' + kindStr,
     '  soldados perdidos (mediana) ' + median(rows.map((r) => r.soldiersLost)) + ', meses sobrevividos (mediana) ' + median(rows.map((r) => r.monthsSurvived)) +
-      ', 1.ª queda ≤ dia 3: ' + firstCrash3 + ' %, 1.ª batalha ≤ dia 3: ' + firstBattle3 + ' %',
+      ', 1.ª queda ≤ dia 3: ' + firstCrash3 + ' %, 1.ª batalha ≤ dia 3: ' + firstBattle3 + ' % (meta ≥ ' + T.firstBattle3Pct + ' %)' +
+      ', intervalo sem OVNIs > ' + T.gapDays + ' dias (meses 0–2): ' + gaps.filter((g) => g > T.gapDays).length + '/' + n + ' (mediana ' + median(gaps) + ', máx. ' + Math.max(...gaps) + ')',
     '  OVNIs abatidos no mar ' + rows.reduce((s, r) => s + r.ufos.crashedAtSea, 0) + '/' + rows.reduce((s, r) => s + r.ufos.crashed, 0) +
       ', terror ganhos ' + rows.reduce((s, r) => s + r.terror.won, 0) + '/' + rows.reduce((s, r) => s + r.terror.fought, 0) +
       ' (expirados ' + rows.reduce((s, r) => s + r.terror.expired, 0) + '), pactos ' + rows.reduce((s, r) => s + r.pacts.length, 0) +

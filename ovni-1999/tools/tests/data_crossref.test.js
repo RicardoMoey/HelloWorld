@@ -17,7 +17,7 @@ module.exports = function (OV, t) {
   const RANKS = ['commander', 'leader', 'engineer', 'medic', 'navigator', 'soldier', 'terrorist'];
   const SPRITES = ['soldier', 'sectoid', 'floater', 'snakeman', 'muton', 'ethereal', 'cyberdisc', 'sectopod', 'reaper', 'chryssalid', 'zombie', 'civilian_m', 'civilian_f'];
   const ARMOURS = ['coveralls', 'personal_armour', 'power_suit', 'flying_suit'];
-  const COUNTRIES = ['usa', 'canada', 'brazil', 'uk', 'france', 'germany', 'italy', 'spain', 'russia', 'egypt', 'nigeria', 'south_africa', 'india', 'china', 'japan', 'australia'];
+  const COUNTRIES = ['usa', 'canada', 'brazil', 'uk', 'france', 'germany', 'italy', 'spain', 'russia', 'egypt', 'nigeria', 'south_africa', 'india', 'china', 'japan', 'australia', 'portugal'];
   const REGIONS = ['north_america', 'arctic', 'antarctica', 'south_america', 'south_africa', 'north_africa', 'europe', 'russia', 'asia', 'southeast_asia', 'australasia', 'pacific', 'north_atlantic', 'south_atlantic', 'indian_ocean'];
   const TERRAINS = ['FARM', 'FOREST', 'JUNGLE', 'DESERT', 'MOUNTAIN', 'POLAR', 'URBAN', 'ALIENBASE', 'MARS'];
   const FACILITIES = ['access_lift', 'living_quarters', 'laboratory', 'workshop', 'general_stores', 'alien_containment', 'hangar', 'small_radar', 'large_radar', 'missile_defence', 'laser_defence', 'plasma_defence', 'hyper_wave_decoder'];
@@ -310,7 +310,7 @@ module.exports = function (OV, t) {
       check(e, D.countryAt(c.label[0], c.label[1]) === c.id, c.id + ': label fora do retângulo');
       check(e, D.world.countryAt(c.label[0], c.label[1], 3) === c.id, c.id + ': label não cai no contorno real (' + D.world.countryAt(c.label[0], c.label[1], 3) + ')');
     }
-    for (const id of Object.keys(D.world.countries)) check(e, has(D.countries, id) || id === 'portugal', 'world: país extra ' + id);
+    for (const id of Object.keys(D.world.countries)) check(e, has(D.countries, id), 'world: país extra ' + id);
     for (const city of D.cities) {
       check(e, has(D.regions, city.region), city.id + ': região ' + city.region);
       check(e, D.regions[city.region] && D.regions[city.region].cities.includes(city.id), city.id + ': região não a lista');

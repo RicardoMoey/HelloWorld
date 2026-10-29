@@ -12,7 +12,7 @@
   // decks/navigation acompanham os modelos de interior do §7.5; artefacts = dispositivos 'u' por tipo (ours)
   const UFOS = {
     small_scout: {
-      size: 0, hp: 50, speed: 2200, weapon: { power: 0, range: 0, reload: 56 }, breakOff: 200,
+      size: 0, hp: 50, speed: 2200, weapon: { power: 0, range: 0, reload: 56 }, breakOff: 360, // ours (orig 200): o canhão sozinho chega a alcance antes da fuga
       score: 50, scoreDestroyed: 100, block: 'UFO_SMALL_SCOUT', blockSize: { w: 10, h: 10 }, decks: 1,
       map: { w: 30, h: 30, d: 3 }, powerSources: 1, navigation: 1, alloys: 3, artefacts: {},
       deployment: 'dep_small_scout',

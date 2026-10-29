@@ -4,7 +4,7 @@
    (land-110m.json, countries-110m.json; © 2013-2019 Michael Bostock, licença ISC).
    Uso:  node ovni-1999/tools/build_world.mjs <pasta do pacote world-atlas> [--out js/data/world.js]
    Os ficheiros de entrada são dados não confiáveis: só JSON.parse e validação, nunca executados.
-   Saída: anéis de terra (1 casa decimal), contornos dos 16 países financiadores + Portugal
+   Saída: anéis de terra (1 casa decimal), contornos dos 17 países financiadores (16 orig + Portugal, ours)
    (Douglas–Peucker por arco, fronteiras partilhadas coincidem), máscara de terra 720×360 em bits
    (base64) e máscara de países 720×360 em RLE, ambas por par-ímpar com o antimeridiano e a
    Antártida (anel que contorna o polo) tratados. */
@@ -20,7 +20,7 @@ const SIMPLIFY_DEG = 0.15;
 const SIZE_TARGET = 150 * 1024;
 const SIZE_LIMIT = 200 * 1024;
 
-// ordem fixa: índice 1..16 = países financiadores, 17 = Portugal (só realce)
+// ordem fixa: índice 1..16 = países financiadores orig, 17 = Portugal (financiador desde o wave 4, ours)
 const COUNTRIES = [
   ['usa', 'United States of America'], ['canada', 'Canada'], ['brazil', 'Brazil'], ['uk', 'United Kingdom'],
   ['france', 'France'], ['germany', 'Germany'], ['italy', 'Italy'], ['spain', 'Spain'], ['russia', 'Russia'],
@@ -426,7 +426,7 @@ function main() {
    Conteúdo (lon −180..180 este, lat norte positiva, graus):
      land        anéis de terra [lon,lat,lon,lat,...] (1 casa decimal, fechados; podem atravessar o
                  antimeridiano e o da Antártida contorna o polo sem fecho — tal como na fonte)
-     countries   {id: [anéis]} dos 16 países financiadores + portugal (Douglas–Peucker ${pt(SIMPLIFY_DEG)}° por arco;
+     countries   {id: [anéis]} dos 17 países financiadores, 16 orig + portugal (Douglas–Peucker ${pt(SIMPLIFY_DEG)}° por arco;
                  fronteiras de 1999: França só metropolitana, Crimeia fora da Rússia)
      landMask    base64 de ${COLS}×${ROWS} bits (células de ${pt(CELL)}°, linha 0 = lat 90..89,5, coluna 0 = lon −180..−179,5,
                  bit mais significativo primeiro), par-ímpar sobre todos os anéis de terra

@@ -42,15 +42,15 @@ module.exports = function (OV, t) {
     t.eq(E.fundingChange(4, 10000, 0, 100, scripted([20, 50])), { delta: 0, mood: 'same' }, 'delta 0 k$ (4×20/100 = 0)');
   });
 
-  t.test('upkeep da base inicial = $2 579 000 (instalações 169 k + aluguer 1 700 k + salários 710 k)', () => {
+  t.test('upkeep da base inicial = $2 619 000 (instalações 169 k + aluguer 1 700 k + salários 750 k: 10 soldados, ours)', () => {
     const G = fresh();
-    t.eq(E.upkeep(G), { facilities: 169000, salaries: 710000, crafts: 1700000, total: 2579000 });
+    t.eq(E.upkeep(G), { facilities: 169000, salaries: 750000, crafts: 1700000, total: 2619000 });
     t.eq(E.income(G), 6000000);
     // pessoal e naves encomendados já contam (Base::getMonthlyMaintenace orig); obras não
     G.bases[0].deliveries.push({ id: 'dl9', kind: 'scientist', itemId: null, n: 2, etaT: 999999 });
     G.bases[0].deliveries.push({ id: 'dl10', kind: 'craft', itemId: 'interceptor', n: 1, etaT: 999999 });
     G.bases[0].grid.push({ type: 'laboratory', x: 1, y: 2, daysLeft: 5 });
-    t.eq(E.upkeep(G).total, 2579000 + 60000 + 600000);
+    t.eq(E.upkeep(G).total, 2619000 + 60000 + 600000);
     G.countries[0].pact = true;
     t.eq(E.income(G), 6000000 - G.countries[0].funding);
   });
@@ -120,9 +120,9 @@ module.exports = function (OV, t) {
     t.eq([rep.xcom, rep.alien, rep.research, rep.councilBonus, rep.rating], [600, 200, 40, 0, 440]);
     t.eq([rep.ratingKey, rep.councilKey], ['rating.good', 'council.satisfied']);
     t.eq(rep.income, 6000000);
-    t.eq(rep.upkeep.total, 2579000);
-    t.eq([rep.fundsBefore, rep.fundsAfter, G.funds], [fundsBefore, fundsBefore + 6000000 - 2579000, fundsBefore + 3421000]);
-    t.eq(rep.countries.length, 16);
+    t.eq(rep.upkeep.total, 2619000);
+    t.eq([rep.fundsBefore, rep.fundsAfter, G.funds], [fundsBefore, fundsBefore + 6000000 - 2619000, fundsBefore + 3381000]);
+    t.eq(rep.countries.length, 17); // 16 orig + Portugal (ours)
     rep.countries.forEach((c, i) => {
       t.eq(c.before, before[i]);
       t.eq(c.after, G.countries[i].funding);
@@ -135,7 +135,7 @@ module.exports = function (OV, t) {
     });
     t.eq(rep.countries.find((c) => c.id === 'france').mood !== 'unhappy', true, 'França com 600 pontos locais nunca desce');
     t.eq([rep.debtWarning, rep.badMonths, rep.debtMonths, rep.defeat, rep.alienBaseRevealed], [false, 0, 0, null, null]);
-    t.eq(G.history, [{ month: 0, funds: G.funds, income: 6000000, upkeep: 2579000, xcom: 600, alien: 200, research: 40, rating: 440 }]);
+    t.eq(G.history, [{ month: 0, funds: G.funds, income: 6000000, upkeep: 2619000, xcom: 600, alien: 200, research: 40, rating: 440 }]);
     t.eq(G.reports.length, 1);
     t.eq(G.score.all, { xcom: 600, alien: 200, research: 40 });
     t.eq(G.score.month, Camp.newScoreMonth());

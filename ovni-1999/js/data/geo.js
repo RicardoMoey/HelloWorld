@@ -482,7 +482,7 @@
     },
   };
 
-  // ---- países financiadores (orig countries.rul; §3.17) --------------------------------------------------------
+  // ---- países financiadores (orig countries.rul + Portugal, ours; §3.17) ------------------------------------------
   // fundingBase/fundingCap em milhares de $; region = região da etiqueta (label); áreas para atribuir pontuação.
   const COUNTRIES = {
     usa: {
@@ -580,6 +580,14 @@
       region: 'north_america', fundingBase: 230, fundingCap: 4000, label: [-100, 55],
       areas: [
         [-141, -130, 55, 70], [-130, -55, 40, 75],
+      ],
+    },
+    // ours (não está no orig): a base por omissão é Lisboa — o país da casa financia, com verba e teto modestos.
+    // Retângulos a oeste de −7° (o de Espanha começa aí): Minho e litoral até 42,15°N, interior até 41,85°N.
+    portugal: {
+      region: 'europe', fundingBase: 120, fundingCap: 2500, label: [-8, 39.5],
+      areas: [
+        [-9.6, -8.2, 36.75, 42.15], [-8.2, -7, 36.75, 41.85],
       ],
     },
   };
@@ -743,7 +751,7 @@
     alien_research: {
       points: 0, objective: 'score', table: true,
       // abertura (guião gameStart): tempos fixos de 0,5 × orig — o primeiro Batedor Médio chega nos primeiros dias
-      waves: [wave('small_scout', 1, 'P0', 9000, { timer: 4500 }), wave('medium_scout', 1, 'P2', 7800, { timer: 3900 }), wave('large_scout', 2, 'P4', 9000, { timer: 4500 })],
+      waves: [wave('small_scout', 1, 'P0', 9000, { timer: 4500 }), wave('medium_scout', 1, 'P2', 7800, { timer: 2400 }), wave('large_scout', 2, 'P4', 9000, { timer: 4500 })],
     },
     alien_harvest: {
       points: 30, objective: 'score', table: true,
@@ -822,8 +830,17 @@
       startDelay: 120, useTable: false,
     },
     {
+      // ours: o primeiro terror chega depois das primeiras quedas de batedores (o Terror Ship aparece ≈ dias 12–15),
+      // como no plano de DESIGN §14 (fase de escalada); com 3 dias caía na 1.ª semana, muitas vezes antes da 1.ª batalha
       id: 'firstTerror', lastMonth: 0, missionWeights: { alien_terror: 100 }, target: 'city',
-      startDelay: 3 * 24 * 60, useTable: false, // ours: o primeiro terror só 3 dias depois do arranque
+      startDelay: 10 * 24 * 60, useTable: false,
+    },
+    {
+      // ours: nos meses 0–2 uma Investigação Alienígena na região da base (ao alcance do radar) a meio do mês — a 2.ª
+      // metade de janeiro ficava vazia (≈ 20 dias sem OVNIs) e as missões da tabela dos meses 1–2 caem muitas vezes
+      // fora do radar de uma base só (30–40 dias sem um OVNI detetável)
+      id: 'regionalScouts', lastMonth: 2, missionWeights: { alien_research: 100 }, target: 'baseRegion',
+      startDelay: 14 * 24 * 60, useTable: false,
     },
     {
       id: 'recurringTerror', firstMonth: 1, missionWeights: { alien_terror: 100 }, target: 'city',
@@ -911,9 +928,13 @@
     waveTimerScale: WAVE_TIMER_SCALE, // ours
     countdownStepMin: 30, // as missões pensam a cada 30 min
     shootDownDelay: { base: 48, rand: 200, stepMin: 30 }, // ours: 30 × (RNG(0,200) + 48) min (orig RNG(0,400))
-    nearBaseNm: 4000, // ours: regiões com centróide a ≤ 4 000 mn da base X-COM…
-    nearBaseWeightMul: 3, // …pesam ×3 na escolha da região
-    terrorNearBaseWeightMul: 4, // ours: o terror escolhe regiões com centróide a ≤ nearBaseNm de uma base X-COM ×4 (uma só base no MVP)
+    // ours: regiões com centróide a ≤ 2 600 mn da base X-COM (≈ alcance do Radar Grande, 2 577 mn) pesam ×4 nas missões
+    // da tabela — com uma só base no MVP, ×3 a ≤ 4 000 mn mandava metade das missões dos meses 1–2 para fora do radar
+    // (América do Norte, Ártico, Ásia) e deixava 30–40 dias sem um OVNI detetável
+    nearBaseNm: 2600,
+    nearBaseWeightMul: 4,
+    terrorNearBaseNm: 4000, // ours: o terror escolhe regiões com centróide a ≤ 4 000 mn de uma base X-COM…
+    terrorNearBaseWeightMul: 4, // …×4 (uma só base no MVP: cidades ao alcance da Skyranger)
     shootDownRetaliationFromMonth: 2, // ours: a partir do mês 2 cada abate pode provocar retaliação
     retaliationPct: TUNE.RETALIATION_PCT || [4, 12, 20],
     landPointTries: 10, // pontos de aterragem: 10 tentativas em terra, senão descola logo (orig)
@@ -972,6 +993,8 @@
     missionPoints, // ver objective em alienMissions (infiltração: pacto contado no fim do mês)
     alienBasePerDay: 5,
     terrorSiteExpired: 1000, // local de terror que expira sem ataque
+    // ours: nos meses 0–1 o terror ignorado vale metade — um jogador novo sobrevive ao primeiro que lhe escapa
+    terrorSiteExpiredByMonth: [500, 500],
     // X-COM
     alienBaseDestroyed: 500,
     councilBonus: TUNE.COUNCIL_BONUS || 400,

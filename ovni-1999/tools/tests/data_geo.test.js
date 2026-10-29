@@ -6,7 +6,7 @@ module.exports = function (OV, t) {
   const REGION_IDS = ['north_america', 'arctic', 'antarctica', 'south_america', 'south_africa', 'north_africa', 'europe', 'russia',
     'asia', 'southeast_asia', 'australasia', 'pacific', 'north_atlantic', 'south_atlantic', 'indian_ocean'];
   const COUNTRY_IDS = ['usa', 'canada', 'brazil', 'uk', 'france', 'germany', 'italy', 'spain', 'russia', 'egypt', 'nigeria',
-    'south_africa', 'india', 'china', 'japan', 'australia'];
+    'south_africa', 'india', 'china', 'japan', 'australia', 'portugal'];
   const UFO_IDS = ['small_scout', 'medium_scout', 'large_scout', 'harvester', 'abductor', 'supply_ship', 'terror_ship', 'battleship'];
   const MISSION_IDS = ['alien_research', 'alien_harvest', 'alien_abduction', 'alien_infiltration', 'alien_base', 'alien_terror',
     'alien_retaliation', 'alien_supply'];
@@ -56,8 +56,13 @@ module.exports = function (OV, t) {
     t.eq(D.countryAt(LONDON[0], LONDON[1]), 'uk');
     t.eq(D.countryAt(PARIS[0], PARIS[1]), 'france');
     t.eq(D.countryAt(MADRID[0], MADRID[1]), 'spain');
-    t.eq(D.countryAt(LISBON[0], LISBON[1]), null, 'Portugal não é financiador');
-    t.eq(D.countryAt(PORTO[0], PORTO[1]), null);
+    // ours: Portugal financia (a base por omissão é Lisboa); Vigo e Badajoz continuam fora/Espanha
+    t.eq(D.countryAt(LISBON[0], LISBON[1]), 'portugal', 'Lisboa');
+    t.eq(D.countryAt(PORTO[0], PORTO[1]), 'portugal', 'Porto');
+    t.eq(D.countryAt(-8.6, 37.1), 'portugal', 'Faro');
+    t.eq(D.countryAt(-6.76, 41.8), 'spain', 'Bragança fica no retângulo de Espanha (orig começa em −7°)');
+    t.eq(D.countryAt(-6.97, 38.88), 'spain', 'Badajoz');
+    t.eq(D.countryAt(-8.55, 42.88), 'spain', 'Santiago de Compostela');
     t.eq(D.countryAt(-74, 40.7), 'usa');
     t.eq(D.countryAt(139.7, 35.7), 'japan');
     t.eq(D.countryAt(37.6, 55.75), 'russia');
@@ -79,6 +84,7 @@ module.exports = function (OV, t) {
       spain: [140, 5000, 'europe'], russia: [230, 8000, 'russia'], egypt: [230, 2000, 'north_africa'],
       nigeria: [180, 2000, 'north_africa'], south_africa: [230, 3000, 'south_africa'], india: [150, 5000, 'asia'],
       china: [245, 7000, 'southeast_asia'], japan: [400, 10000, 'southeast_asia'], australia: [280, 5000, 'australasia'],
+      portugal: [120, 2500, 'europe'],
     };
     for (const id of COUNTRY_IDS) {
       const c = D.countries[id];
@@ -98,7 +104,7 @@ module.exports = function (OV, t) {
       base += D.countries[id].fundingBase;
       cap += D.countries[id].fundingCap;
     }
-    t.eq(base, 4185);
+    t.eq(base, 4305); // 4 185 orig + Portugal 120 (ours)
     // RNG(base, 2·base) por país, normalizado ao total: o total tem de caber nesse intervalo
     const total = (OV.TUNE.FUNDING_TOTAL || 6000000) / 1000;
     t.ok(total >= base && total <= 2 * base, 'total ' + total + ' em [' + base + ', ' + 2 * base + ']');
@@ -210,7 +216,7 @@ module.exports = function (OV, t) {
       if (m.siteType && D.deployments) t.ok(D.deployments[m.siteType], id + ' siteType ' + m.siteType);
     }
     t.eq(D.alienMissions.alien_research.waves.map((w) => [w.ufo, w.n, w.traj, w.timer]),
-      [['small_scout', 1, 'P0', 4500], ['medium_scout', 1, 'P2', 3900], ['large_scout', 2, 'P4', 4500]]);
+      [['small_scout', 1, 'P0', 4500], ['medium_scout', 1, 'P2', 2400], ['large_scout', 2, 'P4', 4500]]);
     const terror = D.alienMissions.alien_terror;
     t.eq(terror.waves.map((w) => [w.ufo, w.traj, w.timer, w.objective]), [['medium_scout', 'P1', 6000, false], ['terror_ship', 'P7', 4500, true]]);
     t.eq([terror.siteType, terror.spawnZone, terror.cityOnly], ['dep_terror_site', 3, true]);
@@ -242,17 +248,19 @@ module.exports = function (OV, t) {
     const small = new Set();
     for (let i = 0; i < 50; i++) small.add(R.countdown(30, rng));
     t.eq([...small].sort((a, b) => a - b), [0, 30]);
-    t.eq([R.nearBaseNm, R.nearBaseWeightMul, R.shootDownRetaliationFromMonth], [4000, 3, 2]);
+    t.eq([R.nearBaseNm, R.nearBaseWeightMul, R.terrorNearBaseNm, R.terrorNearBaseWeightMul, R.shootDownRetaliationFromMonth], [2600, 4, 4000, 4, 2]);
   });
 
   t.test('guião mensal: meses 0, 1, 2 e 3+ definidos', () => {
     const ids = (m, d, r) => D.scriptsForMonth(m, d || 0, r).map((s) => s.id);
     const table = (m, d) => D.scriptsForMonth(m, d || 0).filter((s) => !s.missionWeights).reduce((n, s) => n + s.count, 0);
-    t.eq(ids(0), ['gameStart', 'firstTerror']);
+    t.eq(ids(0), ['gameStart', 'firstTerror', 'regionalScouts']);
     const start = D.missionScripts.find((s) => s.id === 'gameStart');
     t.eq([Object.keys(start.missionWeights), start.races, start.startDelay, start.target], [['alien_research'], { sectoid: 100 }, 120, 'baseRegion']);
-    t.eq(D.missionScripts.find((s) => s.id === 'firstTerror').startDelay, 3 * 24 * 60);
-    t.eq(ids(1), ['recurringTerror', 'seedAlienBase', 'recon']);
+    t.eq(D.missionScripts.find((s) => s.id === 'firstTerror').startDelay, 10 * 24 * 60);
+    const late = D.missionScripts.find((s) => s.id === 'regionalScouts');
+    t.eq([Object.keys(late.missionWeights), late.target, late.startDelay, late.lastMonth], [['alien_research'], 'baseRegion', 14 * 24 * 60, 2]);
+    t.eq(ids(1), ['regionalScouts', 'recurringTerror', 'seedAlienBase', 'recon']);
     const seed = D.missionScripts.find((s) => s.id === 'seedAlienBase');
     t.eq([Object.keys(seed.missionWeights), seed.target, seed.maxBaseDistNm], [['alien_base'], 'nearBase', 4000]);
     t.eq([table(0), table(1), table(2), table(3), table(7)], [0, 1, 2, 3, 3]);
@@ -309,6 +317,7 @@ module.exports = function (OV, t) {
       alien_terror: 10, alien_retaliation: 0, alien_supply: 0,
     });
     t.eq([S.alienBasePerDay, S.terrorSiteExpired, S.alienBaseDestroyed], [5, 1000, 500]);
+    t.eq(S.terrorSiteExpiredByMonth, [500, 500], 'ours: meses 0–1 a metade');
     t.eq(D.ratingKey(600, 0), 'rating.excellent');
     t.eq(D.ratingKey(100, 0), 'rating.good');
     t.eq(D.ratingKey(-899, 0), 'rating.ok');
@@ -330,7 +339,7 @@ module.exports = function (OV, t) {
     const pt = {
       usa: 'EUA', canada: 'Canadá', brazil: 'Brasil', uk: 'Reino Unido', france: 'França', germany: 'Alemanha', italy: 'Itália',
       spain: 'Espanha', russia: 'Rússia', egypt: 'Egito', nigeria: 'Nigéria', south_africa: 'África do Sul', india: 'Índia',
-      china: 'China', japan: 'Japão', australia: 'Austrália',
+      china: 'China', japan: 'Japão', australia: 'Austrália', portugal: 'Portugal',
     };
     for (const id in pt) t.eq(OV.T(D.countries[id].nameKey), pt[id], id);
     t.eq(OV.T('region.europe'), 'Europa');

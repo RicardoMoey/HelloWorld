@@ -317,8 +317,9 @@
     };
     const ufoMission = dep.kind === 'ufo' && ctx.insideNodes.length > 0;
     const dead = [];
+    const crewDiff = Data.crewDifficulty ? Data.crewDifficulty(M.deploymentId, M.difficulty, M.month) : M.difficulty;
     for (const row of dep.rows) {
-      const q = Data.rowQty(row, M.difficulty);
+      const q = Data.rowQty(row, crewDiff);
       const n = rng.int(q[0], q[1]);
       for (let k = 0; k < n; k++) {
         const type = Data.rowUnit(dep, row, M.race, rng.int(0, 1));

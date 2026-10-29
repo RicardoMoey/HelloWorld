@@ -16,18 +16,26 @@
      Marciana) → Origens → Solução Marciana → Cidónia; Construção OVNI → Firestorm → Vingador (material reservado);
    - interceta OVNIs detetados a ≤ 3 200 mn: Batedor Pequeno só a canhão (cai inteiro), «Cauteloso» quando as armas
      da nave têm mais alcance que a do OVNI, os grandes só com duas armas assim;
-   - nave de transporte: terror sempre (ETA ≤ 15 h, ≥ 4 soldados); quedas à luz do dia; aterragens a ≤ 2,5 h (de noite
-     só batedores pequenos); no máximo OPTIONAL_PER_MONTH quedas/aterragens opcionais por mês, batedores pequenos e
-     médios só no mês 0 ou quando a história precisa de um alienígena vivo, grandes só quando faltam ligas; bases
-     alienígenas com lasers e armadura (Homens-Serpente: plasma; Mutões: fatos energéticos e Cidónia desbloqueada) e
-     20 dias de pausa depois de um fracasso; o Vingador fica para Cidónia, que parte com 12 fatos (ou ao fim de 12 dias);
+   - nave de transporte: terror sempre (ETA ≤ 15 h, ≥ 4 soldados); quedas à luz do dia (as de naves médias ou maiores
+     nunca de noite); aterragens a ≤ 2,5 h (de noite só batedores pequenos); no máximo OPTIONAL_PER_MONTH quedas/aterragens
+     opcionais por mês, mais uma quando a história para (falta um alienígena vivo, ou ligas para o Vingador ou para as
+     armaduras de Cidónia ou do assalto à base alienígena); batedores pequenos e médios só no mês 0, para alienígenas
+     vivos ou quando faltam ligas; naves grandes e tripulações de Mutões ou Etéreos só com plasma e ≥ 6 soldados com armadura;
+   - bases alienígenas só enquanto a história precisa de um comandante: lasers e ≥ 8 com armadura (Recruta: 4; Veterano e
+     Homens-Serpente: plasma; Etéreos: 6 fatos; Mutões: fatos e Cidónia desbloqueada), 12 dias de pausa depois de um
+     fracasso; a reserva de material do Vingador só começa depois disso (antes, as ligas vão para as armaduras);
+   - Cidónia: a equipa só passa para o Vingador com o material final (12 fatos energéticos; ao fim de 20 dias 12
+     armaduras; ao fim de 40, 10) e os Lança-Bombas Blaster (até 10 dias de espera); até lá a Skyranger continua a voar
+     (ligas e alienígenas), e o Vingador nunca arrisca outras missões;
    - base localizada (baseSpotted): a nave de transporte volta e fica em casa até a retaliação acabar; descolagens
      contra o Couraçado do ataque sem hipóteses (canFight) desengatam logo;
    - batalhas com OV.AI (lado X-COM) através de Campaign.startMission / finishMission (limite 40 turnos ⇒ abortar);
    - equipa os soldados com o melhor material investigado (armas alienígenas só depois de investigadas, como o
-     motor exige), armaduras, kits médicos, very-lights e granadas; fabrica lasers, armaduras, carregadores de plasma,
-     bombas atordoantes, canhões de nave e o Vingador; vende o excedente alienígena e, sem nave de transporte, as
-     reservas que forem precisas para comprar outra.
+     motor exige), sem passar a Força (acima dela as UT do turno descem; só a arma e o 1.º carregador passam sempre),
+     armaduras (os de reserva devolvem as suas), kits médicos, very-lights e granadas (Cidónia: 2 Lança-Bombas
+     Blaster); fabrica lasers, plasma (Plasma Pesado para Cidónia), armaduras (a pessoal tapa as baixas), carregadores,
+     bombas atordoantes, Blasters, canhões de nave e o Vingador; vende o excedente alienígena e, sem Skyranger, as
+     reservas que forem precisas para comprar outra (o Vingador fica para Cidónia).
    A memória do bot (mem) é JSON simples fora de G (é o «jogador»): gravar/carregar G a meio não muda o resultado.
    Só Node (ferramenta); determinístico: mesma semente ⇒ mesmo relatório e mesmo hash. */
 'use strict';
@@ -37,6 +45,7 @@ const HOUR = 3600;
 const STEP_TICKS = 720; // 1 h de jogo por chamada a World.step (para mais cedo em eventos)
 const BATTLE_TURNS = 40;
 const OPTIONAL_PER_MONTH = 2; // quedas/aterragens por mês que o bot aceita (orçamento de tempo de um jogador)
+const GAP_DAYS = 90; // janela da métrica «intervalo sem OVNIs» (meses 0–2)
 
 // ---- planos fixos ----------------------------------------------------------------------------------------------
 // construção por ordem (base inicial orig, grelha 6×6): só começa quando há fundos acima da reserva
@@ -64,7 +73,7 @@ const RESEARCH_PRI = {
   laser_weapons: 92, laser_pistol: 90, laser_rifle: 89, alien_alloys: 91, personal_armour: 88,
   elerium: 84, power_source: 84, ufo_navigation: 84, ufo_construction: 83, new_fighter: 82, ultimate_craft: 82,
   small_launcher: 80, heavy_plasma: 78, plasma_rifle: 77, medikit: 70, power_suit: 66, laser_cannon: 60,
-  plasma_cannon: 55, alien_grenade: 52, blaster_launcher: 45, heavy_laser: 40, flying_suit: 40, hyper_wave: 35,
+  plasma_cannon: 55, alien_grenade: 52, blaster_launcher: 85, heavy_laser: 40, flying_suit: 40, hyper_wave: 35,
   laser_defense: 30, plasma_defense: 25, plasma_pistol: 30, motion_scanner: 10,
   alien_food: 12, alien_surgery: 12, examination_room: 12, alien_reproduction: 12, alien_entertainment: 12,
 };
@@ -95,7 +104,7 @@ function create(OV, opts) {
       battles: [], dogfights: { started: 0, crashed: 0, destroyed: 0, escaped: 0, other: 0, lost: 0 },
       research: {}, months: [], built: {}, firstCrashT: null, firstBattleT: null, firstDetectT: null, avengerT: null,
       retaliations: [], seaDowns: 0, baseFail: {}, basesFound: [], crashSites: 0, terror: { seen: 0, fought: 0, won: 0, expired: 0 }, lastManageDay: -1,
-      sold: 0, pacts: [], spotted: [],
+      sold: 0, pacts: [], spotted: [], detectT: [],
     },
   };
 
@@ -116,7 +125,9 @@ function create(OV, opts) {
   const threatened = () => !!base() && bot.G.alienMissions.some((m) => m.targetBaseId === base().id);
   const baseReserve = () => 600000 + 150000 * (bot.G.month | 0);
   // a juntar para o Vingador: obras, contratações e fabrico comum esperam (o Vingador usa só a reserva base)
-  const saving = () => has('ultimate_craft') && !craftsOf('avenger').length && !producing('avenger').length;
+  const saving = () => has('ultimate_craft') && storyPastBase() && !craftsOf('avenger').length && !producing('avenger').length;
+  // a história passou a base alienígena: há um comandante vivo ou já interrogado (ou a Solução Marciana)
+  const storyPastBase = () => !!(bot.G.flags.martianSolution || bot.G.flags.commanderInterrogated) || liveRank('commander');
   const reserve = () => baseReserve() + (saving() ? D.manufacture.avenger.cost : 0);
 
   // ---- personagens: força (UT + Pontaria + Saúde) ----------------------------------------------------------------
@@ -202,8 +213,8 @@ function create(OV, opts) {
     const G = bot.G, b = base();
     // naves perdidas: repõe a nave de transporte (sempre) e um Intercetor (com fundos)
     const coming = (type) => b.deliveries.filter((d) => d.kind === 'craft' && d.itemId === type).length;
-    if (!transports().length && !coming('skyranger')) {
-      // sem nave de transporte não há campanha: vende o que for preciso para a pagar
+    // sem Skyranger não há campanha (o Vingador fica guardado para Cidónia): vende o que for preciso para a pagar
+    if (!craftsOf('skyranger').length && !coming('skyranger')) {
       if (G.funds < D.crafts.skyranger.buy) raiseFunds(D.crafts.skyranger.buy + 100000);
       if (BS.canBuy(G, b.id, 'skyranger', 1) === null && BS.buy(G, b.id, 'skyranger', 1).ok) say('compra Skyranger');
     }
@@ -398,7 +409,9 @@ function create(OV, opts) {
   function reservedFor() {
     const out = {};
     const avenger = craftsOf('avenger').length > 0 || producing('avenger').length > 0;
-    if (avenger || !has('ufo_construction')) return out;
+    // só depois de haver um comandante (vivo ou interrogado): antes disso as ligas vão para as armaduras que a história
+    // precisa (assalto à base alienígena)
+    if (avenger || !has('ufo_construction') || !storyPastBase()) return out;
     const m = D.manufacture.avenger.materials;
     for (const k of Object.keys(m)) out[k] = m[k];
     const psMissing = Math.max(0, (m.ufo_power_source | 0) - stock('ufo_power_source'));
@@ -414,26 +427,42 @@ function create(OV, opts) {
     const pending = (item) => producing(item).reduce((s, p) => s + Math.max(0, p.qty - p.done), 0);
     const avenger = craftsOf('avenger').length > 0 || producing('avenger').length > 0;
     // o Vingador e as suas peças usam a reserva (forAvenger); o resto só o material acima dela
-    if (has('ultimate_craft') && !avenger) out.push({ item: 'avenger', qty: 1, pri: 100, forAvenger: true });
-    if (has('ufo_construction') && !avenger) {
+    const story = storyPastBase();
+    if (has('ultimate_craft') && !avenger && story) out.push({ item: 'avenger', qty: 1, pri: 100, forAvenger: true });
+    if (has('ufo_construction') && !avenger && story) {
       if (stock('ufo_power_source') < 2 && has('power_source')) out.push({ item: 'ufo_power_source', qty: 1, pri: 99, forAvenger: true });
       if (stock('ufo_navigation') < 1 && has('ufo_navigation')) out.push({ item: 'ufo_navigation', qty: 1, pri: 99, forAvenger: true });
     }
-    if (has('laser_rifle') && !has('heavy_plasma')) {
-      const n = owned('laser_rifle') + pending('laser_rifle');
-      if (n < squad) out.push({ item: 'laser_rifle', qty: squad - n, pri: 90 });
+    // Plasma Pesado (1 liga) para os 12 de Cidónia; antes disso espingardas de plasma (1 liga) para a equipa
+    if (has('heavy_plasma') && bot.G.flags.cydoniaUnlocked) {
+      const n = owned('heavy_plasma') + pending('heavy_plasma');
+      if (n < 12) out.push({ item: 'heavy_plasma', qty: Math.min(2, 12 - n), pri: 97, forAvenger: craftsOf('avenger').length > 0 });
+    } else if (has('plasma_rifle') && !baseArmourShort()) {
+      const n = owned('heavy_plasma') + owned('plasma_rifle') + pending('plasma_rifle');
+      if (n < 10) out.push({ item: 'plasma_rifle', qty: Math.min(2, 10 - n), pri: 89 });
     }
-    // armaduras primeiro: podem usar a reserva de ligas do Vingador (sobreviver vem antes)
-    if (has('personal_armour') && !has('power_suit')) {
-      const n = owned('personal_armour') + pending('personal_armour');
-      if (n < squad) out.push({ item: 'personal_armour', qty: Math.min(2, squad - n), pri: 95, forAvenger: n < 8 });
+    // espingardas laser (sem ligas) repõem as armas avançadas perdidas com as baixas, mesmo depois do plasma
+    if (has('laser_rifle')) {
+      const n = owned('laser_rifle') + owned('heavy_plasma') + owned('plasma_rifle') + pending('laser_rifle');
+      if (n < squad) out.push({ item: 'laser_rifle', qty: Math.min(4, squad - n), pri: 90 });
     }
+    // armaduras primeiro: podem usar a reserva de ligas do Vingador (sobreviver vem antes). A armadura pessoal tapa
+    // os buracos (baixas levam a armadura) mesmo depois dos fatos energéticos, que custam mais ligas e Elerium.
+    const suitsN = owned('power_suit') + owned('flying_suit') + pending('power_suit');
+    const armouredN = suitsN + owned('personal_armour') + pending('personal_armour');
     if (has('power_suit')) {
-      const n = owned('power_suit') + pending('power_suit');
       // fase final: fatos para os 12 de Cidónia antes de tudo — mas só com o Vingador feito ou em fabrico (as ligas
       // reservadas para ele não vão para os fatos quando Cidónia é investigada antes da nave)
       const last = !!bot.G.flags.cydoniaUnlocked && avenger;
-      if (n < squad) out.push({ item: 'power_suit', qty: Math.min(2, squad - n), pri: last ? 101 : 80, forAvenger: last });
+      if (suitsN < squad) out.push({ item: 'power_suit', qty: Math.min(2, squad - suitsN), pri: last ? 101 : 80, forAvenger: last });
+    }
+    if (has('personal_armour') && armouredN < squad && !(bot.G.flags.cydoniaUnlocked && has('power_suit'))) {
+      out.push({ item: 'personal_armour', qty: Math.min(2, squad - armouredN), pri: 95, forAvenger: armouredN < 6 && !has('ultimate_craft') });
+    }
+    // Lança-Bombas Blaster para Cidónia (o Cérebro e os Sectopodes; DESIGN §14 fase final)
+    if (has('blaster_launcher') && (bot.G.flags.martianSolution || bot.G.flags.cydoniaUnlocked)) {
+      if (owned('blaster_launcher') + pending('blaster_launcher') < 2) out.push({ item: 'blaster_launcher', qty: 1, pri: 96 });
+      if (owned('blaster_bomb') + pending('blaster_bomb') < 6) out.push({ item: 'blaster_bomb', qty: 2, pri: 96 });
     }
     if (has('medikit') && owned('medikit') + pending('medikit') < 4) out.push({ item: 'medikit', qty: 1, pri: 75 });
     if (has('alien_grenade') && bot.G.flags.martianSolution && owned('alien_grenade') + pending('alien_grenade') < 12) out.push({ item: 'alien_grenade', qty: 4, pri: 74 });
@@ -448,7 +477,7 @@ function create(OV, opts) {
       const fitted = interceptors().reduce((s, c) => s + c.weapons.filter((w) => w && w.type === 'plasma_beam').length, 0);
       if (fitted + stock('plasma_beam') < 2) out.push({ item: 'plasma_beam', qty: 1, pri: 62 });
     }
-    if (has('new_fighter') && avenger && craftsOf('firestorm').length === 0) out.push({ item: 'firestorm', qty: 1, pri: 50 });
+    if (has('new_fighter') && avenger && craftsOf('firestorm').length === 0 && craftsOf('skyranger').length) out.push({ item: 'firestorm', qty: 1, pri: 50 });
     return out.sort((a, b) => b.pri - a.pri);
   }
   function manageProduction() {
@@ -493,8 +522,21 @@ function create(OV, opts) {
     const G = bot.G;
     const t = transports().sort((a, b) => (D.crafts[b.type].seatsUI | 0) - (D.crafts[a.type].seatsUI | 0) || (a.id < b.id ? -1 : 1));
     const sky = t.find((c) => c.type === 'skyranger');
-    if (sky && !G.flags.cydoniaUnlocked) return sky;
+    // Cidónia desbloqueada: a equipa só passa para o Vingador com o material final pronto; até lá a Skyranger continua a
+    // trazer ligas (armaduras) e alienígenas
+    if (sky && !(G.flags.cydoniaUnlocked && craftsOf('avenger').length && finalKitReady())) return sky;
     return t[0] || null;
+  }
+  // material para Cidónia: 12 fatos energéticos; ao fim de 20 dias, 12 armaduras quaisquer; ao fim de 40, 10
+  function finalKitReady() {
+    const G = bot.G;
+    if (!G.flags.cydoniaUnlocked) return false;
+    if (bot.mem.cydoniaT === undefined) bot.mem.cydoniaT = G.t;
+    const waited = G.t - bot.mem.cydoniaT;
+    const suits = owned('power_suit') + owned('flying_suit');
+    const armoured = suits + owned('personal_armour');
+    const seats = D.crafts.avenger.seatsUI;
+    return suits >= seats || waited >= 20 * DAY && armoured >= seats || waited >= 40 * DAY && armoured >= 10;
   }
   function manageSquad() {
     const G = bot.G;
@@ -511,7 +553,12 @@ function create(OV, opts) {
     const chosen = new Set(fit.slice(0, seats).map((s) => s.id));
     for (const sid of main.soldiers.slice()) if (!chosen.has(sid)) BS.assignSoldier(G, sid, null);
     for (const s of fit.slice(0, seats)) if (s.craftId !== main.id) BS.assignSoldier(G, s.id, main.id);
-    // armaduras: a melhor que houver em armazém
+    // armaduras: os soldados de reserva devolvem as suas ao armazém (a equipa da nave veste primeiro), depois a melhor
+    // que houver em armazém
+    for (const sid of base().soldiers) {
+      const s = G.soldiers[sid];
+      if (s && s.craftId !== main.id && ARMOURS.indexOf(s.armour) >= 0) BS.setArmour(G, sid, 'coveralls');
+    }
     for (const sid of main.soldiers) {
       const s = G.soldiers[sid];
       for (const a of ARMOURS) {
@@ -552,50 +599,77 @@ function create(OV, opts) {
     const strongest = pool.squad.slice().sort((a, b) => b.stats.str - a.stats.str || (a.id < b.id ? -1 : 1));
     const loadouts = {};
     const fits = (lo, slot, it) => D.fitsSlot(it, slot, lo[slot]);
+    // peso: acima da Força as UT do turno descem na proporção (BUnits.turnTU) — só a arma e o 1.º carregador passam
+    const wt = (id) => (D.items[id] ? D.items[id].weight | 0 : 0);
+    const cur = { load: 0, cap: 0, force: false };
+    const light = (it) => cur.force || cur.load + wt(it) <= cur.cap;
     const putBelt = (lo, it) => {
-      if (fits(lo, 'belt', it) && takeIt(it)) {
+      if (light(it) && fits(lo, 'belt', it) && takeIt(it)) {
         lo.belt.push(it);
+        cur.load += wt(it);
         return true;
       }
       return false;
     };
     const putPack = (lo, it) => {
-      if (fits(lo, 'pack', it) && takeIt(it)) {
+      if (light(it) && fits(lo, 'pack', it) && takeIt(it)) {
         lo.pack.push(it);
+        cur.load += wt(it);
         return true;
       }
       return false;
+    };
+    const putHand = (lo, it) => {
+      if (!takeIt(it)) return false;
+      lo.R = it;
+      cur.load += wt(it);
+      return true;
     };
     const advanced = avail('laser_rifle') + avail('heavy_plasma') + avail('plasma_rifle') >= Math.ceil(team.length / 2);
     // papéis: atordoador (Lançador Pequeno), canhão pesado (só sem armas avançadas), médicos
     const final = !!G.flags.cydoniaUnlocked;
     const stunner = !final && avail('small_launcher') > 0 && avail('stun_bomb') > 0 ? strongest.find((s) => s.stats.str >= 30) || null : null;
     const heavy = !advanced && avail('heavy_cannon') > 0 && team.length > 3 ? strongest.find((s) => s !== stunner) : null;
+    // Cidónia: até dois Lança-Bombas Blaster nos mais fortes (com bombas)
+    const blasters = new Set();
+    if (final && avail('blaster_bomb') >= 2) {
+      for (const s of strongest) {
+        if (blasters.size >= Math.min(2, avail('blaster_launcher'), avail('blaster_bomb') >> 1)) break;
+        if (s !== stunner && s !== heavy && s.stats.str >= 25) blasters.add(s);
+      }
+    }
     let medics = 0, flares = 0, smoke = 0;
     for (const s of team) {
       const lo = { R: null, L: null, belt: [], pack: [] };
+      Object.assign(cur, { load: 0, cap: s.stats.str | 0, force: true });
       if (s === stunner) {
-        takeIt('small_launcher');
-        lo.R = 'small_launcher';
-        for (let k = 0; k < 3; k++) putBelt(lo, 'stun_bomb');
+        putHand(lo, 'small_launcher');
+        putBelt(lo, 'stun_bomb');
+        cur.force = false;
+        for (let k = 0; k < 2; k++) putBelt(lo, 'stun_bomb');
+      } else if (blasters.has(s)) {
+        putHand(lo, 'blaster_launcher');
+        putBelt(lo, 'blaster_bomb');
+        cur.force = false;
+        putBelt(lo, 'blaster_bomb');
+        if (!putPack(lo, 'blaster_bomb')) putBelt(lo, 'blaster_bomb');
       } else if (s === heavy) {
-        takeIt('heavy_cannon');
-        lo.R = 'heavy_cannon';
+        putHand(lo, 'heavy_cannon');
         if (!putBelt(lo, 'hc_he')) putBelt(lo, 'hc_ap');
+        cur.force = false;
         putBelt(lo, 'hc_ap');
       } else {
         for (const [w, clip] of WEAPONS) {
           if (avail(w) <= 0) continue;
           if (clip && avail(clip) <= 0) continue;
-          takeIt(w);
-          lo.R = w;
-          if (clip) {
-            putBelt(lo, clip);
-            putBelt(lo, clip);
-          }
+          putHand(lo, w);
+          if (clip) putBelt(lo, clip);
+          cur.force = false;
+          if (clip) putBelt(lo, clip);
           break;
         }
       }
+      cur.force = false;
       if (!putBelt(lo, 'alien_grenade')) putBelt(lo, 'grenade');
       if (flares < 4 && putBelt(lo, 'electro_flare')) flares++;
       if (medics < (final ? 3 : 2) && s !== stunner && putPack(lo, 'medikit')) medics++;
@@ -714,9 +788,10 @@ function create(OV, opts) {
     return Math.round((100 * adv) / ids.length);
   }
   function gearLevel() {
-    // 0 espingardas, 1 lasers/armadura, 2 plasma
-    if (owned('heavy_plasma') >= 6 || owned('plasma_rifle') >= 6) return 2;
-    if (owned('laser_rifle') >= 6) return 1;
+    // 0 espingardas, 1 lasers/plasma (mistura), 2 plasma — contam as armas de todos os tipos juntas
+    const plasma = owned('heavy_plasma') + owned('plasma_rifle');
+    if (plasma >= 6) return 2;
+    if (plasma + owned('laser_rifle') >= 6) return 1;
     return 0;
   }
   // assalto a uma base alienígena: lasers e ≥ 4 com armadura (ou plasma) e nenhum fracasso nos últimos 20 dias
@@ -727,11 +802,17 @@ function create(OV, opts) {
     if (!c || gearLevel() < 1) return false;
     const armoured = c.soldiers.filter((id) => G.soldiers[id] && ARMOURS.indexOf(G.soldiers[id].armour) >= 0).length;
     const suits = c.soldiers.filter((id) => G.soldiers[id] && (G.soldiers[id].armour === 'power_suit' || G.soldiers[id].armour === 'flying_suit')).length;
-    if (armoured < 4 && gearLevel() < 2) return false;
+    // sem armadura um assalto falhado custa a equipa inteira (os de fato-macaco morrem primeiro); Recruta: alienígenas com
+    // metade da Pontaria e da armadura, chegam 4
+    if (armoured < (G.difficulty >= 1 ? 8 : 4)) return false;
+    if (G.difficulty >= 1 && gearLevel() < 2) return false; // Veterano: só com plasma (lasers + armadura ≈ 58 %, plasma ≈ 90 %)
     if (ab.race === 'muton' && (gearLevel() < 2 || suits < 8 || !G.flags.cydoniaUnlocked)) return false;
     if (ab.race === 'snakeman' && gearLevel() < 2) return false; // Crisálidas: só com plasma
+    if (ab.race === 'ethereal' && suits < 6) return false; // Etéreos: plasma pesado e fatos
+    // depois do comandante interrogado a história já não precisa de bases (o resto é pontuação e risco)
+    if (G.flags.commanderInterrogated || liveRank('commander')) return false;
     const last = bot.mem.baseFail[ab.id];
-    return last === undefined || G.t - last > 20 * DAY;
+    return last === undefined || G.t - last > 12 * DAY;
   }
   // orçamento de tempo de um jogador (2–4 h): no máximo OPTIONAL_PER_MONTH batalhas opcionais (quedas e aterragens)
   // por mês, salvo quando a história precisa de alienígenas vivos ou o Vingador de ligas
@@ -739,13 +820,38 @@ function create(OV, opts) {
     const G = bot.G;
     return bot.mem.battles.filter((b) => (b.kind === 'crash' || b.kind === 'landed') && b.month === (G.month | 0)).length;
   }
+  // ligas que fazem falta: reserva do Vingador + armaduras pessoais em falta para uma equipa de 10 + (fase final, com o
+  // Vingador feito) fatos energéticos para os 12 de Cidónia + margem
+  function alloysWanted() {
+    const armoured = owned('personal_armour') + owned('power_suit') + owned('flying_suit');
+    const suits = owned('power_suit') + owned('flying_suit');
+    const final = !!bot.G.flags.cydoniaUnlocked && craftsOf('avenger').length > 0;
+    let missing = has('personal_armour') ? 2 * Math.max(0, 10 - armoured) : 0;
+    if (final) missing = has('power_suit') ? 3 * Math.max(0, 12 - suits) : 2 * Math.max(0, 12 - armoured);
+    return (reservedFor().alien_alloys | 0) + missing + 10;
+  }
+  // a história espera pela base alienígena e faltam armaduras para o assalto (readyForBase)
+  function baseArmourShort() {
+    const G = bot.G;
+    if (G.flags.commanderInterrogated || liveRank('commander') || !has('personal_armour')) return false;
+    const armoured = owned('personal_armour') + owned('power_suit') + owned('flying_suit');
+    return armoured < (G.difficulty >= 1 ? 8 : 4);
+  }
   function worthIt(u) {
     const G = bot.G;
     const size = D.ufos[u.type].size;
     const live = Object.keys(base().aliens).length > 0;
     const needLive = !G.flags.interrogated && !live && BS.capacities(G, base().id).aliens.cap > 0;
-    const alloysShort = stock('alien_alloys') < (reservedFor().alien_alloys | 0) + 20;
-    if (optionalThisMonth() >= OPTIONAL_PER_MONTH && !needLive && !(alloysShort && size >= 1)) return false;
+    const alloysShort = stock('alien_alloys') < alloysWanted();
+    const optional = optionalThisMonth();
+    const budget = OPTIONAL_PER_MONTH;
+    if (optional >= budget) {
+      // uma batalha extra no mês quando a história para: falta um alienígena vivo, ou ligas para o Vingador ou para as
+      // armaduras de Cidónia
+      const noAvenger = has('ultimate_craft') && storyPastBase() && !craftsOf('avenger').length && !producing('avenger').length;
+      const blocked = alloysShort && size >= 1 && (noAvenger || !!G.flags.cydoniaUnlocked && !finalKitReady() || baseArmourShort());
+      if (!((needLive || blocked) && optional < budget + 1)) return false;
+    }
     return worthItSize(u, size, needLive, alloysShort);
   }
   function worthItSize(u, size, needLive, alloysShort) {
@@ -753,9 +859,21 @@ function create(OV, opts) {
     if (size >= 2) return true;
     if (needLive) return true;
     if ((G.month | 0) < 1) return true;
-    // batedor grande: ligas quando faltam para o Vingador e as armaduras
-    if (u.type === 'large_scout') return alloysShort;
-    return false;
+    // batedores médios e grandes: ligas quando faltam para o Vingador e as armaduras
+    return alloysShort && size >= 1;
+  }
+  // como um jogador cauteloso: naves grandes (Ceifeira para cima) e tripulações de Mutões ou Etéreos só com plasma e
+  // pelo menos 6 soldados com armadura na nave; aterragens de batedores médios/grandes pelo menos com lasers
+  function fightable(u) {
+    const G = bot.G;
+    const c = squadCraft();
+    if (!c) return false;
+    const size = D.ufos[u.type].size;
+    const armoured = c.soldiers.filter((id) => G.soldiers[id] && ARMOURS.indexOf(G.soldiers[id].armour) >= 0).length;
+    const strong = gearLevel() >= 2 && armoured >= 6;
+    if ((size >= 2 || u.race === 'muton' || u.race === 'ethereal') && !strong) return false;
+    if (u.status === 'landed' && size >= 1 && gearLevel() < 1 && (G.month | 0) >= 1) return false;
+    return true;
   }
   function etaH(c, p) {
     return GM.distNm(c, p) / D.crafts[c.type].speed;
@@ -771,6 +889,7 @@ function create(OV, opts) {
       if (size >= 3 && lvl < 1) continue;
       // batedores pequenos e médios só valem a viagem no início ou quando faltam alienígenas vivos ou ligas
       if (!worthIt(u)) continue;
+      if (!fightable(u)) continue;
       if (u.type === 'battleship' && lvl < 2 && G.month < 3) continue;
       out.push({ ref: { kind: 'ufo', id: u.id }, obj: u, kind: u.status, pri: u.status === 'landed' ? 3 : 2 });
     }
@@ -808,7 +927,7 @@ function create(OV, opts) {
       const phase = GM.dayPhase({ t: G.t + Math.round(eta * HOUR) }, tg.obj.lon, tg.obj.lat);
       const big = tg.obj.type ? D.ufos[tg.obj.type].size >= 1 : false;
       // queda: espera pela luz do dia (o local dura ≥ 24 h); aterragem de noite só contra um Batedor Pequeno
-      if (tg.kind === 'crashed' && phase === 'night' && tg.obj.crashLeftS > 14 * HOUR) continue;
+      if (tg.kind === 'crashed' && phase === 'night' && (tg.obj.crashLeftS > 14 * HOUR || big)) continue;
       if (tg.kind === 'landed' && phase === 'night' && (big && gearLevel() < 1 || D.ufos[tg.obj.type].size >= 2)) continue;
       if (tg.obj.type === 'battleship' && phase === 'night') continue;
       if (tg.kind === 'landed' && eta > 2.5) continue;
@@ -875,6 +994,7 @@ function create(OV, opts) {
         break;
       case 'ufoDetected':
         if (bot.mem.firstDetectT === null) bot.mem.firstDetectT = G.t;
+        if (G.t < GAP_DAYS * DAY) bot.mem.detectT.push(G.t);
         break;
       case 'ufoCrashed': {
         bot.mem.crashSites++;
@@ -970,13 +1090,15 @@ function create(OV, opts) {
   function manageCydonia() {
     const G = bot.G;
     if (!G.flags.cydoniaUnlocked || G.activeMission) return;
+    if (bot.mem.cydoniaT === undefined) bot.mem.cydoniaT = G.t;
     const av = craftsOf('avenger').find((c) => c.status === 'ready');
     if (!av) return;
-    if (bot.mem.cydoniaT === undefined) bot.mem.cydoniaT = G.t;
-    // espera por uma equipa completa com fatos energéticos (no máximo 20 dias depois de desbloqueada)
-    const suits = av.soldiers.filter((id) => G.soldiers[id] && (G.soldiers[id].armour === 'power_suit' || G.soldiers[id].armour === 'flying_suit')).length;
-    const patient = G.t - bot.mem.cydoniaT < 12 * DAY;
-    if (fitSoldiers(av) < (patient ? D.crafts.avenger.seatsUI : 8) || (patient && suits < D.crafts.avenger.seatsUI)) return;
+    // a equipa só embarca no Vingador com o material final (finalKitReady: fatos, ou armaduras depois de esperar; nunca
+    // de fato-macaco); espera ainda pelos Lança-Bombas Blaster até 10 dias e pela nave cheia
+    const waited = G.t - bot.mem.cydoniaT;
+    const blastersDue = has('blaster_launcher') && owned('blaster_launcher') < 2 && waited < 10 * DAY;
+    const fit = fitSoldiers(av);
+    if (!finalKitReady() || blastersDue || fit < (waited >= 40 * DAY ? 10 : D.crafts.avenger.seatsUI)) return;
     say('lança Cidónia com ' + fitSoldiers(av) + ' soldados');
     playBattle(av.id, { kind: 'cydonia' });
   }
@@ -1029,6 +1151,8 @@ function create(OV, opts) {
       firstDetectDay: m.firstDetectT === null ? null : +(m.firstDetectT / DAY).toFixed(2),
       firstCrashDay: m.firstCrashT === null ? null : +(m.firstCrashT / DAY).toFixed(2),
       firstBattleDay: m.firstBattleT === null ? null : +(m.firstBattleT / DAY).toFixed(2),
+      gapDays: detectGap(m.detectT || [], Math.min(G.t, GAP_DAYS * DAY)),
+      detectDays: (m.detectT || []).map((t) => +(t / DAY).toFixed(1)),
       flags: { interrogated: !!G.flags.interrogated, leader: !!G.flags.leaderInterrogated, commander: !!G.flags.commanderInterrogated },
       hash: C.hash(G),
     };
@@ -1039,6 +1163,18 @@ function create(OV, opts) {
   bot.report = report;
   bot.reload = reload;
   return bot;
+}
+
+// maior intervalo (dias) sem um OVNI detetado entre o dia 0 e `end` (meses 0–2: DESIGN §14, CAMPAIGN_API §11)
+function detectGap(ts, end) {
+  let prev = 0, gap = 0;
+  for (const t of ts) {
+    if (t > end) break;
+    gap = Math.max(gap, t - prev);
+    prev = t;
+  }
+  gap = Math.max(gap, end - prev);
+  return +(gap / DAY).toFixed(1);
 }
 
 function fmtDay(t) {
@@ -1065,4 +1201,4 @@ function run(opts) {
   return rep;
 }
 
-module.exports = { create, run, BUILD, RESEARCH_PRI, KEY_TOPICS, OPTIONAL_PER_MONTH };
+module.exports = { create, run, detectGap, BUILD, RESEARCH_PRI, KEY_TOPICS, OPTIONAL_PER_MONTH };

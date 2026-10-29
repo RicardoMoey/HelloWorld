@@ -5,7 +5,7 @@
    Conteúdo (lon −180..180 este, lat norte positiva, graus):
      land        anéis de terra [lon,lat,lon,lat,...] (1 casa decimal, fechados; podem atravessar o
                  antimeridiano e o da Antártida contorna o polo sem fecho — tal como na fonte)
-     countries   {id: [anéis]} dos 16 países financiadores + portugal (Douglas–Peucker 0,15° por arco;
+     countries   {id: [anéis]} dos 17 países financiadores, 16 orig + portugal (Douglas–Peucker 0,15° por arco;
                  fronteiras de 1999: França só metropolitana, Crimeia fora da Rússia)
      landMask    base64 de 720×360 bits (células de 0,5°, linha 0 = lat 90..89,5, coluna 0 = lon −180..−179,5,
                  bit mais significativo primeiro), par-ímpar sobre todos os anéis de terra

@@ -242,19 +242,18 @@ module.exports = function (OV, t) {
     t.eq(C.findBase(G, b.id), null);
   });
 
-  t.test('guarnição à medida: 8 recrutas ≥ exigência de Veterano em 20 sementes; Super-humano precisa de mais', () => {
+  t.test('guarnição à medida: os recrutas iniciais ≥ exigência de Veterano em 20 sementes; os 8 de Super-humano não chegam', () => {
     const T = OV.TUNE;
     const vet = T.BASE_DEFENCE_BASE + T.BASE_DEFENCE_PER_COEF * 2;
     const sup = T.BASE_DEFENCE_BASE + T.BASE_DEFENCE_PER_COEF * 4;
+    const strength = (G) => Object.values(G.soldiers).reduce((a, x) => a + x.stats.tu + x.stats.fire + x.stats.hp, 0);
     let min = Infinity, max = 0;
     for (let seed = 1; seed <= 20; seed++) {
-      const G = C.newCampaign({ seed, difficulty: 1 });
-      const s = Object.values(G.soldiers).reduce((a, x) => a + x.stats.tu + x.stats.fire + x.stats.hp, 0);
-      min = Math.min(min, s);
-      max = Math.max(max, s);
+      min = Math.min(min, strength(C.newCampaign({ seed, difficulty: 1 })));
+      max = Math.max(max, strength(C.newCampaign({ seed, difficulty: 2 })));
     }
-    t.ok(min >= vet, '8 recrutas ' + min + ' ≥ ' + vet);
-    t.ok(max < sup, 'Super-humano ' + sup + ' > ' + max);
+    t.ok(min >= vet, 'recrutas de Veterano ' + min + ' ≥ ' + vet);
+    t.ok(max < sup, 'Super-humano ' + sup + ' > ' + max + ' (8 recrutas)');
   });
 
   // ---- gravações ----------------------------------------------------------------------------------------------

@@ -13,7 +13,8 @@
      removeUfo(G, ufoId) → ufo|null      retira um OVNI (missão, naves que o seguiam); usado pelo World nos ataques à base
    Retaliação (ours): ao encontrar a base, baseSpotted {baseId, missionId, etaS} (paragem) e pelo menos
    RETALIATION_WARNING_MIN até o Couraçado partir; o Couraçado do ataque nasce já detetado (ufoDetected).
-     regionWeights(G) → {regionId: peso}  pesos das missões da tabela (×3 perto de uma base X-COM), para testes/depuração
+     regionWeights(G) → {regionId: peso}  pesos das missões da tabela (×nearBaseWeightMul a ≤ nearBaseNm de uma base X-COM)
+     expiredPoints(G) → int               pontos alienígenas de um terror ignorado neste mês (ours: −500 nos meses 0–1)
    }
    Trajetórias: a perna i → i+1 voa à altitude pts[i][1] e a pts[i][2] % da velocidade máxima; um ponto com altitude 0
    significa «aterra no ponto anterior durante groundTimer × 5 s» (5 s se não for terra; cidades não se testam). O último
@@ -93,7 +94,7 @@
     const c = centroidLL(rid);
     return G.bases.some((b) => GM().distNm(b, c) <= nm);
   }
-  // pesos das regiões para as missões da tabela: regionWeight × 3 perto de uma base (§3.18)
+  // pesos das regiões para as missões da tabela: regionWeight × nearBaseWeightMul perto de uma base (§3.18, ours)
   function regionWeights(G) {
     const R = D().missionRules;
     const out = {};
@@ -186,7 +187,7 @@
     // ours: regiões perto de uma base X-COM pesam missionRules.terrorNearBaseWeightMul (orig: uniforme)
     const R = D().missionRules;
     const w = {};
-    for (const rid of regs) w[rid] = nearAnyBase(G, rid, R.nearBaseNm) ? R.terrorNearBaseWeightMul || 1 : 1;
+    for (const rid of regs) w[rid] = nearAnyBase(G, rid, R.terrorNearBaseNm || R.nearBaseNm) ? R.terrorNearBaseWeightMul || 1 : 1;
     const rid = regs.length === 1 ? regs[0] : weightedKey(r, w);
     const cities = D().regions[rid].cities.filter((c) => A.cities.indexOf(c) < 0);
     const cityId = cities.length === 1 ? cities[0] : r.pick(cities);
@@ -622,6 +623,14 @@
   }
 
   // ---- temporizadores ------------------------------------------------------------------------------------------
+  // pontos alienígenas de um terror ignorado: scoring.terrorSiteExpiredByMonth[mês] (ours, meses 0–1) ou terrorSiteExpired
+  function expiredPoints(G) {
+    const S = D().scoring;
+    const by = S.terrorSiteExpiredByMonth || [];
+    const m = G.month | 0;
+    return m < by.length ? by[m] | 0 : S.terrorSiteExpired | 0;
+  }
+
   function think30m(G) {
     mem(G);
     for (const m of G.alienMissions.slice()) {
@@ -636,7 +645,7 @@
     for (const site of G.sites.slice()) {
       site.leftS -= 1800;
       if (site.leftS > 0) continue;
-      const pts = D().scoring.terrorSiteExpired;
+      const pts = expiredPoints(G);
       score(G, 'alien', pts, site.lon, site.lat);
       G.stats.terrorIgnored++;
       Camp().removeById(G.sites, site.id);
@@ -748,6 +757,6 @@
 
   OV.Missions = {
     planMonth, think30m, scan10m, daily, monthEnd, spawnMission, spawnUfo, onUfoWaypoint, onUfoLiftOff, onUfoDown,
-    onSiteCleared, onResearch, removeUfo, regionWeights,
+    onSiteCleared, onResearch, removeUfo, regionWeights, expiredPoints,
   };
 })(globalThis.OV || (globalThis.OV = {}));

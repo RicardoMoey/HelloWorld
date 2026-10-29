@@ -46,7 +46,7 @@ module.exports = function (OV, t) {
   t.test('OVNIs: números do §3.12', () => {
     const U = D.ufos;
     t.eq(Object.keys(U).sort(), ['abductor', 'battleship', 'harvester', 'large_scout', 'medium_scout', 'small_scout', 'supply_ship', 'terror_ship']);
-    t.eq([U.small_scout.hp, U.small_scout.speed, U.small_scout.weapon.power, U.small_scout.breakOff, U.small_scout.score], [50, 2200, 0, 200, 50]);
+    t.eq([U.small_scout.hp, U.small_scout.speed, U.small_scout.weapon.power, U.small_scout.breakOff, U.small_scout.score], [50, 2200, 0, 360, 50]); // breakOff ours (orig 200)
     t.eq([U.terror_ship.hp, U.terror_ship.weapon.power, U.terror_ship.weapon.range, U.terror_ship.weapon.reload], [1200, 120, 42, 24]);
     t.eq([U.battleship.size, U.battleship.scoreDestroyed, U.battleship.map.w, U.battleship.alloys], [4, 1400, 50, 36]);
     t.eq(U.abductor.weapon.reload, 32);

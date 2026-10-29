@@ -178,7 +178,7 @@
       requires: 'new_fighter', produces: { craft: 'firestorm', n: 1 }, cat: 'craft',
     },
     avenger: {
-      hours: 2400, hoursOrig: 34000, cost: 900000, materials: { alien_alloys: 40, ufo_power_source: 2, ufo_navigation: 1 }, space: 36,
+      hours: 2400, hoursOrig: 34000, cost: 900000, materials: { alien_alloys: 25, ufo_power_source: 2, ufo_navigation: 1 }, space: 36, // ligas ours 40 → 25 (ritmo do fim)
       requires: 'ultimate_craft', produces: { craft: 'avenger', n: 1 }, cat: 'craft',
     },
   };

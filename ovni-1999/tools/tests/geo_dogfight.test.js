@@ -57,7 +57,8 @@ module.exports = function (OV, t) {
     t.eq(d.weapons, [{ slot: 0, enabled: true, reload: 0 }, { slot: 1, enabled: true, reload: 0 }]);
     t.eq(craft.dogfightId, d.id);
     t.eq(G.dogfights, [d]);
-    t.ok(d.escapeT >= 200 && d.escapeT <= 400, 'fuga breakOff + RNG(0, breakOff) em Recruta');
+    const bo = D.ufos.small_scout.breakOff;
+    t.ok(d.escapeT >= bo && d.escapeT <= 2 * bo, 'fuga breakOff + RNG(0, breakOff) em Recruta');
     t.eq(DF.create(G, 'c2', u.id), null, 'nave já em combate');
     const d2 = DF.create(G, 'c3', u.id);
     t.eq([d2.escapeT, d2.ufoReload], [d.escapeT, d.ufoReload], 'o mesmo OVNI partilha as contagens');
@@ -164,7 +165,8 @@ module.exports = function (OV, t) {
     for (const diff of [0, 1, 2]) {
       const { G, u, d } = setup('small_scout', { seed: 7 + diff, difficulty: diff });
       const e0 = d.escapeT;
-      t.ok(e0 >= 200 - 60 * diff && e0 <= 400 - 60 * diff, 'contagem ' + e0);
+      const bo = D.ufos.small_scout.breakOff;
+      t.ok(e0 >= bo - 60 * diff && e0 <= 2 * bo - 60 * diff, 'contagem ' + e0);
       DF.setMode(G, d.id, 'standoff');
       const ufoId = u.id;
       let breakAt = -1, outcome = null;

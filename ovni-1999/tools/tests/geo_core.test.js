@@ -161,7 +161,7 @@ module.exports = function (OV, t) {
   t.test('GMath: regiões, países (retângulos orig), terra', () => {
     t.eq(M.regionAt(LIS.lon, LIS.lat), 'europe');
     t.eq(M.countryAt(2.35, 48.85), 'france');
-    t.eq(M.countryAt(LIS.lon, LIS.lat), null, 'Portugal não financia');
+    t.eq(M.countryAt(LIS.lon, LIS.lat), 'portugal', 'Portugal financia (ours)');
     t.eq(M.countryAtMap(LIS.lon, LIS.lat), 'portugal');
     t.eq(M.isLand(LIS.lon, LIS.lat), true);
     t.eq(M.isLand(-40, 35), false);
@@ -242,12 +242,13 @@ module.exports = function (OV, t) {
     const G = Camp.newCampaign({ seed: 5, baseLonLat: LIS });
     t.eq(G.bases.length, 1);
     const b = G.bases[0];
-    t.eq([b.id, b.region, b.country, b.name], ['b1', 'europe', null, null]);
+    t.eq([b.id, b.region, b.country, b.name], ['b1', 'europe', 'portugal', null]);
     t.eq(b.grid.length, D.startingBase.facilities.length);
     t.ok(D.gridConnected(b.grid).ok, 'grelha ligada ao elevador');
     for (const f of b.grid) t.eq(f.daysLeft, 0);
     t.eq([b.scientists, b.engineers], [10, 10]);
-    t.eq(b.soldiers.length, 8);
+    t.eq(b.soldiers.length, D.startingBase.soldiersByDifficulty[G.difficulty]);
+    t.eq([0, 1, 2].map((d) => Camp.newCampaign({ seed: 5, difficulty: d }).bases[0].soldiers.length), [10, 10, 8], 'ours: 10/10/8');
     t.eq(b.crafts.length, 3);
     t.eq([b.research, b.production, b.deliveries, b.transfers, b.aliens, b.spotted], [[], [], [], [], {}, false]);
     // armazém = orig + extras, menos o kit médico e os very-lights postos na Skyranger
@@ -269,7 +270,7 @@ module.exports = function (OV, t) {
     }
     t.eq(crafts[1].weapons, [{ type: 'stingray', ammo: 6 }, { type: 'cannon', ammo: 200 }]);
     const sky = crafts[0];
-    t.eq(sky.soldiers.length, 8);
+    t.eq(sky.soldiers.length, 10, 'a Skyranger leva os 10 (Recruta)');
     for (const id of sky.soldiers) t.eq(G.soldiers[id].craftId, sky.id);
     const cargo = Object.assign({}, D.startingBase.crafts[0].cargo, { medikit: 1, electro_flare: 4 });
     t.eq(sky.equipment, cargo);
@@ -356,7 +357,7 @@ module.exports = function (OV, t) {
     const G = Camp.newCampaign({ seed: 3 });
     t.eq(Camp.nextId(G, 'u'), 'u1');
     t.eq(Camp.nextId(G, 'u'), 'u2');
-    t.eq(Camp.nextId(G, 's'), 's9');
+    t.eq(Camp.nextId(G, 's'), 's11');
     t.eq(Camp.findBase(G, 'b1'), G.bases[0]);
     t.eq(Camp.findCraft(G, 'c2'), G.crafts.c2);
     t.eq(Camp.findCraft(G, 'toString'), null);
@@ -434,7 +435,7 @@ module.exports = function (OV, t) {
       squad, craftItems: pool, researched: G.researched.slice(), settings: { instantGrenades: true } };
     const B = OV.Battle.create(mission);
     const xcom = B.units.filter((u) => u.side === 'xcom');
-    t.eq(xcom.length, 8);
+    t.eq(xcom.length, 10);
     t.eq(xcom.map((u) => u.soldierId), craft.soldiers);
     t.eq([B.mission.siteId, B.mission.craftId, B.mission.kind], ['u1', 'c1', 'crash']);
     for (const u of xcom) t.ok(u.tu > 0 && u.items.R !== null, 'armado e com UT: ' + u.soldierId);

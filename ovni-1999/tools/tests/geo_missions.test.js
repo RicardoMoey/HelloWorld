@@ -37,7 +37,7 @@ module.exports = function (OV, t) {
   const minutes = (s) => s / 60;
 
   // ---- guião ------------------------------------------------------------------------------------------------------
-  t.test('planMonth mês 0: Investigação Alienígena (Sectoides, região da base, +120 min) e primeiro terror (+3 dias)', () => {
+  t.test('planMonth mês 0: Investigação Alienígena (Sectoides, região da base, +120 min), primeiro terror (+10 dias) e outra investigação (+14 dias)', () => {
     iso({}, () => {
       for (const seed of [1, 2, 3, 4]) {
         const G = Camp.newCampaign({ seed, difficulty: 1 });
@@ -46,10 +46,12 @@ module.exports = function (OV, t) {
         const res = G.alienMissions.find((m) => m.script === 'gameStart');
         t.eq([res.type, res.region, res.race, res.countdownS, res.wave], ['alien_research', 'europe', 'sectoid', 120 * 60, 0]);
         const ter = G.alienMissions.find((m) => m.script === 'firstTerror');
-        t.eq([ter.type, ter.countdownS], ['alien_terror', 3 * 86400]);
+        t.eq([ter.type, ter.countdownS], ['alien_terror', 10 * 86400]);
+        const late = G.alienMissions.find((m) => m.script === 'regionalScouts');
+        t.eq([late.type, late.region, late.countdownS], ['alien_research', 'europe', 14 * 86400]);
         t.ok(D.citiesById[ter.cityId] && D.citiesById[ter.cityId].region === ter.region, 'cidade da região');
         t.ok(D.raceWeights('alien_terror', 0)[ter.race] > 0);
-        t.eq(G.alienMissions.length, 2);
+        t.eq(G.alienMissions.length, 3);
         t.eq(Mi.planMonth(G), [], 'não repete o mês');
       }
     });
@@ -70,15 +72,17 @@ module.exports = function (OV, t) {
         t.ok(GM.distNm(LIS, { lon: c[0], lat: c[1] }) <= 4000, 'região perto: ' + seedB[0].region);
         t.eq(by('recon').length, 1);
         t.ok(D.regions[by('recon')[0].region].missionWeights[by('recon')[0].type] > 0, 'tipo da tabela da região');
-        t.eq(G.alienMissions.length, 3);
+        t.eq(by('regionalScouts').map((m) => [m.type, m.region, m.countdownS]), [['alien_research', 'europe', 14 * 86400]]);
+        t.eq(G.alienMissions.length, 4);
       }
     });
   });
-  t.test('pesos das regiões da tabela: ×3 com o centróide a ≤ 4 000 mn da base; oceanos fora', () => {
+  t.test('pesos das regiões da tabela: ×4 com o centróide a ≤ 2 600 mn da base (alcance do radar); oceanos fora', () => {
     const G = fresh();
     const w = Mi.regionWeights(G);
-    t.eq(w.europe, D.regions.europe.weight * 3);
-    t.eq(w.north_africa, D.regions.north_africa.weight * 3);
+    t.eq(w.europe, D.regions.europe.weight * 4);
+    t.eq(w.north_africa, D.regions.north_africa.weight * 4);
+    t.eq(w.north_america, D.regions.north_america.weight, 'América do Norte (3 700 mn) fora do radar de Lisboa');
     t.eq(w.australasia, D.regions.australasia.weight);
     t.eq(w.north_atlantic, undefined);
     t.eq(w.pacific, D.regions.pacific.weight);
@@ -178,7 +182,7 @@ module.exports = function (OV, t) {
   });
 
   // ---- terror -------------------------------------------------------------------------------------------------
-  t.test('terror: a Nave de Terror vira local na cidade (sem teste de terra), dura 8–16 h e expira com −1 000', () => {
+  t.test('terror: a Nave de Terror vira local na cidade (sem teste de terra), dura 8–16 h e expira (mês 0: −500)', () => {
     const log = [];
     iso(econ(log), () => {
       const G = fresh(12);
@@ -196,8 +200,8 @@ module.exports = function (OV, t) {
       t.ok(site.leftS >= 8 * 3600 && site.leftS <= 16 * 3600 && site.leftS % 3600 === 0, 'duração ' + site.leftS);
       t.ok(log.some((s) => s.side === 'alien' && s.pts === 10 && s.lon === city.lon), '+10 ao criar o local');
       t.ok(expired, 'expirou');
-      t.eq(expired.points, 1000);
-      t.ok(log.some((s) => s.side === 'alien' && s.pts === 1000 && s.lat === city.lat));
+      t.eq(expired.points, D.scoring.terrorSiteExpiredByMonth[0]);
+      t.ok(log.some((s) => s.side === 'alien' && s.pts === 500 && s.lat === city.lat));
       t.eq(G.sites.length, 0);
       t.eq(G.stats.terrorIgnored, 1);
       t.eq(Camp.findAlienMission(G, m.id), null, 'missão terminou');

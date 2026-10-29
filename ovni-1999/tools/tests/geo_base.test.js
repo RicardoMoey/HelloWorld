@@ -35,7 +35,7 @@ module.exports = function (OV, t) {
   t.test('capacities da base inicial (só instalações concluídas)', () => {
     const G = fresh();
     const c = B.capacities(G, 'b1');
-    t.eq(c.personnel, { cap: 50, used: 28 });
+    t.eq(c.personnel, { cap: 50, used: 30 }); // 10 soldados (ours) + 10 + 10
     t.eq(c.labs, { cap: 50, used: 0 });
     t.eq(c.workshops, { cap: 50, used: 0 });
     t.eq(c.crafts, { cap: 3, used: 3 });
@@ -44,8 +44,8 @@ module.exports = function (OV, t) {
     t.ok(c.storage.used > 30 && c.storage.used < 50, 'armazém ' + c.storage.used);
     t.eq(c.storage.used, Math.round(c.storage.used * 10) / 10, 'uma casa decimal');
     t.eq(c.radars, [{ type: 'small_radar', rangeNm: 1695, chance: 15 }]);
-    t.eq([c.defences, c.hyper, c.upkeep], [[], false, 2579000]);
-    t.eq(B.staff(G, 'b1'), { soldiers: 8, scientists: { total: 10, free: 10 }, engineers: { total: 10, free: 10 } });
+    t.eq([c.defences, c.hyper, c.upkeep], [[], false, 2619000]);
+    t.eq(B.staff(G, 'b1'), { soldiers: 10, scientists: { total: 10, free: 10 }, engineers: { total: 10, free: 10 } });
   });
 
   t.test('canPlace: elevador único, limites, sobreposição, ligação, investigação, fundos', () => {
@@ -73,7 +73,7 @@ module.exports = function (OV, t) {
     // obra encostada a outra obra também é válida (ligação através de instalações em construção)
     t.eq(B.build(G, 'b1', 'general_stores', 0, 2).ok, true);
     t.eq(B.capacities(G, 'b1').personnel.cap, 50);
-    t.eq(B.capacities(G, 'b1').upkeep, 2579000, 'obras sem manutenção');
+    t.eq(B.capacities(G, 'b1').upkeep, 2619000, 'obras sem manutenção');
     days(G, D.facilities.living_quarters.days - 1);
     t.eq(evs(G, 'facilityDone').length, 1, 'armazém (4 dias) já acabou');
     days(G, 1);
@@ -120,7 +120,7 @@ module.exports = function (OV, t) {
     t.eq(r.delivery.etaT, G.t + 48 * 3600);
     t.eq(B.hire(G, 'b1', 'scientist', 5).ok, true);
     t.eq(G.funds, f0 - 2 * 40000 - 5 * 30000);
-    t.eq(B.capacities(G, 'b1').personnel.used, 35);
+    t.eq(B.capacities(G, 'b1').personnel.used, 37);
     t.eq(B.canHire(G, 'b1', 'engineer', 16), 'quarters');
     t.eq(B.canHire(G, 'b1', 'engineer', 0), 'count');
     t.eq(B.canHire(G, 'b1', 'pilot', 1), 'unavailable');
@@ -128,10 +128,10 @@ module.exports = function (OV, t) {
     t.eq(evs(G, 'deliveryArrived').length, 0);
     hours(G, 1);
     t.eq(evs(G, 'deliveryArrived').map((e) => [e.kind, e.n]), [['soldier', 2], ['scientist', 5]]);
-    t.eq(G.bases[0].soldiers.length, 10);
+    t.eq(G.bases[0].soldiers.length, 12);
     t.eq(G.bases[0].scientists, 15);
     t.eq(G.bases[0].deliveries, []);
-    const s = G.soldiers[G.bases[0].soldiers[9]];
+    const s = G.soldiers[G.bases[0].soldiers[11]];
     t.eq([s.baseId, s.craftId, s.rank], ['b1', null, 0]);
     G.funds = 1000;
     t.eq(B.canHire(G, 'b1', 'soldier', 1), 'funds');
@@ -512,7 +512,7 @@ module.exports = function (OV, t) {
     delete j.events;
     const k = JSON.parse(JSON.stringify(j));
     t.eq(j, k);
-    t.eq(G1.bases[0].soldiers.length, 11);
+    t.eq(G1.bases[0].soldiers.length, 13);
     t.ok(G1.researched.indexOf('medikit') >= 0);
     t.eq(G1.crafts.c2.status, 'ready');
   });

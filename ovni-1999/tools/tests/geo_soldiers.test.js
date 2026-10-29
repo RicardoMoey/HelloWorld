@@ -86,7 +86,7 @@ module.exports = function (OV, t) {
 
   t.test('promotions: vagas de cima para baixo, maior pontuação primeiro; recrutas nunca sobem por quota', () => {
     const G = fresh(6);
-    for (let k = 0; k < 8; k++) Camp.addSoldier(G, S.generate(G, { baseId: 'b1' })); // 16 soldados
+    while (Object.keys(G.soldiers).length < 16) Camp.addSoldier(G, S.generate(G, { baseId: 'b1' })); // 16 soldados
     const ids = Object.keys(G.soldiers);
     ids.forEach((id, i) => {
       G.soldiers[id].rank = i < 14 ? 1 : 0;

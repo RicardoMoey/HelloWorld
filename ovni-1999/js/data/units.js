@@ -346,9 +346,9 @@
       last: ['Smith', 'Jones', 'Williams', 'Brown', 'Wilson', 'Taylor', 'Johnson', 'White', 'Martin', 'Anderson', 'Thompson', 'Nguyen', 'Walker', 'Ryan', 'Kelly'],
     },
   };
-  // nacionalidades: os 16 países financiadores (id = país) + Portugal ('pt', fora do conselho) com peso ×2
+  // nacionalidades: os países financiadores (id = país; Portugal tem o id 'pt' e peso ×2)
   const nationalities = {};
-  for (const id in NAMES) nationalities[id] = { weight: id === 'pt' ? 2 : 1, country: id === 'pt' ? null : id };
+  for (const id in NAMES) nationalities[id] = { weight: id === 'pt' ? 2 : 1, country: id === 'pt' ? 'portugal' : id };
 
   D.soldierGen = {
     statKeys: STAT_KEYS.slice(),
@@ -391,13 +391,24 @@
   D.rowQty = function (row, diff) {
     return row.qty[diffIdx(diff)];
   };
-  // total de alienígenas de uma missão (sem civis) → {min, max}
-  D.deploymentRange = function (depId, diff) {
+  // ours (ritmo, mês de aprendizagem): nos primeiros earlyMonths meses as tripulações dos OVNIs usam a tabela da
+  // dificuldade earlyDiffStep abaixo (Veterano → Recruta, Super-humano → Veterano); atributos e armas não mudam
+  D.crewRules = { earlyMonths: 1, earlyDiffStep: 1 };
+  // dificuldade que dá as quantidades da tripulação (month null/undefined ⇒ sem redução: tabela da dificuldade)
+  D.crewDifficulty = function (depId, diff, month) {
+    const d = diffIdx(diff);
+    const dep = D.deployments[depId];
+    if (month === undefined || month === null || !dep || dep.kind !== 'ufo') return d;
+    return (month | 0) < D.crewRules.earlyMonths ? Math.max(0, d - D.crewRules.earlyDiffStep) : d;
+  };
+  // total de alienígenas de uma missão (sem civis) → {min, max}; month opcional aplica crewDifficulty
+  D.deploymentRange = function (depId, diff, month) {
     const dep = D.deployments[depId];
     if (!dep) return null;
+    const cd = D.crewDifficulty(depId, diff, month);
     let min = 0, max = 0;
     for (const r of dep.rows) {
-      const q = D.rowQty(r, diff);
+      const q = D.rowQty(r, cd);
       min += q[0];
       max += q[1];
     }
@@ -610,6 +621,6 @@
   }, 90);
 
   D.onFinalize('units.freeze', () => {
-    for (const k of ['units', 'races', 'deployments', 'alienItemTiers', 'alienGrowth', 'ranks', 'soldierGen']) U.deepFreeze(D[k]);
+    for (const k of ['units', 'races', 'deployments', 'alienItemTiers', 'alienGrowth', 'ranks', 'soldierGen', 'crewRules']) U.deepFreeze(D[k]);
   }, 99);
 })(globalThis.OV || (globalThis.OV = {}));

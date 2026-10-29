@@ -72,7 +72,7 @@ module.exports = function (OV, t) {
     t.throws(() => C.startMission(G, { kind: 'ufo', id: ufo.id }, sky.id), 'nave ainda no hangar ⇒ notAtSite');
     arrive(sky, 'ufo', ufo);
     // um soldado ferido fica de fora
-    const hurt = G.soldiers[sky.soldiers[7]];
+    const hurt = G.soldiers[sky.soldiers[sky.soldiers.length - 1]];
     const mapBefore = G.rng.map;
     const geoBefore = G.rng.geo;
     hurt.woundDays = 3;
@@ -83,7 +83,7 @@ module.exports = function (OV, t) {
     t.eq(m.terrain, D.terrainAt(ufo.lon, ufo.lat));
     t.eq(m.shade, OV.GMath.missionShade(G, ufo.lon, ufo.lat));
     t.eq(m.night, OV.GMath.dayPhase(G, ufo.lon, ufo.lat) === 'night');
-    t.eq(m.squad.length, 7, 'ferido não embarca');
+    t.eq(m.squad.length, sky.soldiers.length - 1, 'ferido não embarca');
     t.ok(m.squad.every((s) => s.soldierId !== hurt.id));
     t.eq(m.settings, { instantGrenades: false });
     t.eq(m.researched, []);
@@ -103,7 +103,7 @@ module.exports = function (OV, t) {
     t.eq([m.meta.regionKey, m.meta.countryKey, m.meta.race], ['region.europe', 'country.france', null]);
     t.eq(C.briefingMeta(G, m), m.meta);
     const B = OV.Battle.create(m);
-    t.eq(B.units.filter((u) => u.side === 'xcom').length, 7);
+    t.eq(B.units.filter((u) => u.side === 'xcom').length, sky.soldiers.length - 1);
     t.eq(B.settings.instantGrenades, false);
     t.eq(B.mission.siteId, ufo.id);
     t.throws(() => C.startMission(G, { kind: 'ufo', id: ufo.id }, sky.id), 'segunda missão em curso ⇒ busy');
@@ -112,7 +112,7 @@ module.exports = function (OV, t) {
     const G2 = freshG(7);
     const u2 = placeUfo(G2, 'crashed', 'small_scout', 2.35, 48.85);
     arrive(skyOf(G2), 'ufo', u2);
-    G2.soldiers[skyOf(G2).soldiers[7]].woundDays = 3;
+    G2.soldiers[skyOf(G2).soldiers[skyOf(G2).soldiers.length - 1]].woundDays = 3;
     const m2 = C.startMission(G2, { kind: 'ufo', id: u2.id }, skyOf(G2).id, { settings: { instantGrenades: false } });
     t.eq(m2, m);
   });
@@ -247,7 +247,7 @@ module.exports = function (OV, t) {
     t.eq(G.score.month.alien.total - alienBefore < D.scoring.terrorSiteExpired, true, 'sem terrorSiteExpired depois da derrota');
     t.ok(!G.events.some((e) => e.t === 'terrorSiteExpired'));
     t.eq(G.score.month.xcom.total - xBefore, model.debrief.score, 'penalização da nave contada uma vez');
-    t.eq(G.dead.length, 8);
+    t.eq(G.dead.length, D.startingBase.soldiersByDifficulty[G.difficulty]);
     t.eq(Object.keys(G.soldiers).length, 0);
     t.eq(model.progression, []);
     t.ok(G.events.some((e) => e.t === 'craftLost'));
@@ -378,7 +378,7 @@ module.exports = function (OV, t) {
     };
     const before = total();
     const pool = C.equipPool(G, sky.id);
-    t.eq(pool.squad.length, 8);
+    t.eq(pool.squad.length, sky.soldiers.length);
     t.eq(Object.keys(pool.squad[0]).sort(), ['armour', 'female', 'id', 'loadout', 'name', 'nat', 'portraitSeed', 'rank', 'stats']);
     t.ok(!pool.stores.stingray && !pool.stores.cannon_rounds && pool.stores.rifle > 0, 'só itens de combate; armazém incluído no hangar');
     // simula o ecrã: o primeiro soldado troca tudo por uma espingarda do armazém
@@ -449,7 +449,7 @@ module.exports = function (OV, t) {
     t.ok(r.shots.every((s) => (s.hit ? s.dmg >= 250 && s.dmg <= 750 : s.dmg === 0)));
     t.eq(G.ufos.length, 0);
     t.ok(G.events.some((e) => e.t === 'baseDefence' && e.result === 'ufoDestroyed'));
-    // 2) guarnição de 14 soldados contra um Couraçado em Recruta: repelido, 1–3 baixas
+    // 2) guarnição de 16 soldados (10 iniciais + 6) contra um Couraçado em Recruta: repelido, 1–3 baixas
     G = freshG(41, 0);
     for (let k = 0; k < 6; k++) C.addSoldier(G, C.makeSoldier(G, { baseId: 'b1' }));
     const strength = Object.values(G.soldiers).reduce((s, x) => s + x.stats.tu + x.stats.fire + x.stats.hp, 0);
@@ -459,7 +459,7 @@ module.exports = function (OV, t) {
     r = C.baseDefence(G, 'b1', u.id);
     t.eq(r.result, 'repelled');
     t.ok(r.soldiersLost.length >= 1 && r.soldiersLost.length <= 3);
-    t.eq(Object.keys(G.soldiers).length, 14 - r.soldiersLost.length);
+    t.eq(Object.keys(G.soldiers).length, 16 - r.soldiersLost.length);
     t.eq(G.score.month.xcom.total - xBefore, D.ufos.battleship.score);
     t.eq(G.ufos.length, 0);
     // 3) sem guarnição (todos fora numa nave em voo) ⇒ base perdida, fim de jogo
