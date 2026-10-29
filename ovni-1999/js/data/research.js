@@ -283,7 +283,7 @@
       id, nameKey: 'research.' + id, cat: 'alien_life', interrogation: true, unit, rank: rr.rank, race: rr.race,
       cost: tpl.costByRank[rr.rank], costOrig: tpl.costOrigByRank[rr.rank], points: tpl.points,
       requires: [], requiresAny: [], requiresFlags: [], needItem: null, consumesItem: false, consumes: { liveAlien: unit },
-      items: [], armours: [], setsFlags: [], article: rr.race, unlocks: [], enables: { manufacture: [], facilities: [], crafts: [] },
+      items: [], armours: [], setsFlags: [], article: 'race_' + rr.race, unlocks: [], enables: { manufacture: [], facilities: [], crafts: [] },
     };
     OV.U.deepFreeze(topic); // partilhado pela cache: imutável como os restantes tópicos
     synth.set(id, topic);

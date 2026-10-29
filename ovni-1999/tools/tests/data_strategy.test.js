@@ -38,7 +38,7 @@ module.exports = function (OV, t) {
 
   t.test('dogfight: constantes orig', () => {
     const F = D.dogfight;
-    t.eq([F.open, F.standoff, F.aggressive, F.disengage, F.approach, F.retreat, F.projectile, F.tickMs], [640, 560, 64, 800, 2, 4, 8, 30]);
+    t.eq([F.open, F.standoff, F.aggressive, F.disengage, F.approach, F.retreat, F.projectile, F.tickMs], [640, 560, 64, 800, 4, 4, 8, 30]);
     t.eq(F.modeOrder.length, 5);
     for (const m of F.modeOrder) t.ok(F.modes[m], 'modo ' + m);
   });

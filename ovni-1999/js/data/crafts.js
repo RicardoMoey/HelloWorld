@@ -119,7 +119,7 @@
     aggressive: 64,
     disengage: 800, // alvo ao desengatar; termina quando passa de endDist
     endDist: 640,
-    approach: 2, // −2 por tick ao aproximar
+    approach: 4, // ours: −4 por tick ao aproximar (orig 2); duelos mais curtos e o 1.º abate viável em Veterano
     retreat: 4, // +4 por tick ao recuar
     projectile: 8, // velocidade dos projéteis por tick
     rangeMul: 8, // alcance da arma × 8

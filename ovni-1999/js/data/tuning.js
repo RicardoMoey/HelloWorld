@@ -128,6 +128,20 @@
     CRAFT_REPAIR_HP_H: 5, // ours
     MAX_DOGFIGHTS: 2, // ours
     RETALIATION_PCT: [4, 12, 20],
+    GEO_MAX_STEPS_PER_FRAME: 3, // ciclo do Geoscape na UI (contrato §6.3)
+    GEO_CHUNK_TICKS: 720,
+    GEO_FRAME_BUDGET_MS: 12,
+    AUTOSAVE_DAYS: [1, 10, 20], // dias do mês com gravação automática
+    LOW_FUEL_MARGIN_10M: 1, // margem (passos de 10 min) no regresso por falta de combustível
+    BASE_DEFENCE_BASE: 1800, // defesa automática da base: guarnição necessária
+    BASE_DEFENCE_PER_COEF: 300,
+    GEO_IDLE_COALESCE: true, // ours: sem nada no ar, o relógio salta até à fronteira seguinte (hash idêntico)
+    UFO_BASE_SIGHT_NM: 268, // OVNI de retaliação vê a base X-COM (orig)
+    ALIEN_BASE_SUPPLY_PCT: 6, // abastecimento diário de cada base alienígena (orig)
+    RETALIATION_FIRST_MIN: 3000, // primeiro OVNI de uma retaliação provocada por abate (orig, 50 h)
+    RETALIATION_UFO_REGION_PCT: 50, // …na região do OVNI abatido com 50 − 6·coef %, senão na região da base (orig)
+    RETALIATION_UFO_REGION_PER_COEF: 6,
+    TERROR_CITIES_MEMORY: 12, // cidades atacadas há pouco que o terror evita
 
     // ---- campanha (ours)
     MAX_SAVE_SLOTS: 3,
