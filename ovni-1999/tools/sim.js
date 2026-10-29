@@ -8,6 +8,9 @@
      --det            corre cada semente duas vezes e exige o mesmo hash final
      --save-at 5      grava no início do turno 5, recarrega, continua e compara o hash final
      --vet            equipa veterana para o mês (ganhos de atributos de ~2 missões por mês de campanha)
+     --heavy          meses 0–2: Canhão Pesado (HE) e Lança-Foguetes do equipamento inicial em dois soldados
+     --race R         raça fixa (sectoid, floater, snakeman, muton, ethereal); sem ela, terror usa raceSchedule
+     --squad N        soldados (omissão 8; base alienígena e Cidónia: a nave cheia — Skyranger 10, Avenger 12)
    Locais de terror: raça pelo calendário da campanha (Data.raceSchedule.alien_terror); missões escuras (base alienígena,
    Marte) levam very-lights; dois soldados levam uma granada de fumo.
      --quiet / --verbose
@@ -106,18 +109,8 @@ const SWEEP = [
 // metas de DESIGN §19.3 (vitórias %, baixas máximas médias)
 const TARGETS = {
   small_scout: { win: 95, losses: 1 }, medium_scout: { win: 95, losses: 1 }, large_scout: { win: 95, losses: 1 },
-  abductor: { win: 80, losses: 2 }, terror: { win: 70, losses: 3 }, battleship: { win: 70 }, cydonia: { win: 60 },
+  abductor: { win: 80, losses: 2 }, terror: { win: 70, losses: 3 }, battleship: { win: 70 }, alienBase: { win: 50 }, cydonia: { win: 60 },
 };
-
-// raça de um local de terror como na campanha (Data.raceSchedule.alien_terror pelo mês), determinística pela semente
-function terrorRace(month, seed) {
-  const sch = OV.Data.raceSchedule && OV.Data.raceSchedule.alien_terror;
-  if (!sch) return undefined;
-  const keys = Object.keys(sch).map(Number).sort((a, b) => a - b);
-  let k = keys[0];
-  for (const m of keys) if (m <= month) k = m;
-  return OV.RNG.create((seed ^ 0x7e7707) >>> 0).weighted(sch[k]) || undefined;
-}
 
 // ganhos por mês de campanha (≈ 2 missões/mês, DESIGN §3.2: +1..+4 por estatística usada) — só com --vet
 const VET_GAIN = { tu: 2, sta: 2, hp: 1, react: 3, fire: 4, thr: 2, str: 1, brav: 5 };
@@ -130,13 +123,50 @@ function veteranSquad(squad, month) {
   }
 }
 
+// soldados por omissão: 8 (DESIGN §19.3); assaltos planeados (base alienígena, Cidónia) levam a nave cheia
+function defaultSquad(kind) {
+  const craft = kind === 'cydonia' ? 'avenger' : kind === 'alienBase' ? 'skyranger' : null;
+  return craft ? OV.Data.crafts[craft].seatsUI || 8 : 8;
+}
+
+/* Equipamento final realista para Cidónia (o que a campanha terá no fim): fatos energéticos (dois fatos de voo),
+   Plasma Pesado com dois carregadores e uma granada alienígena; dois soldados com Lança-Bombas Blaster e duas bombas;
+   dois kits médicos. Os very-lights ficam se a missão for escura. */
+function cydoniaKit(squad) {
+  squad.forEach((s, k) => {
+    const flares = s.loadout.belt.filter((x) => x === 'electro_flare');
+    s.armour = k % 4 === 3 ? 'flying_suit' : 'power_suit';
+    if (k === 1 || k === 4) {
+      s.loadout.R = 'blaster_launcher';
+      s.loadout.belt = ['blaster_bomb', 'blaster_bomb'].concat(flares);
+    } else {
+      s.loadout.R = 'heavy_plasma';
+      s.loadout.belt = ['heavy_plasma_clip', 'heavy_plasma_clip', 'alien_grenade'].concat(flares);
+    }
+    s.loadout.pack = s.loadout.pack.filter((x) => x !== 'medikit');
+    if (k === 2 || k === 5) s.loadout.pack.push('medikit');
+  });
+}
+
+/* --heavy (meses 0–2): as armas pesadas do equipamento inicial (Skyranger e armazém, Data.startBase) — um Canhão
+   Pesado com munição HE e um Lança-Foguetes com foguetes pequenos, como um jogador os levaria contra Ciberdiscos e
+   Crisálidas. */
+function heavyKit(squad) {
+  const set = (s, R, belt) => {
+    s.loadout.R = R;
+    s.loadout.belt = belt.concat(s.loadout.belt.filter((x) => x === 'electro_flare' || x === 'grenade').slice(0, 2));
+  };
+  if (squad[3]) set(squad[3], 'heavy_cannon', ['hc_he', 'hc_ap']);
+  if (squad[4]) set(squad[4], 'rocket_launcher', ['small_rocket', 'small_rocket']);
+}
+
 function missionFor(o) {
   const kind = o.kind || null;
   const terrain = kind === 'terror' ? 'URBAN' : kind === 'alienBase' ? 'ALIENBASE' : kind === 'cydonia' ? 'MARS' : o.terrain || 'FARM';
   const mission = OV.Battle.quickMission({
     ufoType: kind ? undefined : o.ufo || 'small_scout', terrain, kind: kind || undefined, night: !!o.night,
-    difficulty: o.diff === undefined ? 1 : o.diff, month: o.month | 0, squadSize: o.squad || 8, seed: o.seed >>> 0,
-    race: o.race || (kind === 'terror' ? terrorRace(o.month | 0, o.seed >>> 0) : undefined),
+    difficulty: o.diff === undefined ? 1 : o.diff, month: o.month | 0, squadSize: o.squad || defaultSquad(kind), seed: o.seed >>> 0,
+    race: o.race || undefined, // terror: Battle.quickMission usa o calendário da campanha (raceSchedule.alien_terror)
   });
   // base alienígena e Marte são escuros (sombra > DARK_SHADE): a equipa leva very-lights como numa missão noturna
   const dark = OV.Battle.normalizeMission(mission).night;
@@ -147,13 +177,8 @@ function missionFor(o) {
   });
   // --vet: equipa com a experiência típica do mês de campanha (ganhos de atributos por missões, até aos limites)
   if (o.vet) veteranSquad(mission.squad, o.month | 0);
-  if (kind === 'cydonia') {
-    for (const s of mission.squad) {
-      s.armour = 'power_suit';
-      s.loadout.R = 'heavy_plasma';
-      s.loadout.belt = ['heavy_plasma_clip', 'heavy_plasma_clip', 'alien_grenade'].concat(s.loadout.belt.filter((x) => x === 'electro_flare'));
-    }
-  }
+  if (o.heavy && (o.month | 0) < 3) heavyKit(mission.squad);
+  if (kind === 'cydonia') cydoniaKit(mission.squad);
   return mission;
 }
 
@@ -270,8 +295,9 @@ function main() {
   if ((OV.__loadErrors || []).length || OV.__finalizeError) process.exit(1);
   const common = {
     terrain: args.terrain || 'FARM', night: args.night === undefined ? false : args.night === true || +args.night === 1,
-    diff: args.diff === undefined ? 1 : +args.diff, squad: args.squad === undefined ? 8 : +args.squad,
-    turns: args.turns === undefined ? 40 : +args.turns, vet: !!args.vet,
+    diff: args.diff === undefined ? 1 : +args.diff, squad: args.squad === undefined ? 0 : +args.squad,
+    race: args.race && args.race !== true ? args.race : undefined,
+    turns: args.turns === undefined ? 40 : +args.turns, vet: !!args.vet, heavy: !!args.heavy,
   };
   const failures = [];
   const sums = [];

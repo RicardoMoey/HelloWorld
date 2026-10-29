@@ -19,6 +19,7 @@
    se vistos pela X-COM (B._.visible / u.visible / u.vis, lidos com cautela: sem informação desenha todos).
    Luz: B._.light (0..15) quando calculada pela LOS; senão uma aproximação cosmética local (ambiente + fontes).
    pick(view, px, py) → {x, y, z, unitId|null}|null ; bounds(B) ; centerOn(view, x, y, z) ; markDirty(i?) ;
+   reset(B) (nova batalha: estado do zero + prewarm em segundo plano) ; prewarm(B, opts?) ; warmStats() ;
    labels() → [{x0,y0,x1,y1,text}] e unitRects() → [{unitId,x0,y0,x1,y1}] do último fotograma (px CSS) */
 (function (OV) {
   'use strict';
@@ -111,6 +112,15 @@
     }
     const m = tgt.map, plane = m.w * m.h;
     const z = (i / plane) | 0, r = i - z * plane, y = (r / m.w) | 0, x = r - y * m.w;
+    // o recorte do chão (TileSprites.floorState) depende dos objetos dos vizinhos e do nível de baixo: invalida o
+    // bloco 3×3 neste nível e no de cima
+    for (let zz = z; zz <= Math.min(m.d - 1, z + 1); zz++) {
+      for (let yy = Math.max(0, y - 1); yy <= Math.min(m.h - 1, y + 1); yy++) {
+        for (let xx = Math.max(0, x - 1); xx <= Math.min(m.w - 1, x + 1); xx++) forceTile(st, xx, yy, zz);
+      }
+    }
+  }
+  function forceTile(st, x, y, z) {
     const wx = (x - y) * 32, wy = (x + y) * 16;
     for (let ry = Math.floor(wy / RH); ry <= Math.floor((wy + 32) / RH); ry++) {
       for (let rx = Math.floor((wx - 32) / RW); rx <= Math.floor((wx + 32) / RW); rx++) st.forced.add(chunkKey(z, rx + 2048, ry + 2048));
@@ -198,7 +208,22 @@
   }
 
   // ---- sprites de tile com memo numérico por escala ---------------------------------------------------------------
+  /* Os sprites de tile só se geram às escalas dos zooms de repouso (ZOOM_STEPS × dpr); a meio de uma animação de
+     zoom ou de um gesto de pinça desenha-se o sprite da escala de repouso logo acima, reduzido pelo drawImage. Sem
+     isto cada escala intermédia (quantizada a 0.25) gerava todos os sprites visíveis: 80–200 ms no primeiro zoom. */
+  const ZOOM_STEPS = [1, 0.75, 1.5, 0.5, 2];
+  let snapDpr = 0, snapScales = [];
+  const qS = (s) => Math.max(0.25, Math.round(s * 4) / 4);
+  function spriteScale(S, dpr) {
+    if (dpr !== snapDpr) {
+      snapDpr = dpr;
+      snapScales = Array.from(new Set(ZOOM_STEPS.map((z) => qS(z * dpr)))).sort((a, b) => a - b);
+    }
+    for (const k of snapScales) if (k >= S - 1e-6) return k;
+    return S;
+  }
   function tileSpr(st, S, defId, v, state) {
+    S = spriteScale(S, st.dpr || 1);
     if (st.sprS !== S) {
       st.sprMemo.clear();
       st.sprS = S;
@@ -581,8 +606,11 @@
     const m = B.map, D = OV.Data.tileDefs, TS = OV.TileSprites;
     const st = stateOf(B);
     const F = frameInfo(ctx, B, view);
+    st.dpr = F.dpr;
     labels = [];
-    regionGrid(st, F.S);
+    // regiões cozidas à escala de repouso (a mesma dos sprites): a meio de um zoom desenham-se reescaladas
+    const SS = spriteScale(F.S, F.dpr);
+    regionGrid(st, SS);
     F.light = F.lightReady ? B._.light : fallbackLight(B, st);
     const S = F.S, dpr = F.dpr;
     statsInfo.chunks = 0;
@@ -650,21 +678,23 @@
         const lim = mapRegionRange(m);
         for (let ry = Math.max(ry0, lim.ry0); ry <= Math.min(ry1, lim.ry1); ry++) {
           for (let rx = Math.max(rx0, lim.rx0); rx <= Math.min(rx1, lim.rx1); rx++) {
-            const ch = getRegion(B, st, F, z, rx, ry, S);
+            const ch = getRegion(B, st, F, z, rx, ry, SS);
             if (!ch) {
               statsInfo.direct++;
               drawRegionDirect(ctx, B, st, F, z, rx, ry);
               continue;
             }
             if (!ch.c) continue;
-            // só a parte com conteúdo e dentro do ecrã
-            const X0 = rx * RW * S + F.ox, Y0 = (ry * RH - z * 48) * S + F.oy, b = ch.box;
-            const sx0 = Math.max(b[0], Math.floor(-X0)), sy0 = Math.max(b[1], Math.floor(-Y0));
-            const sx1 = Math.min(b[2], Math.ceil(F.W - X0)), sy1 = Math.min(b[3], Math.ceil(F.H - Y0));
+            // só a parte com conteúdo e dentro do ecrã (k ≠ 1 só durante um zoom)
+            const X0 = rx * RW * S + F.ox, Y0 = (ry * RH - z * 48) * S + F.oy, b = ch.box, k = S / SS;
+            const sx0 = Math.max(b[0], Math.floor(-X0 / k)), sy0 = Math.max(b[1], Math.floor(-Y0 / k));
+            const sx1 = Math.min(b[2], Math.ceil((F.W - X0) / k)), sy1 = Math.min(b[3], Math.ceil((F.H - Y0) / k));
             if (sx1 <= sx0 || sy1 <= sy0) continue;
-            ctx.imageSmoothingEnabled = false; // cópia 1:1 alinhada ao píxel: sem filtragem
-            ctx.drawImage(ch.c, sx0, sy0, sx1 - sx0, sy1 - sy0, X0 + sx0, Y0 + sy0, sx1 - sx0, sy1 - sy0);
-            ctx.imageSmoothingEnabled = true;
+            if (k === 1) {
+              ctx.imageSmoothingEnabled = false; // cópia 1:1 alinhada ao píxel: sem filtragem
+              ctx.drawImage(ch.c, sx0, sy0, sx1 - sx0, sy1 - sy0, X0 + sx0, Y0 + sy0, sx1 - sx0, sy1 - sy0);
+              ctx.imageSmoothingEnabled = true;
+            } else ctx.drawImage(ch.c, sx0, sy0, sx1 - sx0, sy1 - sy0, X0 + sx0 * k, Y0 + sy0 * k, (sx1 - sx0) * k, (sy1 - sy0) * k);
             statsInfo.chunks++;
           }
         }
@@ -1174,16 +1204,147 @@
     return cam;
   }
 
+  // ---- pré-aquecimento dos sprites de tile ----------------------------------------------------------------------
+  /* Depois de carregar uma batalha, os sprites de chão/parede/casco/objeto que o mapa usa são gerados em fotogramas
+     ociosos (requestIdleCallback; sem ele setTimeout) à escala atual e às dos zooms vizinhos, com as variantes
+     sombreadas mais comuns (sombra ambiente e névoa) à escala atual: o primeiro pan/zoom já não gera centenas de
+     sprites num só fotograma. Termina sozinho quando o orçamento de píxeis da cache de sprites fica a 60 %. */
+  let warm = null;
+  const warmInfo = { total: 0, done: 0, ms: 0, scales: [], finished: true };
+  function warmEntries(B, st) {
+    const m = B.map, D = OV.Data.tileDefs, TS = OV.TileSprites;
+    const count = new Map();
+    const add = (def, v, state) => {
+      const nv = TS.variants(def) || 1;
+      const k = def + '|' + (v % nv) + '|' + state;
+      const e = count.get(k);
+      if (e) e.n++;
+      else count.set(k, { def, v: v % nv, state, n: 1 });
+    };
+    const plane = m.w * m.h;
+    for (let i = 0; i < m.n; i++) {
+      const z = (i / plane) | 0, r = i - z * plane, y = (r / m.w) | 0, x = r - y * m.w;
+      const v = st.variant[i];
+      const f = m.parts[i * 4];
+      if (f) add(f, v, floorStateOf(m, x, y, z));
+      if (m.parts[i * 4 + 1]) add(m.parts[i * 4 + 1], v, 0);
+      if (m.parts[i * 4 + 2]) add(m.parts[i * 4 + 2], v, 0);
+      const o = m.parts[i * 4 + 3], od = o && D[o];
+      if (!od) continue;
+      if (od.door === 'ufo') {
+        const ori = doorOri(m, x, y, z);
+        add(o, v, ori);
+        if (od.alt && !od.open) add(od.alt, v, ori);
+      } else if (TS.frames(o) > 1) {
+        for (let k = 0; k < TS.frames(o); k++) add(o, v, k);
+      } else add(o, v, od.diagonal && TS.objectState ? TS.objectState(m, x, y, z) : 0);
+    }
+    // os mais frequentes primeiro (o chão dominante, as paredes comuns)
+    return Array.from(count.values()).sort((a, b) => b.n - a.n || a.def - b.def || a.v - b.v);
+  }
+  function warmScales(B, dpr) {
+    const z0 = last && last.B === B && last.view && last.view.cam ? last.view.cam.zoom || 1 : 1;
+    const zs = ZOOM_STEPS.slice().sort((a, b) => Math.abs(a - z0) - Math.abs(b - z0));
+    const out = [];
+    for (const z of zs) {
+      const S = qS(z * dpr);
+      if (out.indexOf(S) < 0) out.push(S);
+    }
+    return out;
+  }
+  // sombras típicas deste mapa (ambiente do nível de vista e névoa) para as variantes já compostas
+  function warmShades(B) {
+    const shade = B.mission && B.mission.shade !== undefined ? B.mission.shade | 0 : 0;
+    const amb = SHADE_A(shade);
+    const fog = 1 - (1 - amb) * (1 - FOG_DIM);
+    const out = [[fog, FOG_GRAY]];
+    if (amb > 0.01) out.unshift([amb, 0]);
+    return out;
+  }
+  function scratchCtx() {
+    if (!warm.ctx) {
+      const c = makeCanvas(1, 1);
+      warm.ctx = c.getContext('2d');
+    }
+    return warm.ctx;
+  }
+  // um passo do trabalho: um sprite numa escala (+ variantes sombreadas na primeira escala)
+  function warmStep(job) {
+    const TS = OV.TileSprites;
+    if (job.si >= job.scales.length) return false;
+    const S = job.scales[job.si];
+    if (job.si > 0) {
+      const ts = TS.stats ? TS.stats() : null;
+      if (ts && ts.pixels > ts.budget * 0.6) return false;
+    }
+    const e = job.list[job.k];
+    const spr = TS.get(e.def, e.v, S, e.state);
+    if (spr && job.si === 0) for (const [dark, gray] of job.shades) TS.blitDev(scratchCtx(), spr, -4096, -4096, S, dark, gray);
+    warmInfo.done++;
+    if (++job.k >= job.list.length) {
+      job.k = 0;
+      job.si++;
+    }
+    return true;
+  }
+  // fatia por chamada: o tempo ocioso que o navegador dá (até 10 ms); sem tempo ocioso (o jogo desenha todos os
+  // fotogramas) a chamada vem pelo timeout e faz 5 ms, para o trabalho nunca parar
+  const idleCall = (fn) => (typeof requestIdleCallback === 'function' ? requestIdleCallback(fn, { timeout: 60 }) : setTimeout(() => fn(null), 32));
+  function warmSlice(job, deadline) {
+    if (warm !== job) return;
+    const t0 = now();
+    const idleMs = deadline && typeof deadline.timeRemaining === 'function' && !deadline.didTimeout ? deadline.timeRemaining() - 1 : 0;
+    const budget = idleMs > 3 ? Math.min(10, idleMs) : 5;
+    let more = warmStep(job);
+    while (more && now() - t0 < budget) more = warmStep(job);
+    warmInfo.ms += now() - t0;
+    if (more) idleCall((d) => warmSlice(job, d));
+    else {
+      warmInfo.finished = true;
+      warm = null;
+    }
+  }
+  /* prewarm(B, {dpr?, scales?, sync?}) → {total}: gera em segundo plano os sprites de tile do mapa (ver acima);
+     sync = tudo já (testes). Uma nova chamada (ou reset de outra batalha) cancela a anterior. */
+  function prewarm(B, opts) {
+    const o = opts || {};
+    if (!B || !B.map || !OV.TileSprites || !OV.Data || !OV.Data.tileDefs) return { total: 0 };
+    const dpr = o.dpr || (typeof globalThis.devicePixelRatio === 'number' && globalThis.devicePixelRatio > 0 ? globalThis.devicePixelRatio : 1);
+    const st = stateOf(B);
+    if (!st.dpr) st.dpr = dpr;
+    const list = warmEntries(B, st);
+    const scales = o.scales || warmScales(B, dpr);
+    const job = { B, list, scales, shades: warmShades(B), si: 0, k: 0, ctx: null };
+    warm = job;
+    Object.assign(warmInfo, { total: list.length * scales.length, done: 0, ms: 0, scales: scales.slice(), finished: false });
+    if (!list.length) {
+      warmInfo.finished = true;
+      warm = null;
+    } else if (o.sync) {
+      const t0 = now();
+      while (warmStep(job));
+      warmInfo.ms = now() - t0;
+      warmInfo.finished = true;
+      warm = null;
+    } else idleCall((d) => warmSlice(job, d));
+    return { total: warmInfo.total };
+  }
+
   function clearCache() {
     last = null;
+    warm = null;
     if (OV.TileSprites) OV.TileSprites.clearCache();
   }
+  // nova batalha (ou recarregada): estado de desenho do zero e sprites pré-aquecidos em segundo plano no navegador
   function reset(B) {
-    if (B) states.delete(B);
+    if (!B) return;
+    states.delete(B);
+    if (typeof document !== 'undefined') prewarm(B);
   }
 
   OV.BattleRender = {
-    draw, pick, bounds, centerOn, clampCam, markDirty, clearCache, reset,
+    draw, pick, bounds, centerOn, clampCam, markDirty, clearCache, reset, prewarm,
+    warmStats: () => Object.assign({}, warmInfo, { scales: warmInfo.scales.slice() }),
     stats: () => Object.assign({}, statsInfo),
     // etiquetas (caminho, alvo, arremesso) e caixas das unidades desenhadas no último fotograma, em px CSS
     labels: () => labels.slice(),

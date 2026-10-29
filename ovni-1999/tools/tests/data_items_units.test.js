@@ -114,9 +114,9 @@ module.exports = function (OV, t) {
       dep_supply_ship: [[8, 9], [10, 11], [12, 13]],
       dep_terror_ship: [[9, 9], [11, 11], [13, 13]],
       dep_battleship: [[10, 12], [12, 14], [14, 16]],
-      dep_terror_site: [[6, 8], [8, 10], [10, 12]],
-      dep_alien_base: [[12, 13], [14, 15], [16, 18]],
-      dep_cydonia: [[14, 14], [16, 16], [18, 18]],
+      dep_terror_site: [[5, 5], [5, 7], [7, 9]],
+      dep_alien_base: [[8, 8], [8, 9], [11, 12]],
+      dep_cydonia: [[7, 7], [9, 9], [14, 14]],
     };
     t.eq(keys(D.deployments).sort(), keys(EXPECT).sort());
     for (const id in EXPECT) {
@@ -331,18 +331,18 @@ module.exports = function (OV, t) {
 
   t.test('armamento alienígena por mês (§3.9)', () => {
     const T = D.alienItemTiers;
-    t.eq(T.byMonth, [[70, 20, 10], [40, 35, 25], [20, 40, 40], [0, 40, 60], [0, 10, 90]]);
+    t.eq(T.byMonth, [[90, 10, 0], [70, 25, 5], [45, 40, 15], [30, 50, 20], [0, 30, 70]]);
     for (const row of T.byMonth) t.eq(row.reduce((a, b) => a + b, 0), 100);
     const rng = OV.RNG.create(1234);
     const n = [0, 0, 0];
     for (let i = 0; i < 4000; i++) n[D.rollItemTier(0, rng)]++;
-    t.near(n[0] / 4000, 0.7, 0.04, 'mês 0 nível 0');
-    t.near(n[2] / 4000, 0.1, 0.03, 'mês 0 nível 2');
+    t.near(n[0] / 4000, 0.9, 0.03, 'mês 0 nível 0');
+    t.eq(n[2], 0, 'mês 0 sem nível 2');
     const m9 = [0, 0, 0];
     for (let i = 0; i < 1000; i++) m9[D.rollItemTier(9, rng)]++;
     t.eq(m9[0], 0, 'mês 4+ sem nível 0');
     // extremos do rng: 1 ⇒ primeiro nível com peso, 100 ⇒ último
-    t.eq([D.rollItemTier(3, fixedRng(false)), D.rollItemTier(3, fixedRng(true))], [1, 2]);
+    t.eq([D.rollItemTier(3, fixedRng(false)), D.rollItemTier(3, fixedRng(true))], [0, 2]);
     // conjuntos e extras
     const lo = fixedRng(false), hi = fixedRng(true);
     t.eq(D.alienLoadout('sectoid_soldier', 'dep_small_scout', 0, hi), ['plasma_pistol', 'plasma_pistol_clip', 'plasma_pistol_clip']);

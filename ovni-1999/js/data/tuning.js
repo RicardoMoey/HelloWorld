@@ -18,6 +18,7 @@
     EN_STAIRS: 3,
     TU_DOOR: 4, // ours: valor fixo
     TU_RELOAD: 15,
+    TU_UNLOAD: 8, // orig/OpenXcom (costUnload)
     TU_MEDIKIT: 10,
     TU_ALIEN_MELEE: 15,
     TU_PSI: 25,
@@ -59,7 +60,7 @@
     DARK_SHADE: 9, // tile com shade > 9 é "escuro"
     SMOKE_SIGHT_BUDGET: 60, // custo ×3 por tile (3 + fumo) até 60 = 20 tiles
     SHADE_DAY: 0, SHADE_DUSK: 6, SHADE_NIGHT: 13,
-    SHADE_ALIEN_BASE: 10, SHADE_MARS: 13, SHADE_XBASE: 5,
+    SHADE_ALIEN_BASE: 8, SHADE_MARS: 8, SHADE_XBASE: 5, // ours: base e Marte na penumbra (≤ DARK_SHADE: a X-COM vê)
     LIGHT_FIRE: 15, LIGHT_FLARE: 15, LIGHT_BURNING_UNIT: 15, LIGHT_LAMP: 12, LIGHT_UFO: 10,
     ROOF_DAY_DARKEN: 2,
 
@@ -84,6 +85,12 @@
     GRENADE_FUSE_MAX: 5,
     INSTANT_GRENADES_DEFAULT: true,
     THROW_STR_MUL: 4, THROW_WEIGHT_ADD: 3, THROW_MIN: 3, THROW_MAX: 18,
+
+    // ---- desova alienígena (ours): distâncias de Chebyshev aos inícios X-COM na preparação (ver BUnits.spawnAllowed)
+    SPAWN_SAFE_DIST: 10,
+    SPAWN_TERROR_DIST: 14, // unidades de terror (Crisálida, Ciberdisco, …)
+    SPAWN_PREFER_DIST: 12, // mapgen: variantes de mapa com nós a esta distância são preferidas
+    LARGE_SPAWN_MIN_REACH: 40, // 2×2 só em tiles ligados a ≥ 40 tiles alcançáveis
 
     // ---- detetor de movimento (orig)
     MOTION_PER_STEP: 30,

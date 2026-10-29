@@ -39,8 +39,8 @@
     const dep = Data.deployments[deploymentId];
     let shade = m.shade;
     if (shade === undefined || shade === null) {
-      if (kind === 'alienBase') shade = tune('SHADE_ALIEN_BASE', 10);
-      else if (kind === 'cydonia') shade = tune('SHADE_MARS', 13);
+      if (kind === 'alienBase') shade = tune('SHADE_ALIEN_BASE', 8);
+      else if (kind === 'cydonia') shade = tune('SHADE_MARS', 8);
       else shade = m.night ? tune('SHADE_NIGHT', 13) : tune('SHADE_DAY', 0);
     }
     return {
@@ -178,7 +178,7 @@
       for (const node of pool) {
         if (ctx.used.has(node) || (filter && !filter(node))) continue;
         const i = fitAt(B, u, node.x, node.y, node.z);
-        if (i >= 0 && roomy(B, u, i, ctx)) out.push({ node, i });
+        if (i >= 0 && BU().spawnAllowed(B, u, i) && roomy(B, u, i, ctx)) out.push({ node, i });
       }
       return out;
     };
@@ -212,7 +212,7 @@
       for (let k = 0; k < B.map.n; k++) {
         if (!ctx.reach[k]) continue;
         const [x, y] = BM().xyz(B.map, k);
-        if (rectDist(ctx.rect, x, y) >= ctx.minDist && BU().fits(B, u, k) && ((u.size | 0) <= 1 || roomy(B, u, k, ctx))) cand.push(k);
+        if (rectDist(ctx.rect, x, y) >= ctx.minDist && BU().fits(B, u, k) && BU().spawnAllowed(B, u, k) && ((u.size | 0) <= 1 || roomy(B, u, k, ctx))) cand.push(k);
       }
       i = cand.length ? cand[rng.int(0, cand.length - 1)] : nearestFree(B, u, ctx.fallbackFrom, null);
       if (i < 0) throw new Error('Battle: sem espaço para ' + u.type);
@@ -312,7 +312,7 @@
     const dep = Data.deployments[M.deploymentId];
     const nodeIndex = new Map(gen.nodes.map((n, k) => [n, k]));
     const ctx = {
-      used: new Set(), nodeIndex, rect, minDist: 6, reach: gen.reach, fallbackFrom: gen.ufo ? BM().idx(B.map, gen.ufo.x, gen.ufo.y, 0) : 0,
+      used: new Set(), nodeIndex, rect, minDist: tune('SPAWN_SAFE_DIST', 10), reach: gen.reach, fallbackFrom: gen.ufo ? BM().idx(B.map, gen.ufo.x, gen.ufo.y, 0) : 0,
       insideNodes: gen.nodes.filter((n) => n.inside), outsideNodes: gen.nodes.filter((n) => !n.inside),
     };
     const ufoMission = dep.kind === 'ufo' && ctx.insideNodes.length > 0;
@@ -372,6 +372,7 @@
   }
 
   // ---- missão rápida (ecrã de batalha rápida e testes) ----------------------------------------------------
+  // raças dos OVNIs por mês na batalha rápida; os locais de terror usam o calendário da campanha (raceSchedule)
   const RACES_BY_MONTH = [['sectoid', 'floater'], ['sectoid', 'floater'], ['sectoid', 'floater', 'snakeman'],
     ['sectoid', 'floater', 'snakeman'], ['sectoid', 'floater', 'snakeman', 'muton'], ['sectoid', 'floater', 'snakeman', 'muton', 'ethereal']];
 
@@ -392,6 +393,14 @@
     return { lo, armour };
   }
 
+  // raça de um local de terror como na campanha: Data.raceSchedule.alien_terror (pesos do último mês ≤ month)
+  function terrorRace(month, rng) {
+    const Data = D();
+    const w = typeof Data.raceWeights === 'function' ? Data.raceWeights('alien_terror', month) : null;
+    const race = w && Object.keys(w).length ? rng.weighted(w) : null;
+    return race && Data.races[race] ? race : rng.pick(RACES_BY_MONTH[Math.min(month, RACES_BY_MONTH.length - 1)]);
+  }
+
   function quickMission(opts) {
     const Data = D();
     const o = opts || {};
@@ -402,8 +411,7 @@
       : o.ufoType ? (o.landed ? 'landed' : 'crash') : terrain === 'URBAN' ? 'terror' : 'crash');
     const month = Math.max(0, o.month | 0);
     const night = !!o.night;
-    const races = RACES_BY_MONTH[Math.min(month, RACES_BY_MONTH.length - 1)];
-    const race = o.race && Data.races[o.race] ? o.race : rng.pick(races);
+    const race = o.race && Data.races[o.race] ? o.race : kind === 'terror' ? terrorRace(month, rng) : rng.pick(RACES_BY_MONTH[Math.min(month, RACES_BY_MONTH.length - 1)]);
     const craftType = kind === 'cydonia' ? 'avenger' : o.craftType || 'skyranger';
     const seats = Data.crafts[craftType].seatsUI || 10;
     const squadSize = U.clamp(o.squadSize === undefined ? 8 : o.squadSize | 0, 1, seats);

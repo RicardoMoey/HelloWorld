@@ -188,22 +188,25 @@
     // cidade 40×40×3; civis RNG(10,14)
     dep_terror_site: {
       kind: 'terror', terrain: 'URBAN', map: { w: 40, h: 40, d: 3 }, civilians: [10, 14],
-      rows: [row('leader', same(1, 1)), row('soldier', [[2, 3], [3, 4], [4, 5]]), row('terrorist', [[3, 4], [4, 5], [5, 6]])],
+      // ours (varrimento): menos soldados e unidades de terror do que a tabela §3.12 — o terror chega cedo na campanha
+      rows: [row('leader', same(1, 1)), row('soldier', [[2, 2], [2, 3], [3, 4]]), row('terrorist', [[2, 2], [2, 3], [3, 4]])],
     },
+    // base alienígena (ours, afinada por varrimento): guarnição pequena — o assalto é com a Skyranger cheia (10)
     dep_alien_base: {
       kind: 'alienBase', terrain: 'ALIENBASE', map: { w: 40, h: 40, d: 2 }, objective: 'base_control',
       rows: [
-        row('commander', same(1, 1)), row('leader', same(2, 2)), row('engineer', same(1, 1)), row('medic', same(1, 1)), row('navigator', same(1, 1)),
-        row('soldier', [[4, 5], [5, 6], [6, 8]]), row('terrorist', [[2, 2], [3, 3], [4, 4]]),
+        row('commander', same(1, 1)), row('leader', [[1, 1], [1, 1], [2, 2]]), row('engineer', same(1, 1)), row('medic', same(1, 1)),
+        row('navigator', same(1, 1)), row('soldier', [[2, 2], [2, 3], [3, 4]]), row('terrorist', [[1, 1], [1, 1], [2, 2]]),
       ],
     },
-    // Marte 50×50×2, uma só fase; o Cérebro Alienígena é o objetivo
+    // Marte 50×50×2, uma só fase; o Cérebro Alienígena é o objetivo (ours: guarnição reduzida, Avenger cheio)
     dep_cydonia: {
       kind: 'cydonia', race: 'mixed', terrain: 'MARS', map: { w: 50, h: 50, d: 2 }, objective: 'alien_brain',
       rows: [
-        row('commander', same(2, 2), { outside: 0 }), row('leader', same(3, 3), { outside: 0 }), row('soldier', [[3, 3], [4, 4], [5, 5]]),
-        row('terrorist', [[2, 2], [3, 3], [3, 3]], { unit: 'chryssalid' }), row('terrorist', [[2, 2], [2, 2], [3, 3]], { unit: 'sectopod' }),
-        row('soldier', same(2, 2), { unit: 'muton_soldier' }),
+        row('commander', [[1, 1], [1, 1], [2, 2]], { outside: 0 }), row('leader', [[1, 1], [2, 2], [3, 3]], { outside: 0 }),
+        row('soldier', [[2, 2], [2, 2], [3, 3]]),
+        row('terrorist', [[1, 1], [1, 1], [2, 2]], { unit: 'chryssalid' }), row('terrorist', [[1, 1], [1, 1], [2, 2]], { unit: 'sectopod' }),
+        row('soldier', [[1, 1], [2, 2], [2, 2]], { unit: 'muton_soldier' }),
       ],
     },
   });
@@ -211,7 +214,7 @@
   // ---- armamento alienígena (ours, §3.9): nível por mês de campanha, conjuntos e extras por patente ------
   D.alienItemTiers = {
     // % dos níveis 0/1/2 nos meses 0, 1, 2, 3 e 4+
-    byMonth: [[70, 20, 10], [40, 35, 25], [20, 40, 40], [0, 40, 60], [0, 10, 90]],
+    byMonth: [[90, 10, 0], [70, 25, 5], [45, 40, 15], [30, 50, 20], [0, 30, 70]],
     sets: [
       ['plasma_pistol', 'plasma_pistol_clip', 'plasma_pistol_clip'],
       ['plasma_rifle', 'plasma_rifle_clip', 'plasma_rifle_clip'],
@@ -222,7 +225,7 @@
     // aplicados por ordem: replace substitui o conjunto, add acrescenta; deployments limita a missões
     extras: [
       { ranks: ['medic'], pct: 40, replace: ['small_launcher', 'stun_bomb', 'stun_bomb'] },
-      { ranks: ['commander'], pct: 50, deployments: ['dep_battleship', 'dep_alien_base'], replace: ['blaster_launcher', 'blaster_bomb', 'blaster_bomb'] },
+      { ranks: ['commander'], pct: 25, deployments: ['dep_battleship', 'dep_alien_base'], replace: ['blaster_launcher', 'blaster_bomb', 'blaster_bomb'] },
       { ranks: ['navigator', 'engineer'], pct: 50, add: ['alien_grenade'] },
       { ranks: ['leader'], pct: 100, add: ['alien_grenade'] },
     ],

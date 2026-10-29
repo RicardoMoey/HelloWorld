@@ -12,7 +12,7 @@
      planArc(B, u, toI) → {curve, origin, target, goal}|null ; traceArc(B, u, fromVoxel, toVoxel, curve) → {arc, land, landVoxel}
    Ações: walk {unitId, to, path?, run?, desperate?} · turn {unitId, dir | toI} · kneel {unitId}
      · shoot {unitId, hand, mode, target:{unitId}|{i}|{voxel}, force?} · throw {unitId, itemId, toI}
-     · prime {unitId, itemId, fuse} · reload {unitId, hand, clipId?} · door {unitId, i, part?}
+     · prime {unitId, itemId, fuse} · reload {unitId, hand, clipId?} · unload {unitId, hand} · door {unitId, i, part?}
      · medikit {unitId, targetId, part, kind:'heal'|'stim'|'pain', itemId?} · inv {unitId, itemId, to} · pickup {unitId, itemId, to}
      · scanner {unitId} · melee {unitId, targetId, hand?} · psi {unitId, targetId, kind} · endUnit {unitId} */
 (function (OV) {
@@ -26,7 +26,7 @@
   const tune = (k, def) => (OV.TUNE && OV.TUNE[k] !== undefined ? OV.TUNE[k] : def);
   const VX = 16, VZ = 24;
   const LIVE = { ok: 1, panic: 1 };
-  const TYPES = ['walk', 'turn', 'kneel', 'shoot', 'throw', 'prime', 'reload', 'door', 'medikit', 'inv', 'pickup', 'scanner', 'melee', 'psi', 'endUnit'];
+  const TYPES = ['walk', 'turn', 'kneel', 'shoot', 'throw', 'prime', 'reload', 'unload', 'door', 'medikit', 'inv', 'pickup', 'scanner', 'melee', 'psi', 'endUnit'];
   // ações sujeitas à reserva de UT (como no OpenXcom: andar, rodar, ajoelhar; ours: abrir porta)
   const RESERVE_CHECKED = { walk: 1, turn: 1, kneel: 1, door: 1 };
   const REASONS = ['noTU', 'reserved', 'noLOF', 'noAmmo', 'noEnergy', 'blocked', 'tooFar', 'notVisible', 'invalid',
@@ -836,6 +836,31 @@
     BU().deleteItem(B, clip.id);
     yield { t: 'reload', unitId: u.id, hand: v.hand, itemId: it.id, clipId: v.clipId, ammo: it.ammo.type, rounds: it.ammo.rounds, vis: visOf(B, u), pos: tileOf(B, u) };
     return { ok: true };
+  };
+
+  // -- descarregar (orig/OpenXcom: 8 UT): o carregador sai da arma para a outra mão, que tem de estar livre
+  V.unload = function (B, u, a) {
+    const hand = a.hand === 'L' ? 'L' : 'R';
+    const it = handItem(B, u, hand);
+    const def = defOf(it);
+    if (!def || def.kind !== 'firearm') return fail('noWeapon');
+    if (!Array.isArray(def.ammo) || !def.ammo.length) return fail('invalid');
+    if (!it.ammo || !(it.ammo.rounds > 0) || !D().items[it.ammo.type]) return fail('noAmmo');
+    const other = hand === 'R' ? 'L' : 'R';
+    if (u.items[other] !== null) return fail('slotFull');
+    const tu = tune('TU_UNLOAD', 8);
+    const r = tuReason(u, a, tu, 0);
+    if (r) return fail(r, { tu });
+    return { ok: true, tu, energy: 0, hand, other, itemId: it.id };
+  };
+  P.unload = function* (B, u, a, v) {
+    const it = BU().findItem(B, v.itemId);
+    if (!a.free) u.tu -= v.tu;
+    const clip = BU().newItem(B, it.ammo.type, { rounds: it.ammo.rounds });
+    it.ammo = null;
+    BU().giveItem(B, u, clip.id, v.other);
+    yield { t: 'unload', unitId: u.id, hand: v.hand, to: v.other, itemId: it.id, clipId: clip.id, ammo: clip.type, rounds: clip.rounds, vis: visOf(B, u), pos: tileOf(B, u) };
+    return { ok: true, clipId: clip.id };
   };
 
   // -- abrir porta sem entrar

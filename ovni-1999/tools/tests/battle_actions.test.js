@@ -547,6 +547,41 @@ module.exports = function (OV, t) {
     t.eq(A.validate(B, { type: 'reload', unitId: l.id, hand: 'R' }).reason, 'invalid', 'laser não tem carregador');
   });
 
+  t.test('Descarregar: 8 UT, carregador (com as balas que restam) para a outra mão; recarregar a partir dela', () => {
+    const B = fixture();
+    const s = soldier(B, 2, 2, { loadout: { R: 'rifle', L: null, belt: ['rifle_clip'], pack: [] } });
+    sight(B);
+    const gun = BU.item(B, s, 'R');
+    t.eq(s.items.belt.length, 0, 'carregada pelo autoLoad');
+    t.ok(A.TYPES.indexOf('unload') >= 0, 'tipo exposto (a interface mostra «Descarregar»)');
+    gun.ammo.rounds = 7;
+    const w0 = BU.weight(B, s);
+    const v = A.validate(B, { type: 'unload', unitId: s.id, hand: 'R' });
+    t.eq([v.ok, v.tu], [true, TU.TU_UNLOAD]);
+    t.eq(TU.TU_UNLOAD, 8, 'orig/OpenXcom');
+    const r = act(B, { type: 'unload', unitId: s.id, hand: 'R' });
+    t.eq(types(r.ev), ['unload']);
+    const clip = BU.item(B, s, 'L');
+    t.eq([gun.ammo, clip && clip.type, clip && clip.rounds, s.tu, r.ret.clipId], [null, 'rifle_clip', 7, 52, clip && clip.id]);
+    t.eq(BU.weight(B, s), w0, 'o peso não muda');
+    t.eq(A.validate(B, { type: 'unload', unitId: s.id, hand: 'R' }).reason, 'noAmmo', 'já descarregada');
+    act(B, { type: 'reload', unitId: s.id, hand: 'R' });
+    t.eq([gun.ammo, s.items.L, s.tu], [{ type: 'rifle_clip', rounds: 7 }, null, 37]);
+    // outra mão ocupada, arma sem carregador, sem arma, sem UT
+    const g = BU.newItem(B, 'grenade');
+    BU.giveItem(B, s, g.id, 'L');
+    t.eq(A.validate(B, { type: 'unload', unitId: s.id, hand: 'R' }).reason, 'slotFull');
+    t.eq(A.validate(B, { type: 'unload', unitId: s.id, hand: 'L' }).reason, 'noWeapon');
+    const l = soldier(B, 5, 5, { loadout: { R: 'laser_rifle', L: null, belt: [], pack: [] } });
+    t.eq(A.validate(B, { type: 'unload', unitId: l.id, hand: 'R' }).reason, 'invalid', 'laser não tem carregador');
+    const p = soldier(B, 8, 8, { loadout: { R: null, L: 'pistol', belt: ['pistol_clip'], pack: [] } });
+    p.tu = 7;
+    t.eq(A.validate(B, { type: 'unload', unitId: p.id, hand: 'L' }).reason, 'noTU');
+    p.tu = 8;
+    act(B, { type: 'unload', unitId: p.id, hand: 'L' });
+    t.eq([BU.item(B, p, 'R').type, BU.item(B, p, 'L').ammo, p.tu], ['pistol_clip', null, 0], 'da mão esquerda para a direita');
+  });
+
   t.test('Inventário: tabela de UT (cinto→mão 4, mochila→mão 8, mão→chão 2, chão→mochila 20), mão ocupada, apanhar', () => {
     const B = fixture();
     const s = soldier(B, 2, 2, { loadout: { R: null, L: null, belt: ['grenade'], pack: ['rifle_clip'] } });
