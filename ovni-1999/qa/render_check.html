@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="pt-PT">
+<head>
+<meta charset="utf-8">
+<title>Verificação do Battlescape — QA</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; background: #05070a; color: #c8d2dc; font: 12px/1.3 -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif; overflow: hidden; }
+  #view { display: block; }
+  #err { position: fixed; left: 8px; bottom: 8px; color: #ff6a5a; white-space: pre; }
+  #info { position: fixed; left: 8px; top: 6px; color: #8a96a6; pointer-events: none; text-shadow: 0 1px 2px #000; }
+</style>
+</head>
+<body>
+<canvas id="view"></canvas>
+<div id="info"></div>
+<div id="err"></div>
+<!-- mesma ordem do index.html (core → i18n → data → sim → gfx) -->
+<script src="../js/core/util.js"></script>
+<script src="../js/core/rng.js"></script>
+<script src="../js/i18n/pt-PT.js"></script>
+<script src="../js/i18n/pt-PT.data.js"></script>
+<script src="../js/i18n/pt-PT.battle.js"></script>
+<script src="../js/i18n/pt-PT.geo.js"></script>
+<script src="../js/i18n/pt-PT.base.js"></script>
+<script src="../js/i18n/pt-PT.ufopaedia.js"></script>
+<script src="../js/data/tuning.js"></script>
+<script src="../js/data/items.js"></script>
+<script src="../js/data/units.js"></script>
+<script src="../js/data/ufos.js"></script>
+<script src="../js/data/crafts.js"></script>
+<script src="../js/data/base.js"></script>
+<script src="../js/data/research.js"></script>
+<script src="../js/data/geo.js"></script>
+<script src="../js/data/world.js"></script>
+<script src="../js/data/tiles.js"></script>
+<script src="../js/data/blocks_ufo.js"></script>
+<script src="../js/data/blocks_farm.js"></script>
+<script src="../js/data/blocks_wild.js"></script>
+<script src="../js/data/blocks_urban.js"></script>
+<script src="../js/data/blocks_alien.js"></script>
+<script src="../js/data/finalize.js"></script>
+<script src="../js/sim/battle/map.js"></script>
+<script src="../js/sim/battle/mapgen.js"></script>
+<script src="../js/sim/battle/path.js"></script>
+<script src="../js/sim/battle/los.js"></script>
+<script src="../js/sim/battle/bunits.js"></script>
+<script src="../js/sim/battle/combat.js"></script>
+<script src="../js/sim/battle/env.js"></script>
+<script src="../js/sim/battle/morale.js"></script>
+<script src="../js/sim/battle/actions.js"></script>
+<script src="../js/sim/battle/ai.js"></script>
+<script src="../js/sim/battle/battle.js"></script>
+<script src="../js/sim/geo/clock.js"></script>
+<script src="../js/sim/geo/gmath.js"></script>
+<script src="../js/sim/geo/soldiers.js"></script>
+<script src="../js/sim/geo/economy.js"></script>
+<script src="../js/sim/geo/base.js"></script>
+<script src="../js/sim/geo/missions.js"></script>
+<script src="../js/sim/geo/dogfight.js"></script>
+<script src="../js/sim/geo/world.js"></script>
+<script src="../js/sim/campaign.js"></script>
+<script src="../js/sim/save.js"></script>
+<script src="../js/gfx/color.js"></script>
+<script src="../js/gfx/iso.js"></script>
+<script src="../js/gfx/view.js"></script>
+<script src="../js/gfx/sprites_tiles.js"></script>
+<script src="../js/gfx/sprites_units.js"></script>
+<script src="../js/gfx/sprites_items.js"></script>
+<script src="../js/gfx/portraits.js"></script>
+<script src="../js/gfx/fx.js"></script>
+<script src="../js/gfx/battle_render.js"></script>
+<script>
+/* Página de QA do renderizador do Battlescape. Parâmetros:
+   ?mode=scene|tiles|fx  &ufo=abductor &terrain=FARM &kind=crash|landed|terror|alienBase|cydonia &night=0|1
+   &zoom=1 &viewZ=0 &seed=5 &month=0 &flare=1 &overlays=1 &reveal=1 &focus=ufo|craft|centre &w=1280 &h=800
+   &set=FARM (mode=tiles) &fog=1 (meio mapa fora de vista) &sel=1 (unidade selecionada) &draw=0 (só limpa: referência de fps)
+   Expõe window.__ready, window.__info e window.__perf(frames) → Promise<{fps, avgMs, maxMs, p95}>. */
+(function () {
+  'use strict';
+  const q = new URLSearchParams(location.search);
+  const err = (m) => { document.getElementById('err').textContent += m + '\n'; };
+  window.addEventListener('error', (e) => err(String(e.message)));
+  try {
+    OV.Data.finalize();
+  } catch (e) {
+    err('finalize: ' + e.message);
+    throw e;
+  }
+  const mode = q.get('mode') || 'scene';
+  const W = +(q.get('w') || 1280), H = +(q.get('h') || 800);
+  const canvas = document.getElementById('view');
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
+  canvas.width = Math.round(W * dpr);
+  canvas.height = Math.round(H * dpr);
+  const ctx = canvas.getContext('2d');
+  const info = document.getElementById('info');
+
+  if (mode === 'tiles') {
+    tileSheet();
+    window.__ready = true;
+    return;
+  }
+
+  // ---- batalha de teste ------------------------------------------------------------------------------------
+  const kind = q.get('kind') || undefined;
+  const night = q.get('night') === '1';
+  const opts = {
+    ufoType: q.get('ufo') || 'abductor', terrain: q.get('terrain') || 'FARM', night, seed: +(q.get('seed') || 5),
+    month: +(q.get('month') || 0), difficulty: 1, kind,
+  };
+  if (kind === 'terror' || kind === 'alienBase' || kind === 'cydonia') delete opts.ufoType;
+  const t0 = performance.now();
+  const mission = OV.Battle.quickMission(opts);
+  const B = OV.Battle.create(mission);
+  const m = B.map;
+  const tCreate = performance.now() - t0;
+  if (OV.LOS && OV.LOS.computeLight) { try { OV.LOS.computeLight(B); } catch (e) { err('LOS.computeLight: ' + e.message); } }
+  if (q.get('reveal') !== '0') {
+    m.disc.fill(7);
+    if (B._ && B._.visTiles) B._.visTiles.fill(1);
+  }
+  if (q.get('fog') === '1' && B._ && B._.visTiles) {
+    // metade do mapa descoberta mas fora de vista; um quarto por descobrir
+    for (let i = 0; i < m.n; i++) {
+      const r = i % (m.w * m.h), x = r % m.w, y = (r / m.w) | 0;
+      if (x > m.w * 0.5) B._.visTiles[i] = 0;
+      if (x > m.w * 0.75 && y > m.h * 0.5) m.disc[i] = 0;
+    }
+    for (const u of B.units) if (u.side !== 'xcom') u.visible = !!B._.visTiles[(u.z * m.h + u.y) * m.w + u.x];
+  }
+  const xcom = B.units.filter((u) => u.side === 'xcom' && u.onMap);
+  const aliens = B.units.filter((u) => u.side === 'alien' && u.onMap);
+  const civs = B.units.filter((u) => u.side === 'civ' && u.onMap);
+  const idx = (x, y, z) => (z * m.h + y) * m.w + x;
+  // very-light no chão à frente da nave (de noite)
+  const lead = xcom[0];
+  if (night && q.get('flare') !== '0' && lead) {
+    const tx = Math.min(m.w - 1, lead.x + 5), ty = Math.min(m.h - 1, lead.y + 3);
+    OV.BUnits.newItem(B, 'electro_flare', { at: idx(tx, ty, 0) });
+  }
+  // algum fogo e fumo para ver os efeitos de tile
+  if (q.get('fire') !== '0' && B.ufo) {
+    const fx0 = B.ufo.x - 2, fy0 = B.ufo.y + Math.floor(B.ufo.h / 2);
+    for (let k = 0; k < 3; k++) {
+      const x = Math.max(0, fx0 - k), y = Math.min(m.h - 1, fy0 + k);
+      m.fire[idx(x, y, 0)] = 3 + k;
+      m.smoke[idx(Math.max(0, x - 1), y, 0)] = 6 + k * 4;
+    }
+  }
+
+  const view = {
+    cam: { x: 0, y: 0, zoom: +(q.get('zoom') || 1) }, w: W, h: H, viewZ: +(q.get('viewZ') || 0), time: 1000,
+    selectedId: lead && q.get('sel') !== '0' ? lead.id : null, hover: null, cursor: 'move', path: null, reach: null, target: null,
+    throwArc: null, anim: { units: {}, hidden: new Set() }, showAll: q.get('showAll') === '1', nodes: q.get('nodes') === '1',
+  };
+  const focus = q.get('focus') || (B.ufo ? 'ufo' : 'craft');
+  let fxp = [m.w / 2, m.h / 2];
+  if (focus === 'ufo' && B.ufo) fxp = [B.ufo.x + B.ufo.w / 2 - 2, B.ufo.y + B.ufo.h / 2 - 2];
+  else if (focus === 'craft' && B.craft) fxp = [B.craft.x + B.craft.w / 2 + 3, B.craft.y + B.craft.h / 2 + 2];
+  else if (focus === 'mid' && B.craft && B.ufo) fxp = [(B.craft.x + B.ufo.x + B.ufo.w / 2) / 2 + 2, (B.craft.y + B.ufo.y + B.ufo.h / 2) / 2 + 2];
+  OV.BattleRender.centerOn(view, fxp[0], fxp[1], 0);
+
+  // sobreposições de exemplo: caminho, área alcançável (BFS simples só de QA), alvo, arco
+  if (q.get('overlays') !== '0' && lead) {
+    const reach = new Int16Array(m.n).fill(-1);
+    const start = idx(lead.x, lead.y, lead.z);
+    reach[start] = 0;
+    const queue = [start];
+    for (let k = 0; k < queue.length; k++) {
+      const i = queue[k];
+      const [x, y, z] = OV.BMap.xyz(m, i);
+      for (let dir = 0; dir < 8; dir++) {
+        const e = OV.BMap.edgeInfo(m, x, y, z, dir);
+        if (e.to < 0 || e.blocked.move || !OV.BMap.canStand(m, e.to) || reach[e.to] >= 0) continue;
+        const c = reach[i] + (dir & 1 ? 6 : 4) + OV.BMap.tileTU(m, e.to) - 4;
+        if (c > lead.tuMax) continue;
+        reach[e.to] = c;
+        queue.push(e.to);
+      }
+    }
+    view.reach = { cost: reach, budgetOk: lead.tuMax - 18, budgetReserve: lead.tuMax };
+    const steps = [];
+    let tu = lead.tu;
+    for (let k = 1; k <= 7; k++) {
+      const x = Math.min(m.w - 1, lead.x + k), y = lead.y + Math.min(k, 3) - 0;
+      const i = idx(x, Math.min(m.h - 1, y), 0);
+      tu -= k <= 3 ? 6 : 4;
+      steps.push({ i, tu, state: tu > 18 ? 'ok' : tu > 0 ? 'reserve' : 'out' });
+    }
+    view.path = { steps, label: 'UT ' + steps[steps.length - 1].tu + '/' + lead.tuMax + ' · En 40' };
+    view.hover = { x: lead.x + 7 > m.w - 1 ? m.w - 1 : lead.x + 7, y: Math.min(m.h - 1, lead.y + 3), z: 0 };
+    const tgt = aliens.find((a) => a.z === 0) || aliens[0];
+    if (tgt && q.get('target') !== '0') {
+      const a = [lead.x * 16 + 8, lead.y * 16 + 8, lead.z * 24 + 20], b = [tgt.x * 16 + 8, tgt.y * 16 + 8, tgt.z * 24 + 12];
+      view.target = { fromId: lead.id, toI: idx(tgt.x, tgt.y, tgt.z), hitPct: 38, blocked: false, line: [a, b] };
+    }
+    const second = xcom[1];
+    if (second && q.get('throw') !== '0') {
+      const a = [second.x * 16 + 8, second.y * 16 + 8, 20], arc = [];
+      const bx = (second.x + 4) * 16 + 8, by = (second.y + 6) * 16 + 8;
+      for (let k = 0; k <= 30; k++) {
+        const f = k / 30;
+        arc.push([a[0] + (bx - a[0]) * f, a[1] + (by - a[1]) * f, 20 * (1 - f) + 60 * Math.sin(f * Math.PI)]);
+      }
+      view.throwArc = arc;
+    }
+  }
+  if (mode === 'fx') {
+    // efeitos congelados a meio
+    const c = [fxp[0] * 16, fxp[1] * 16, 0];
+    OV.FX.spawn('explosion', [c[0] - 40, c[1] + 40, 4], { radius: 3, dmg: 'HE' });
+    if (lead) {
+      const from = [lead.x * 16 + 8, lead.y * 16 + 8, 20];
+      OV.FX.projectile('laser', from, [c[0], c[1], 14]);
+      OV.FX.projectile('plasma', [c[0] + 64, c[1] - 30, 16], from, 18);
+      OV.FX.projectile('rocket', from, [c[0] + 100, c[1] + 60, 6], 10);
+      OV.FX.projectile('tracer', from, [c[0] - 60, c[1] - 80, 18], 30);
+      OV.FX.spawn('muzzle', from, { gun: 'ballistic' });
+      OV.FX.spawn('spotted', [lead.x * 16 + 8, lead.y * 16 + 8, 26]);
+      OV.FX.spawn('damage', [lead.x * 16 + 24, lead.y * 16 + 8, 24], { amount: 27 });
+    }
+    OV.FX.spawn('blood', [c[0] + 30, c[1] + 10, 12], { alien: true });
+    OV.FX.spawn('psi', [c[0] - 70, c[1] - 30, 12], { to: [c[0] - 10, c[1] - 90, 12] });
+    OV.FX.spawn('sparks', [c[0] + 50, c[1] - 50, 12]);
+    OV.FX.spawn('smoke', [c[0] + 20, c[1] + 80, 4], { size: 1.5 });
+    OV.FX.spawn('fire', [c[0] + 80, c[1] + 80, 0]);
+    for (let k = 0; k < 6; k++) OV.FX.update(25);
+  }
+
+  function frame(time) {
+    view.time = time;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = '#05070a';
+    ctx.fillRect(0, 0, W, H);
+    if (q.get('draw') !== '0') OV.BattleRender.draw(ctx, B, view);
+  }
+  frame(1000);
+  const st = OV.BattleRender.stats();
+  // tempo de desenho com caches quentes
+  let best = 1e9;
+  for (let k = 0; k < 5; k++) {
+    const a = performance.now();
+    frame(1000 + k * 16);
+    best = Math.min(best, performance.now() - a);
+  }
+  frame(1000);
+  info.textContent = [B.mission.kind, B.mission.terrain, B.mission.ufoType || '-', m.w + '×' + m.h + '×' + m.d, 'z' + view.viewZ, 'zoom ' + view.cam.zoom,
+    (night ? 'noite' : 'dia'), 'unid ' + xcom.length + '/' + aliens.length + '/' + civs.length, 'desenho ' + best.toFixed(1) + ' ms'].join(' · ');
+  window.__info = { kind: B.mission.kind, terrain: B.mission.terrain, ufo: B.mission.ufoType, size: [m.w, m.h, m.d], xcom: xcom.length, aliens: aliens.length,
+    civs: civs.length, createMs: Math.round(tCreate), firstStats: st, drawMs: +best.toFixed(2), stats: OV.BattleRender.stats() };
+
+  // pan de N fotogramas por todo o mapa (mede tempo de desenho e fps com rAF)
+  window.__perf = function (frames) {
+    frames = frames || 300;
+    view.target = null; view.path = null; view.reach = null; view.throwArc = null;
+    const b = OV.BattleRender.bounds(B);
+    return new Promise((resolve) => {
+      const times = [];
+      let k = 0, tStart = 0;
+      const step = (ts) => {
+        if (!tStart) tStart = ts;
+        const f = k / frames;
+        // trajetória em laço sobre o mapa
+        const cx = b.x0 + (b.x1 - b.x0) * (0.5 + 0.4 * Math.sin(f * Math.PI * 2));
+        const cy = b.y0 + (b.y1 - b.y0) * (0.5 + 0.35 * Math.sin(f * Math.PI * 4));
+        view.cam.x = cx - W / 2 / view.cam.zoom;
+        view.cam.y = cy - H / 2 / view.cam.zoom;
+        const a = performance.now();
+        frame(ts);
+        times.push(performance.now() - a);
+        k++;
+        if (k < frames) requestAnimationFrame(step);
+        else {
+          const total = ts - tStart;
+          const sorted = times.slice().sort((p, q2) => p - q2);
+          resolve({ frames, fps: +(1000 * (frames - 1) / Math.max(1, total)).toFixed(1), avgMs: +(times.reduce((p, q2) => p + q2, 0) / times.length).toFixed(2),
+            p95: +sorted[Math.floor(sorted.length * 0.95)].toFixed(2), maxMs: +sorted[sorted.length - 1].toFixed(2) });
+        }
+      };
+      requestAnimationFrame(step);
+    });
+  };
+  window.__B = B;
+  window.__view = view;
+  window.__frame = frame;
+  window.__ready = true;
+
+  // ---- folha de contacto de todas as partes de tile ------------------------------------------------------------
+  function tileSheet() {
+    const set = q.get('set') || 'FARM';
+    const zoom = +(q.get('zoom') || 1);
+    const defs = OV.Data.tileDefs.filter((d) => d && d.set === set && !/\.up$/.test(d.key));
+    const ts = OV.Data.tilesets[set];
+    const cw = 84 * zoom, chh = 112 * zoom, cols = Math.floor(W / cw);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = '#0b0f14';
+    ctx.fillRect(0, 0, W, H);
+    const ground = ts.ids.ground, inner = ts.ids.inner;
+    let n = 0;
+    for (const d of defs) {
+      const nv = OV.TileSprites.variants(d.id);
+      for (let v = 0; v < Math.min(nv, d.part === 'floor' ? 2 : 3); v++) {
+        const col = n % cols, row = Math.floor(n / cols);
+        const x = col * cw + cw / 2, y = row * chh + 62 * zoom;
+        if (d.part !== 'floor') OV.TileSprites.draw(ctx, d.part === 'object' && !/ground|crop|tree|bush|hedge|rock|lamp|car|wreck/.test(d.role) ? inner : ground, 0, 0, x, y, zoom);
+        const state = OV.TileSprites.oriented(d.id) ? (v & 1 ? 'y' : 'x') : 0;
+        OV.TileSprites.draw(ctx, d.id, v, state, x, y, zoom);
+        ctx.fillStyle = '#8a96a6';
+        ctx.font = (9 * Math.min(zoom, 1.4)) + 'px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(d.role + (d.part === 'north' ? '.n' : '') + ' ' + d.mat + (nv > 1 ? ' v' + v : ''), x, row * chh + chh - 6);
+        n++;
+      }
+    }
+    info.textContent = set + ': ' + defs.length + ' partes, ' + n + ' células';
+    window.__info = { set, defs: defs.length, cells: n };
+  }
+})();
+</script>
+</body>
+</html>

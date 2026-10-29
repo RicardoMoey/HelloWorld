@@ -59,7 +59,7 @@
     roof: { part: 'floor', armour: 30, die: 'scorched', sfx: 'brick', mat: 'tiles', variantCount: 2 },
     craftFloor: { part: 'floor', armour: 255, special: 'START', sfx: 'metal', mat: 'deck' },
     craftRamp: { part: 'floor', armour: 255, special: 'CRAFT', sfx: 'metal', mat: 'ramp' },
-    wall: { part: 'west', tu: 255, armour: 50, heBlock: 20, blockLOS: true, smokeBlock: true, height: 24, die: 'rubbleWall', sfx: 'brick', mat: 'brick', variantCount: 2 },
+    wall: { part: 'west', tu: 255, armour: 40, heBlock: 20, blockLOS: true, smokeBlock: true, height: 24, die: 'rubbleWall', sfx: 'brick', mat: 'brick', variantCount: 2 },
     door: { part: 'west', tu: 255, armour: 20, heBlock: 10, blockLOS: true, smokeBlock: true, height: 24, door: 'swing', alt: 'doorOpen', die: 'rubbleWall', flammable: 30, fuel: 3, sfx: 'wood', mat: 'wood' },
     doorOpen: { part: 'west', tu: 0, armour: 20, height: 24, door: 'swing', open: true, alt: 'door', die: 'rubbleWall', flammable: 30, fuel: 3, sfx: 'wood', mat: 'wood' },
     window: { part: 'west', tu: 255, armour: 10, smokeBlock: true, height: 24, window: true, die: 'windowBroken', sfx: 'glass', mat: 'glass' },
@@ -192,7 +192,7 @@
       palette: { ground: 0x7a7a62, ground2: 0x6a6050, road: 0x6a645a, inner: 0x7a6a50, wall: 0x8a8478, roof: 0x5a5048, accent: 0x4a5e3a },
       roles: merge(hullFamily(80, 40, 'granite', 'brick'), {
         ground: { mat: 'rocky', flammable: 70, fuel: 1 }, crop: { mat: 'grass', colour: 0x6a7a4a }, road: { mat: 'gravel' },
-        inner: { mat: 'planks', flammable: 40, fuel: 3 }, roof: nf({ mat: 'slate' }), wall: { mat: 'stone', armour: 60, heBlock: 30 },
+        inner: { mat: 'planks', flammable: 40, fuel: 3 }, roof: nf({ mat: 'slate' }), wall: { mat: 'stone', armour: 45, heBlock: 30 },
         rock: { mat: 'granite', armour: 80, heBlock: 40 }, tree: { mat: 'pine', colour: 0x34503a }, car: { mat: 'jeep', colour: 0x5a6a7a },
       }),
     },
@@ -211,7 +211,7 @@
       roles: merge(hullFamily(80, 40, 'pillar', 'brick'), {
         ground: nf({ mat: 'pavement', sfx: 'brick' }), crop: { mat: 'flowerbed', colour: 0x7a8a3a }, road: nf({ mat: 'asphalt' }),
         inner: { mat: 'tile', sfx: 'brick', flammable: 60, fuel: 2 }, roof: nf({ mat: 'tarmac' }),
-        wall: { mat: 'concrete', armour: 60, heBlock: 30 }, fence: nf({ mat: 'railing', sfx: 'metal', colour: 0x5a5e66 }),
+        wall: { mat: 'concrete', armour: 45, heBlock: 30 }, fence: nf({ mat: 'railing', sfx: 'metal', colour: 0x5a5e66 }),
         rock: { mat: 'concrete' }, tree: { mat: 'plane', colour: 0x46703a }, crate: { mat: 'boxes', colour: 0xa08050 },
         bed: { mat: 'sofa', colour: 0x7a4a5a }, cabinet: { mat: 'shelf' }, lamp: { mat: 'streetlamp' }, car: { mat: 'car' },
       }),
