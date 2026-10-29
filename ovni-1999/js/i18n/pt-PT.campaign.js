@@ -48,7 +48,7 @@
     'cp.save.auto': 'Jogo gravado automaticamente',
     'cp.save.quota': 'Espaço insuficiente — exporte o jogo',
     'cp.resume.battle': 'Combate retomado no turno {turn}',
-    'cp.resume.geo': 'Campanha retomada: {date}',
+    'cp.resume.geo': 'Campanha retomada: {date} — em pausa (Espaço ou 1–6 para continuar)',
 
     // ---- nova campanha ----
     'cp.ng.kicker': 'Nova Campanha · Passo 1 de 2',

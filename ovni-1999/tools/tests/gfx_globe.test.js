@@ -1,6 +1,6 @@
 /* Globo do Geoscape (js/gfx/globe_render.js) em Node: projeção/inversa, raios de zoom, escolha de objetos, radares,
-   animações da câmara e um desenho completo com canvas falso (caches por câmara/sol e paridade do antípoda no
-   preenchimento da terra). */
+   animações da câmara, um desenho completo com canvas falso (caches por câmara/sol e paridade do antípoda no
+   preenchimento da terra) e o caminho do fotograma em movimento (meia resolução, assentamento pelo relógio). */
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
@@ -205,6 +205,90 @@ module.exports = function (OV, t) {
     GR.rotateTo(f, 0, 0, 0);
     t.ok(f.lon === 0 && f.lat === 0, 'ms 0 é imediato');
   });
+
+  // espera síncrona sem gastar CPU (o assentamento também conta tempo real)
+  const sleep = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+  const isCanvas = (o) => o && typeof o.getContext === 'function';
+
+  t.test('globo: em movimento (dpr 2) o globo desenha-se a meia resolução e é ampliado ×2 de uma vez', () => withDom(() => {
+    const { G } = scene();
+    const main = fakeCanvas().getContext('2d');
+    const v = Object.assign(view0(), { time: 2e7 });
+    GR.invalidate();
+    let r = GR.draw(main, G, v);
+    t.ok(r.base && !GR.busy(v), 'primeira imagem logo fina');
+    GR.rotateBy(v, 7, 2);
+    v.time += 16;
+    CUR.log = [];
+    r = GR.draw(main, G, v);
+    const lg = CUR.log;
+    CUR.log = null;
+    t.ok(r.base && GR.busy(v), 'fotograma grosseiro, ainda por refinar');
+    const up = lg.filter((e) => e[0] === 'drawImage' && e[1].length === 9 && isCanvas(e[1][0]) && e[1][7] === 2 * e[1][3] && e[1][8] === 2 * e[1][4]);
+    t.eq(up.length, 1, 'uma só ampliação exata ×2');
+    const lo = up[0][1][0], R = GR.radius(v);
+    t.ok(lo.width <= 1440 && lo.height <= 900, 'canvas reduzido no máximo do tamanho CSS: ' + lo.width + '×' + lo.height);
+    t.ok(lo.height === 900 && lo.width >= 2 * R && lo.width < 2 * R + 2 * 75, 'só o globo e o halo em largura: ' + lo.width);
+    t.ok(up[0][1][5] >= 0 && up[0][1][5] + up[0][1][7] <= 2880 + 1e-9, 'dentro do ecrã');
+    const fineOps = lg.filter((e) => e[0] === 'putImageData').length;
+    t.eq(fineOps, 3, 'biomas e sombra numa só passagem (3 imagens)');
+    // gesto em pausa (câmara e sol iguais) antes de assentar: reaproveita o globo reduzido
+    v.time += 16;
+    CUR.log = [];
+    r = GR.draw(main, G, v);
+    const lg2 = CUR.log;
+    CUR.log = null;
+    t.ok(GR.busy(v), 'ainda à espera de assentar');
+    t.eq(lg2.filter((e) => e[0] === 'putImageData').length, 0, 'sem nova amostragem');
+    t.ok(lg2.some((e) => e[0] === 'drawImage' && e[1][0] === lo), 'volta a ampliar o mesmo canvas reduzido');
+  }));
+
+  t.test('globo: em movimento com dpr 1 desenha diretamente; assenta pelo relógio real mesmo com view.time parado', () => withDom(() => {
+    const { G } = scene();
+    const main = fakeCanvas().getContext('2d');
+    const v = Object.assign(view0(), { dpr: 1, time: 3e7 });
+    GR.invalidate();
+    GR.draw(main, G, v);
+    GR.rotateBy(v, -9, 0);
+    CUR.log = [];
+    let r = GR.draw(main, G, v);
+    const lg = CUR.log;
+    CUR.log = null;
+    t.ok(r.base && GR.busy(v), 'grosseiro');
+    t.ok(!lg.some((e) => e[0] === 'drawImage' && e[1].length === 9 && e[1][7] === 2 * e[1][3]), 'sem ampliação');
+    t.ok(lg.some((e) => e[0] === 'clip' && e[1][1] === 'evenodd'), 'terra recortada diretamente');
+    // view.time congelado (capturas estáticas): só o relógio real avança
+    r = GR.draw(main, G, v);
+    t.ok(GR.busy(v), 'logo a seguir ainda grosseiro');
+    sleep(300);
+    r = GR.draw(main, G, v);
+    t.ok(r.base && r.light && !GR.busy(v), 'assentou: imagem fina');
+    // voltar exatamente a uma câmara já em cache não passa pelo fotograma grosseiro
+    const lon0 = v.lon;
+    GR.rotateBy(v, 40, 0);
+    GR.draw(main, G, v);
+    v.lon = lon0;
+    r = GR.draw(main, G, v);
+    t.ok(!r.base && !GR.busy(v), 'cache fina reutilizada');
+  }));
+
+  t.test('globo: arrastos lentos (fotogramas > 260 ms) nunca forçam a imagem fina a meio do gesto', () => withDom(() => {
+    const { G } = scene();
+    const main = fakeCanvas().getContext('2d');
+    const v = Object.assign(view0(), { time: 4e7 });
+    GR.invalidate();
+    GR.draw(main, G, v);
+    let fine = 0;
+    for (let k = 0; k < 4; k++) {
+      v.time += 400;
+      GR.rotateBy(v, 6, 1);
+      const r = GR.draw(main, G, v);
+      if (!GR.busy(v) || (r.base && !r.light)) fine++;
+    }
+    t.eq(fine, 0, 'cada fotograma com a câmara a mudar é grosseiro');
+    v.time += 400;
+    t.ok(GR.draw(main, G, v).base && !GR.busy(v), 'parado: fina');
+  }));
 
   t.test('globo: draw com canvas falso — caches, modos, e paridade do antípoda no preenchimento da terra', () => withDom(() => {
     const { G, u1 } = scene();

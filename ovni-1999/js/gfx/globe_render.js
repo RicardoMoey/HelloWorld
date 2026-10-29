@@ -4,6 +4,10 @@
    Camadas: base (espaço, atmosfera, oceano/biomas por amostragem, terra recortada, costas, grelha) → cache por câmara;
    luz (noite/crepúsculo/limbo/brilho do sol, luzes das cidades) → cache por câmara + sol; dinâmica (radares, rotas,
    marcadores, seleção, cursores) em cada fotograma. Só lê G; nunca o altera.
+   Desempenho: parado, cada fotograma é uma cópia da cache fina mais a camada dinâmica. Com a câmara a mudar (arrasto,
+   inércia, animações, zoom, painel lateral) desenha-se um fotograma grosseiro: biomas e sombra numa só passagem a
+   ~16 mil amostras, o globo a meia resolução do ecrã (dpr ≥ 1,5) ampliado ×2 de uma vez sobre as estrelas nítidas e
+   operações vetoriais mais baratas; a imagem fina, igual píxel a píxel à de antes, refaz-se 260 ms depois de parar.
 
    OV.GlobeRender = {
      ZOOM_RADII                          [0.45, 0.60, 0.90, 1.40, 2.25, 3.60] × view.h
@@ -391,7 +395,10 @@
         seaT[k * 3 + 2] = clamp(o[2] * ol, 0, 255);
       }
     }
-    TEX = { landT, seaT, mask };
+    // células com cor de terra (as restantes valem 0): permite saltar a amostragem da terra longe da costa
+    const near = new Uint8Array(N);
+    for (let k = 0; k < N; k++) near[k] = dist[k] <= 3 ? 1 : 0;
+    TEX = { landT, seaT, mask, near };
     return TEX;
   }
 
@@ -413,8 +420,10 @@
     return c;
   }
   const L = {
-    base: null, stat: null, ocean: null, landc: null, shade: null, stars: null, glow: null,
-    baseKey: '', lightKey: '', starKey: '', camKey: '', direct: false, baseFine: true, lastChange: -1e9, grid: null,
+    base: null, stat: null, ocean: null, landc: null, shade: null, stars: null, glow: null, bg: null, bgKey: '',
+    lo: null, loKey: '', atmo: null, atmoKey: '', atmoR: 0, atmoK: 0, prevR: 0,
+    coarse: { ocean: null, landc: null, shade: null },
+    baseKey: '', lightKey: '', starKey: '', camKey: '', direct: false, baseFine: true, lastChange: -1e9, lastChangeW: -1e9, grid: null,
     landPath: null, landPathKey: '', countryPaths: {}, countryKey: '', radarPaths: {}, radarCount: 0,
     anims: typeof WeakMap !== 'undefined' ? new WeakMap() : null,
   };
@@ -555,55 +564,95 @@
     if (!c._img || c._img.width !== gw || c._img.height !== gh) c._img = g.createImageData(gw, gh);
     return c._img;
   }
+  /* Amostras longe do disco nunca entram na interpolação bilinear dos píxeis visíveis (o desenho é recortado ao
+     disco): fora de R + 3 passos não se calcula nada. Devolve o quadrado do raio-limite em unidades de R. */
+  const skipRR = (cam, step) => (1 + (3 * step) / cam.R) * (1 + (3 * step) / cam.R);
+  // cor do oceano e da terra no ponto (wx, wy, wz) da esfera: bilinear nas texturas 0,5°
+  function biomeAt(tex, wx, wy, wz, od, ld, o) {
+    const sea = tex.seaT, lt = tex.landT, near = tex.near;
+    const lat = Math.asin(wz > 1 ? 1 : wz < -1 ? -1 : wz) * R2D, lon = Math.atan2(wy, wx) * R2D;
+    const fx = (lon + 180) * 2 - 0.5, fy = (90 - lat) * 2 - 0.5;
+    let ix = Math.floor(fx), iy = Math.floor(fy);
+    const tx = fx - ix, ty = fy - iy;
+    const ix1 = (ix + 1 + TW) % TW;
+    ix = (ix + TW) % TW;
+    const iy0 = iy < 0 ? 0 : iy >= TH ? TH - 1 : iy, iy1 = iy + 1 >= TH ? TH - 1 : iy + 1 < 0 ? 0 : iy + 1;
+    const t00 = iy0 * TW + ix, t10 = iy0 * TW + ix1, t01 = iy1 * TW + ix, t11 = iy1 * TW + ix1;
+    const k00 = t00 * 3, k10 = t10 * 3, k01 = t01 * 3, k11 = t11 * 3;
+    const w00 = (1 - tx) * (1 - ty), w10 = tx * (1 - ty), w01 = (1 - tx) * ty, w11 = tx * ty;
+    od[o] = sea[k00] * w00 + sea[k10] * w10 + sea[k01] * w01 + sea[k11] * w11;
+    od[o + 1] = sea[k00 + 1] * w00 + sea[k10 + 1] * w10 + sea[k01 + 1] * w01 + sea[k11 + 1] * w11;
+    od[o + 2] = sea[k00 + 2] * w00 + sea[k10 + 2] * w10 + sea[k01 + 2] * w01 + sea[k11 + 2] * w11;
+    od[o + 3] = 255;
+    if (near[t00] | near[t10] | near[t01] | near[t11]) {
+      ld[o] = lt[k00] * w00 + lt[k10] * w10 + lt[k01] * w01 + lt[k11] * w11;
+      ld[o + 1] = lt[k00 + 1] * w00 + lt[k10 + 1] * w10 + lt[k01 + 1] * w01 + lt[k11 + 1] * w11;
+      ld[o + 2] = lt[k00 + 2] * w00 + lt[k10 + 2] * w10 + lt[k01 + 2] * w01 + lt[k11 + 2] * w11;
+    } else {
+      // longe da costa a textura de terra vale 0 nas quatro células
+      ld[o] = 0; ld[o + 1] = 0; ld[o + 2] = 0;
+    }
+    ld[o + 3] = 255;
+  }
+  /* sombra: noite, crepúsculo quente, atenuação de Lambert, escurecimento do limbo e névoa azul atmosférica;
+     sd = cosseno do ângulo ao sol, z = profundidade (0 no limbo) */
+  function shadeAt(sd, z, d, o) {
+    const N = smooth(0.1, -0.16, sd);
+    let r = 0, g = 0, b = 0, a = 0, al;
+    // atenuação diurna (Lambert suave)
+    const dl = 1 - (sd > 0 ? sd : 0);
+    al = (1 - N) * 0.3 * dl * Math.sqrt(dl);
+    r = 2 * al; g = 6 * al; b = 16 * al; a = al;
+    // noite
+    al = 0.68 * N;
+    r = 5 * al + r * (1 - al); g = 11 * al + g * (1 - al); b = 34 * al + b * (1 - al); a = al + a * (1 - al);
+    // crepúsculo quente junto ao terminador
+    const tw = (sd - 0.035) / 0.06;
+    al = 0.08 * Math.exp(-tw * tw);
+    r = 190 * al + r * (1 - al); g = 100 * al + g * (1 - al); b = 45 * al + b * (1 - al); a = al + a * (1 - al);
+    // limbo
+    const lz = 1 - z;
+    al = lz * lz * lz * 0.6;
+    r = 1 * al + r * (1 - al); g = 3 * al + g * (1 - al); b = 10 * al + b * (1 - al); a = al + a * (1 - al);
+    // névoa atmosférica no lado de dia
+    al = lz * lz * lz * lz * (1 - N) * 0.55 * (0.35 + 0.65 * smooth(-0.25, 0.4, sd));
+    r = 112 * al + r * (1 - al); g = 172 * al + g * (1 - al); b = 255 * al + b * (1 - al); a = al + a * (1 - al);
+    if (a > 0.002) {
+      d[o] = r / a; d[o + 1] = g / a; d[o + 2] = b / a; d[o + 3] = a * 255;
+    } else {
+      d[o] = 0; d[o + 1] = 0; d[o + 2] = 0; d[o + 3] = 0;
+    }
+  }
   function renderBiome(cam, grid) {
     const tex = buildTextures();
     const { x0, y0, step, gw, gh } = grid;
     L.ocean = sized(L.ocean, gw, gh);
     L.landc = sized(L.landc, gw, gh);
     const io = imgOf(L.ocean, gw, gh), il = imgOf(L.landc, gw, gh);
-    const od = io.data, ld = il.data, sea = tex.seaT, lt = tex.landT;
-    const R = cam.R;
+    const od = io.data, ld = il.data;
+    const R = cam.R, lim = skipRR(cam, step);
     for (let j = 0; j < gh; j++) {
       const v0 = (cam.cy - (y0 + (j + 0.5) * step)) / R;
       for (let i = 0; i < gw; i++) {
         let u = (x0 + (i + 0.5) * step - cam.cx) / R, v = v0;
         const rr = u * u + v * v;
+        if (rr > lim) continue;
         let z = 0;
         if (rr >= 1) {
           const s = 1 / Math.sqrt(rr);
           u *= s; v *= s;
         } else z = Math.sqrt(1 - rr);
-        const wx = u * cam.e0 + v * cam.n0 + z * cam.c0, wy = u * cam.e1 + v * cam.n1 + z * cam.c1, wz = v * cam.n2 + z * cam.c2;
-        const lat = Math.asin(wz > 1 ? 1 : wz < -1 ? -1 : wz) * R2D, lon = Math.atan2(wy, wx) * R2D;
-        // bilinear na textura 0,5°
-        const fx = (lon + 180) * 2 - 0.5, fy = (90 - lat) * 2 - 0.5;
-        let ix = Math.floor(fx), iy = Math.floor(fy);
-        const tx = fx - ix, ty = fy - iy;
-        const ix1 = (ix + 1 + TW) % TW;
-        ix = (ix + TW) % TW;
-        const iy0 = iy < 0 ? 0 : iy >= TH ? TH - 1 : iy, iy1 = iy + 1 >= TH ? TH - 1 : iy + 1 < 0 ? 0 : iy + 1;
-        const k00 = (iy0 * TW + ix) * 3, k10 = (iy0 * TW + ix1) * 3, k01 = (iy1 * TW + ix) * 3, k11 = (iy1 * TW + ix1) * 3;
-        const w00 = (1 - tx) * (1 - ty), w10 = tx * (1 - ty), w01 = (1 - tx) * ty, w11 = tx * ty;
-        const o = (j * gw + i) * 4;
-        od[o] = sea[k00] * w00 + sea[k10] * w10 + sea[k01] * w01 + sea[k11] * w11;
-        od[o + 1] = sea[k00 + 1] * w00 + sea[k10 + 1] * w10 + sea[k01 + 1] * w01 + sea[k11 + 1] * w11;
-        od[o + 2] = sea[k00 + 2] * w00 + sea[k10 + 2] * w10 + sea[k01 + 2] * w01 + sea[k11 + 2] * w11;
-        od[o + 3] = 255;
-        ld[o] = lt[k00] * w00 + lt[k10] * w10 + lt[k01] * w01 + lt[k11] * w11;
-        ld[o + 1] = lt[k00 + 1] * w00 + lt[k10 + 1] * w10 + lt[k01 + 1] * w01 + lt[k11 + 1] * w11;
-        ld[o + 2] = lt[k00 + 2] * w00 + lt[k10 + 2] * w10 + lt[k01 + 2] * w01 + lt[k11 + 2] * w11;
-        ld[o + 3] = 255;
+        biomeAt(tex, u * cam.e0 + v * cam.n0 + z * cam.c0, u * cam.e1 + v * cam.n1 + z * cam.c1, v * cam.n2 + z * cam.c2, od, ld, (j * gw + i) * 4);
       }
     }
     L.ocean.getContext('2d').putImageData(io, 0, 0);
     L.landc.getContext('2d').putImageData(il, 0, 0);
   }
-  // sombra: noite, crepúsculo quente, atenuação de Lambert, escurecimento do limbo e névoa azul atmosférica
   function renderShade(cam, grid, s) {
     const { x0, y0, step, gw, gh } = grid;
     L.shade = sized(L.shade, gw, gh);
     const img = imgOf(L.shade, gw, gh), d = img.data;
-    const R = cam.R;
+    const R = cam.R, lim = skipRR(cam, step);
     const se = s[0] * cam.e0 + s[1] * cam.e1 + s[2] * cam.e2;
     const sn = s[0] * cam.n0 + s[1] * cam.n1 + s[2] * cam.n2;
     const sc = s[0] * cam.c0 + s[1] * cam.c1 + s[2] * cam.c2;
@@ -612,41 +661,51 @@
       for (let i = 0; i < gw; i++) {
         let u = (x0 + (i + 0.5) * step - cam.cx) / R, v = v0;
         const rr = u * u + v * v;
+        if (rr > lim) continue;
         let z = 0;
         if (rr >= 1) {
           const q = 1 / Math.sqrt(rr);
           u *= q; v *= q;
         } else z = Math.sqrt(1 - rr);
-        const sd = u * se + v * sn + z * sc;
-        const N = smooth(0.1, -0.16, sd);
-        let r = 0, g = 0, b = 0, a = 0, al;
-        // atenuação diurna (Lambert suave)
-        const dl = 1 - (sd > 0 ? sd : 0);
-        al = (1 - N) * 0.3 * dl * Math.sqrt(dl);
-        r = 2 * al; g = 6 * al; b = 16 * al; a = al;
-        // noite
-        al = 0.68 * N;
-        r = 5 * al + r * (1 - al); g = 11 * al + g * (1 - al); b = 34 * al + b * (1 - al); a = al + a * (1 - al);
-        // crepúsculo quente junto ao terminador
-        const tw = (sd - 0.035) / 0.06;
-        al = 0.08 * Math.exp(-tw * tw);
-        r = 190 * al + r * (1 - al); g = 100 * al + g * (1 - al); b = 45 * al + b * (1 - al); a = al + a * (1 - al);
-        // limbo
-        const lz = 1 - z;
-        al = lz * lz * lz * 0.6;
-        r = 1 * al + r * (1 - al); g = 3 * al + g * (1 - al); b = 10 * al + b * (1 - al); a = al + a * (1 - al);
-        // névoa atmosférica no lado de dia
-        al = lz * lz * lz * lz * (1 - N) * 0.55 * (0.35 + 0.65 * smooth(-0.25, 0.4, sd));
-        r = 112 * al + r * (1 - al); g = 172 * al + g * (1 - al); b = 255 * al + b * (1 - al); a = al + a * (1 - al);
-        const o = (j * gw + i) * 4;
-        if (a > 0.002) {
-          d[o] = r / a; d[o + 1] = g / a; d[o + 2] = b / a; d[o + 3] = a * 255;
-        } else {
-          d[o] = 0; d[o + 1] = 0; d[o + 2] = 0; d[o + 3] = 0;
-        }
+        shadeAt(u * se + v * sn + z * sc, z, d, (j * gw + i) * 4);
       }
     }
     L.shade.getContext('2d').putImageData(img, 0, 0);
+  }
+  /* Em movimento: biomas e sombra numa só passagem (uma projeção inversa por amostra), na grelha grosseira, para
+     canvases próprios que não obrigam as caches finas a mudar de tamanho. */
+  function renderCoarse(cam, grid, s) {
+    const tex = buildTextures();
+    const C = L.coarse;
+    const { x0, y0, step, gw, gh } = grid;
+    C.ocean = sized(C.ocean, gw, gh);
+    C.landc = sized(C.landc, gw, gh);
+    C.shade = sized(C.shade, gw, gh);
+    const io = imgOf(C.ocean, gw, gh), il = imgOf(C.landc, gw, gh), is = imgOf(C.shade, gw, gh);
+    const od = io.data, ld = il.data, sd = is.data;
+    const R = cam.R, lim = skipRR(cam, step);
+    const se = s[0] * cam.e0 + s[1] * cam.e1 + s[2] * cam.e2;
+    const sn = s[0] * cam.n0 + s[1] * cam.n1 + s[2] * cam.n2;
+    const sc = s[0] * cam.c0 + s[1] * cam.c1 + s[2] * cam.c2;
+    for (let j = 0; j < gh; j++) {
+      const v0 = (cam.cy - (y0 + (j + 0.5) * step)) / R;
+      for (let i = 0; i < gw; i++) {
+        let u = (x0 + (i + 0.5) * step - cam.cx) / R, v = v0;
+        const rr = u * u + v * v;
+        if (rr > lim) continue;
+        let z = 0;
+        if (rr >= 1) {
+          const q = 1 / Math.sqrt(rr);
+          u *= q; v *= q;
+        } else z = Math.sqrt(1 - rr);
+        const o = (j * gw + i) * 4;
+        biomeAt(tex, u * cam.e0 + v * cam.n0 + z * cam.c0, u * cam.e1 + v * cam.n1 + z * cam.c1, v * cam.n2 + z * cam.c2, od, ld, o);
+        shadeAt(u * se + v * sn + z * sc, z, sd, o);
+      }
+    }
+    C.ocean.getContext('2d').putImageData(io, 0, 0);
+    C.landc.getContext('2d').putImageData(il, 0, 0);
+    C.shade.getContext('2d').putImageData(is, 0, 0);
   }
 
   // ---- sprites --------------------------------------------------------------------------------------------------
@@ -730,53 +789,88 @@
     return dx * dx + dy * dy < cam.R * cam.R * 0.995;
   }
   const haloWidth = (R) => Math.min(R * 0.11, 70);
-  function renderBase(g, cam, key, fine, view) {
+  // espaço: estrelas e anel exterior da atmosfera
+  function paintSpace(g, cam) {
     g.setTransform(1, 0, 0, 1, 0, 0);
     g.globalCompositeOperation = 'source-over';
     g.globalAlpha = 1;
-    const covered = coversView(cam);
-    if (!covered) g.drawImage(starsCanvas(cam), 0, 0);
+    g.drawImage(starsCanvas(cam), 0, 0);
     g.setTransform(cam.dpr, 0, 0, cam.dpr, 0, 0);
     const { cx, cy, R } = cam;
-    // atmosfera exterior (só o anel)
     const th = haloWidth(R);
-    if (!covered) {
-      const ag = g.createRadialGradient(cx, cy, R * 0.97, cx, cy, R + th);
-      ag.addColorStop(0, 'rgba(120,190,255,0.62)');
-      ag.addColorStop(0.18, 'rgba(80,150,255,0.30)');
-      ag.addColorStop(0.5, 'rgba(50,100,220,0.10)');
-      ag.addColorStop(1, 'rgba(30,60,160,0)');
-      g.fillStyle = ag;
-      const ringP = new Path2D();
-      ringP.arc(cx, cy, R + th, 0, TAU);
-      ringP.arc(cx, cy, R - 1, 0, TAU, true);
-      g.fill(ringP);
+    const ag = g.createRadialGradient(cx, cy, R * 0.97, cx, cy, R + th);
+    ag.addColorStop(0, 'rgba(120,190,255,0.62)');
+    ag.addColorStop(0.18, 'rgba(80,150,255,0.30)');
+    ag.addColorStop(0.5, 'rgba(50,100,220,0.10)');
+    ag.addColorStop(1, 'rgba(30,60,160,0)');
+    g.fillStyle = ag;
+    const ringP = new Path2D();
+    ringP.arc(cx, cy, R + th, 0, TAU);
+    ringP.arc(cx, cy, R - 1, 0, TAU, true);
+    g.fill(ringP);
+  }
+  const bgKeyOf = (cam) => cam.w + 'x' + cam.h + '@' + cam.dpr + '|' + cam.cx + ',' + cam.cy + '|' + cam.R.toFixed(3);
+  /* Fundo (espaço + atmosfera) em cache por tamanho, centro e raio: numa rotação pura é uma só cópia opaca.
+     cached=false (zoom a meio de uma animação) desenha-o diretamente sem mexer na cache. */
+  function paintBackground(g, cam, cached) {
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.globalCompositeOperation = 'source-over';
+    g.globalAlpha = 1;
+    if (coversView(cam)) return;
+    if (!cached) {
+      paintSpace(g, cam);
+      return;
     }
-    // oceano e biomas amostrados
-    const area = Math.min(cam.w, 2 * R) * Math.min(cam.h, 2 * R);
-    let step = fine ? 3 : 6;
-    step = Math.max(step, Math.ceil(Math.sqrt(area / (fine ? 140000 : 45000))));
-    const grid = gridFor(cam, step);
-    renderBiome(cam, grid);
-    L.grid = grid;
-    const disc = discPath(cam);
-    const land = landPathFor(cam, key);
-    g.save();
-    g.clip(disc);
-    g.imageSmoothingEnabled = true;
-    g.imageSmoothingQuality = 'low';
-    g.drawImage(L.ocean, grid.x0, grid.y0, grid.gw * step, grid.gh * step);
-    g.save();
-    g.clip(land, 'evenodd');
-    g.drawImage(L.landc, grid.x0, grid.y0, grid.gw * step, grid.gh * step);
-    g.restore();
-    // costas (só segmentos visíveis)
+    const key = bgKeyOf(cam);
+    if (!L.bg || L.bgKey !== key) {
+      L.bg = sized(L.bg, cam.w * cam.dpr, cam.h * cam.dpr);
+      paintSpace(L.bg.getContext('2d'), cam);
+      L.bgKey = key;
+    }
+    g.drawImage(L.bg, 0, 0);
+  }
+  // costas (só segmentos visíveis) e grelha
+  function coastPath(cam) {
     const coast = new Path2D();
     for (const ring of geo().land) {
       const dc = ring.cen[0] * cam.c0 + ring.cen[1] * cam.c1 + ring.cen[2] * cam.c2;
       if (dc < -ring.sinR - 1e-6) continue;
       strokeXYZ(coast, cam, ring.xyz, true);
     }
+    return coast;
+  }
+  function strokeGrid(g, cam) {
+    const gp = new Path2D(), gm = new Path2D();
+    for (const l of geo().grid) strokeXYZ(l.major ? gm : gp, cam, l.xyz, false);
+    g.strokeStyle = css(PAL.grid, 0.09);
+    g.lineWidth = 0.7;
+    g.stroke(gp);
+    g.strokeStyle = css(PAL.grid, 0.17);
+    g.lineWidth = 0.9;
+    g.stroke(gm);
+  }
+  function strokeRim(g, cam) {
+    g.strokeStyle = 'rgba(150,200,255,0.35)';
+    g.lineWidth = 1;
+    g.beginPath();
+    g.arc(cam.cx, cam.cy, cam.R, 0, TAU);
+    g.stroke();
+  }
+  // disco: oceano e terra amostrados (recortados), costas, grelha e aresta; transformação dpr à entrada
+  function paintBody(g, cam, key, view, grid, ocean, landc) {
+    const step = grid.step;
+    const disc = discPath(cam);
+    const land = landPathFor(cam, key);
+    g.save();
+    g.clip(disc);
+    g.imageSmoothingEnabled = true;
+    g.imageSmoothingQuality = 'low';
+    g.drawImage(ocean, grid.x0, grid.y0, grid.gw * step, grid.gh * step);
+    g.save();
+    g.clip(land, 'evenodd');
+    g.drawImage(landc, grid.x0, grid.y0, grid.gw * step, grid.gh * step);
+    g.restore();
+    const coast = coastPath(cam);
     g.lineJoin = 'round';
     g.strokeStyle = 'rgba(8,30,40,0.45)';
     g.lineWidth = 2.2;
@@ -784,41 +878,64 @@
     g.strokeStyle = css(PAL.coast, 0.5);
     g.lineWidth = 0.8;
     g.stroke(coast);
-    // grelha
-    if (view.showGrid !== false) {
-      const gp = new Path2D(), gm = new Path2D();
-      for (const l of geo().grid) strokeXYZ(l.major ? gm : gp, cam, l.xyz, false);
-      g.strokeStyle = css(PAL.grid, 0.09);
-      g.lineWidth = 0.7;
-      g.stroke(gp);
-      g.strokeStyle = css(PAL.grid, 0.17);
-      g.lineWidth = 0.9;
-      g.stroke(gm);
-    }
+    if (view.showGrid !== false) strokeGrid(g, cam);
     g.restore();
     // aresta fina do disco
-    g.strokeStyle = 'rgba(150,200,255,0.35)';
-    g.lineWidth = 1;
-    g.beginPath();
-    g.arc(cx, cy, R, 0, TAU);
-    g.stroke();
+    strokeRim(g, cam);
+  }
+  /* Versão do fotograma em movimento, com o mesmo aspeto mas operações mais baratas: o brilho do sol vai logo
+     sobre o oceano (a terra desenhada a seguir tapa-o; dispensa o recorte evenodd do oceano), a terra só com o seu
+     recorte (já está dentro do disco), traços fora de recortes (só têm segmentos visíveis) e o contorno escuro das
+     costas como linha fina deslocada em vez do traço largo com juntas redondas. */
+  function paintBodyFast(g, cam, key, view, grid, ocean, landc, s, k) {
+    const step = grid.step;
+    const land = landPathFor(cam, key);
+    g.imageSmoothingEnabled = true;
+    g.imageSmoothingQuality = 'low';
+    g.save();
+    g.clip(discPath(cam));
+    g.drawImage(ocean, grid.x0, grid.y0, grid.gw * step, grid.gh * step);
+    paintGlint(g, cam, s);
+    g.restore();
+    g.save();
+    g.clip(land, 'evenodd');
+    g.drawImage(landc, grid.x0, grid.y0, grid.gw * step, grid.gh * step);
+    g.restore();
+    const coast = coastPath(cam);
+    const px = 1 / k;
+    g.save();
+    g.translate(0, 0.8 * px);
+    g.strokeStyle = 'rgba(8,30,40,0.55)';
+    g.lineWidth = px;
+    g.stroke(coast);
+    g.restore();
+    g.strokeStyle = css(PAL.coast, 0.5);
+    g.lineWidth = 0.8;
+    g.stroke(coast);
+    if (view.showGrid !== false) strokeGrid(g, cam);
+    strokeRim(g, cam);
+  }
+  function renderBase(g, cam, key, view) {
+    paintBackground(g, cam, true);
+    g.setTransform(cam.dpr, 0, 0, cam.dpr, 0, 0);
+    // oceano e biomas amostrados (passo fino)
+    const area = Math.min(cam.w, 2 * cam.R) * Math.min(cam.h, 2 * cam.R);
+    const step = Math.max(3, Math.ceil(Math.sqrt(area / 140000)));
+    const grid = gridFor(cam, step);
+    renderBiome(cam, grid);
+    L.grid = grid;
+    paintBody(g, cam, key, view, grid, L.ocean, L.landc);
   }
 
   // ---- camada de luz (câmara + sol) ----------------------------------------------------------------------------------
-  function renderLight(g, cam, s, baseCanvas) {
-    g.setTransform(1, 0, 0, 1, 0, 0);
-    g.globalCompositeOperation = 'source-over';
-    g.globalAlpha = 1;
-    if (baseCanvas) g.drawImage(baseCanvas, 0, 0);
-    g.setTransform(cam.dpr, 0, 0, cam.dpr, 0, 0);
+  // sombra amostrada, halo noturno, brilho do sol (salvo noGlint) e luzes das cidades; transformação dpr à entrada
+  function paintLight(g, cam, s, grid, shade, noGlint) {
     const { cx, cy, R } = cam;
-    const grid = gridFor(cam, Math.max(4, L.grid ? L.grid.step : 4));
-    renderShade(cam, grid, s);
     g.save();
     g.clip(discPath(cam));
     g.imageSmoothingEnabled = true;
     g.imageSmoothingQuality = 'low';
-    g.drawImage(L.shade, grid.x0, grid.y0, grid.gw * grid.step, grid.gh * grid.step);
+    g.drawImage(shade, grid.x0, grid.y0, grid.gw * grid.step, grid.gh * grid.step);
     g.restore();
     // halo exterior: apaga-se do lado noturno (gradiente ao longo da direção do sol no ecrã)
     if (!coversView(cam)) {
@@ -840,24 +957,14 @@
     }
     g.save();
     g.clip(discPath(cam));
-    // brilho especular do sol no oceano (vetor médio sol/observador)
-    const sc = s[0] * cam.c0 + s[1] * cam.c1 + s[2] * cam.c2;
-    if (sc > -0.35) {
-      const hv = norm3([s[0] + cam.c0, s[1] + cam.c1, s[2] + cam.c2]);
-      const hx = cx + R * (hv[0] * cam.e0 + hv[1] * cam.e1 + hv[2] * cam.e2), hy = cy - R * (hv[0] * cam.n0 + hv[1] * cam.n1 + hv[2] * cam.n2);
-      const k = smooth(-0.35, 0.3, sc);
+    // brilho especular do sol, só no oceano
+    if (!noGlint && s[0] * cam.c0 + s[1] * cam.c1 + s[2] * cam.c2 > -0.35) {
       const ocean = new Path2D(L.landPath);
       ocean.moveTo(cx + R, cy);
       ocean.arc(cx, cy, R, 0, TAU);
       g.save();
       g.clip(ocean, 'evenodd');
-      g.globalCompositeOperation = 'lighter';
-      const gr = g.createRadialGradient(hx, hy, 0, hx, hy, R * 0.3);
-      gr.addColorStop(0, 'rgba(255,246,220,' + (0.26 * k).toFixed(3) + ')');
-      gr.addColorStop(0.35, 'rgba(160,210,255,' + (0.08 * k).toFixed(3) + ')');
-      gr.addColorStop(1, 'rgba(120,180,255,0)');
-      g.fillStyle = gr;
-      g.fillRect(hx - R * 0.3, hy - R * 0.3, R * 0.6, R * 0.6);
+      paintGlint(g, cam, s);
       g.restore();
     }
     // luzes das cidades no lado noturno
@@ -880,6 +987,120 @@
     g.globalAlpha = 1;
     g.globalCompositeOperation = 'source-over';
     g.restore();
+  }
+  // brilho especular do sol no oceano (vetor médio sol/observador), aditivo; o chamador recorta
+  function paintGlint(g, cam, s) {
+    const { cx, cy, R } = cam;
+    const sc = s[0] * cam.c0 + s[1] * cam.c1 + s[2] * cam.c2;
+    if (!(sc > -0.35)) return;
+    const hv = norm3([s[0] + cam.c0, s[1] + cam.c1, s[2] + cam.c2]);
+    const hx = cx + R * (hv[0] * cam.e0 + hv[1] * cam.e1 + hv[2] * cam.e2), hy = cy - R * (hv[0] * cam.n0 + hv[1] * cam.n1 + hv[2] * cam.n2);
+    const k = smooth(-0.35, 0.3, sc);
+    g.globalCompositeOperation = 'lighter';
+    const gr = g.createRadialGradient(hx, hy, 0, hx, hy, R * 0.3);
+    gr.addColorStop(0, 'rgba(255,246,220,' + (0.26 * k).toFixed(3) + ')');
+    gr.addColorStop(0.35, 'rgba(160,210,255,' + (0.08 * k).toFixed(3) + ')');
+    gr.addColorStop(1, 'rgba(120,180,255,0)');
+    g.fillStyle = gr;
+    g.fillRect(hx - R * 0.3, hy - R * 0.3, R * 0.6, R * 0.6);
+    g.globalCompositeOperation = 'source-over';
+  }
+  function renderLight(g, cam, s, baseCanvas) {
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.globalCompositeOperation = 'source-over';
+    g.globalAlpha = 1;
+    g.drawImage(baseCanvas, 0, 0);
+    g.setTransform(cam.dpr, 0, 0, cam.dpr, 0, 0);
+    const grid = gridFor(cam, Math.max(4, L.grid ? L.grid.step : 4));
+    renderShade(cam, grid, s);
+    paintLight(g, cam, s, grid, L.shade);
+  }
+
+  /* ---- fotograma grosseiro (câmara em movimento) ---------------------------------------------------------------------
+     Biomas e sombra numa só passagem a passo grosseiro, depois as mesmas operações vetoriais da imagem fina.
+     Com dpr ≥ 1,5 o globo inteiro (anel da atmosfera, disco, luz, halo) desenha-se num canvas a metade da resolução
+     do ecrã, só do tamanho do globo, ampliado de uma vez sobre as estrelas (que ficam nítidas): ¼ dos píxeis em
+     todos os preenchimentos, recortes e traços. Com dpr baixo desenha-se diretamente no ecrã. */
+  function atmoSprite(cam, k) {
+    const th = haloWidth(cam.R), ext = cam.R + th;
+    const key = cam.R.toFixed(3) + '@' + k;
+    if (L.atmo && L.atmoKey === key) return L.atmo;
+    const n = Math.ceil(2 * ext * k) + 2;
+    const c = sized(L.atmo, n, n), g = c.getContext('2d');
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.clearRect(0, 0, c.width, c.height);
+    // o centro do sprite fica em (n/2, n/2) px do sprite
+    g.setTransform(k, 0, 0, k, n / 2 - cam.cx * k, n / 2 - cam.cy * k);
+    const ag = g.createRadialGradient(cam.cx, cam.cy, cam.R * 0.97, cam.cx, cam.cy, ext);
+    ag.addColorStop(0, 'rgba(120,190,255,0.62)');
+    ag.addColorStop(0.18, 'rgba(80,150,255,0.30)');
+    ag.addColorStop(0.5, 'rgba(50,100,220,0.10)');
+    ag.addColorStop(1, 'rgba(30,60,160,0)');
+    g.fillStyle = ag;
+    const ringP = new Path2D();
+    ringP.arc(cam.cx, cam.cy, ext, 0, TAU);
+    ringP.arc(cam.cx, cam.cy, cam.R - 1, 0, TAU, true);
+    g.fill(ringP);
+    L.atmo = c;
+    L.atmoKey = key;
+    L.atmoR = cam.R;
+    L.atmoK = k;
+    return c;
+  }
+  function drawCoarse(g, cam, key, view, s, lightKey) {
+    const lo = cam.dpr >= 1.5;
+    // câmara e sol iguais ao último fotograma grosseiro (gesto em pausa, à espera de assentar): reaproveita-o
+    const reuse = lo && L.lo && L.loKey === lightKey;
+    let grid = null;
+    if (!reuse) {
+      // ~16 mil amostras (passo 8 px a zoom 1; a imagem fina usa passo 3)
+      const area = Math.min(cam.w, 2 * cam.R) * Math.min(cam.h, 2 * cam.R);
+      const step = Math.max(6, Math.ceil(Math.sqrt(area / 16000)));
+      grid = gridFor(cam, step);
+      renderCoarse(cam, grid, s);
+    }
+    if (!lo) {
+      paintBackground(g, cam, L.bgKey === bgKeyOf(cam));
+      g.setTransform(cam.dpr, 0, 0, cam.dpr, 0, 0);
+      paintBodyFast(g, cam, key, view, grid, L.coarse.ocean, L.coarse.landc, s, cam.dpr);
+      paintLight(g, cam, s, grid, L.coarse.shade, true);
+      return;
+    }
+    const k = cam.dpr / 2, covered = coversView(cam);
+    const ext = cam.R + haloWidth(cam.R) + 3;
+    const lx0 = Math.max(0, Math.floor((cam.cx - ext) * k)), ly0 = Math.max(0, Math.floor((cam.cy - ext) * k));
+    const lx1 = Math.min(Math.ceil(cam.w * k), Math.ceil((cam.cx + ext) * k)), ly1 = Math.min(Math.ceil(cam.h * k), Math.ceil((cam.cy + ext) * k));
+    const lw = Math.max(1, lx1 - lx0), lh = Math.max(1, ly1 - ly0);
+    if (!reuse) {
+      L.lo = sized(L.lo, lw, lh);
+      const h = L.lo.getContext('2d');
+      h.setTransform(1, 0, 0, 1, 0, 0);
+      h.globalCompositeOperation = 'source-over';
+      h.globalAlpha = 1;
+      h.clearRect(0, 0, lw, lh);
+      if (!covered) {
+        // a meio de um zoom o raio muda em cada fotograma: amplia o anel em cache em vez de refazer o gradiente
+        const zooming = L.atmo && L.atmoK === k && cam.R !== L.prevR && cam.R / L.atmoR > 0.67 && cam.R / L.atmoR < 1.5;
+        const a = zooming ? L.atmo : atmoSprite(cam, k);
+        if (zooming) {
+          const aw = (a.width * cam.R) / L.atmoR;
+          h.drawImage(a, cam.cx * k - aw / 2 - lx0, cam.cy * k - aw / 2 - ly0, aw, aw);
+        } else h.drawImage(a, Math.round(cam.cx * k - a.width / 2) - lx0, Math.round(cam.cy * k - a.height / 2) - ly0);
+      }
+      L.prevR = cam.R;
+      h.setTransform(k, 0, 0, k, -lx0, -ly0);
+      paintBodyFast(h, cam, key, view, grid, L.coarse.ocean, L.coarse.landc, s, k);
+      paintLight(h, cam, s, grid, L.coarse.shade, true);
+      L.loKey = lightKey;
+    }
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.globalCompositeOperation = 'source-over';
+    g.globalAlpha = 1;
+    if (!covered) g.drawImage(starsCanvas(cam), 0, 0);
+    // ampliação exata ×2 por vizinho mais próximo: nítida (como um ecrã sem retina) e muito mais barata que a bilinear
+    g.imageSmoothingEnabled = false;
+    g.drawImage(L.lo, 0, 0, lw, lh, lx0 * 2, ly0 * 2, lw * 2, lh * 2);
+    g.imageSmoothingEnabled = true;
   }
 
   // ---- radares --------------------------------------------------------------------------------------------------
@@ -1778,9 +1999,11 @@
     const lon = Math.round((12 - ((t / 3600 + 12) % 24)) * 150) / 10;
     return { v: vec(lon, 0), key: String(lon) };
   }
-  /* Em movimento (a câmara mudou há < 260 ms) a base e a luz desenham-se diretamente no ecrã, em resolução de
-     amostragem grosseira, sem caches intermédias; parado, a base (fina) e a luz ficam em caches e cada fotograma é só
-     uma cópia mais a camada dinâmica. */
+  /* Qualquer mudança de câmara (arrasto, inércia, animação, zoom, painel lateral) desenha o fotograma grosseiro
+     diretamente no ecrã; a imagem fina só se constrói quando a câmara está parada há SETTLE_MS — medidos no relógio
+     da vista ou no de parede, o que chegar primeiro (assim nem fotogramas lentos nem view.time congelado a impedem
+     ou a forçam a meio de um gesto). Parado, a base (fina) e a luz ficam em caches e cada fotograma é só uma cópia
+     mais a camada dinâmica. A primeira imagem (ou depois de invalidate) é logo fina. */
   const SETTLE_MS = 260;
   function draw(ctx, G, view) {
     const t0 = now();
@@ -1793,26 +2016,26 @@
     const sun = sunVecAt(G, view);
     const keyLight = keyCam + '#' + sun.key;
     let didBase = false, didLight = false;
-    const changed = keyCam !== L.camKey;
-    const moving = changed && t - L.lastChange < SETTLE_MS;
-    if (changed) {
+    if (keyCam !== L.camKey) {
+      // regressar à câmara da cache fina não precisa do caminho grosseiro
+      L.direct = L.camKey !== '' && L.baseKey !== keyCam;
       L.camKey = keyCam;
       L.lastChange = t;
+      L.lastChangeW = t0;
+    } else if (L.direct && (t - L.lastChange >= SETTLE_MS || t0 - L.lastChangeW >= SETTLE_MS)) {
+      L.direct = false;
     }
     ctx.save();
     ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = 'source-over';
-    if (moving || (L.direct && t - L.lastChange < SETTLE_MS)) {
-      renderBase(ctx, cam, keyCam, false, view);
-      renderLight(ctx, cam, sun.v, null);
-      L.direct = true;
+    if (L.direct) {
+      drawCoarse(ctx, cam, keyCam, view, sun.v, keyLight);
       didBase = didLight = true;
     } else {
-      L.direct = false;
       const W = Math.round(cam.w * cam.dpr), H = Math.round(cam.h * cam.dpr);
       if (L.baseKey !== keyCam) {
         L.base = sized(L.base, W, H);
-        renderBase(L.base.getContext('2d'), cam, keyCam, true, view);
+        renderBase(L.base.getContext('2d'), cam, keyCam, view);
         L.baseKey = keyCam;
         L.lightKey = '';
         didBase = true;
@@ -1843,6 +2066,9 @@
     L.landPathKey = '';
     L.countryPaths = {};
     L.starKey = '';
+    L.bgKey = '';
+    L.atmoKey = '';
+    L.loKey = '';
   }
 
   OV.GlobeRender = {

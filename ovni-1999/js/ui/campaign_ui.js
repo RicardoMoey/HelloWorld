@@ -803,6 +803,8 @@
       return null;
     }
     OV.Game.B = null;
+    // a batalha está resolvida: a gravação do último turno ficaria obsoleta (e «Continuar» podia reabri-la)
+    try { if (OV.Save && OV.Save.remove) OV.Save.remove('autoTurn'); } catch (e) { /* armazenamento indisponível */ }
     takeEvents(G, { victory: 1, gameOver: 1 });
     if (model.outcome === 'continue') autosave(G, { silent: true });
     if (model.outcome === 'victory') lastWin = { squad: (B.units || []).filter((u) => u.origSide === 'xcom' && u.type === 'soldier').map((u) => u.soldierId), t: G.t };
@@ -942,7 +944,7 @@
       const recSec = ui.panelSection(T('cp.db.stored', { base: baseName(base) }),
         model.craftLost ? el('p', { class: 'cp-note bad', text: T('cp.db.craftLost') })
           : Object.keys(stored).length ? itemsGrid(stored, 36) : el('p', { class: 'scr-muted', text: T('scr.db.nothing') }),
-        Object.keys(lost).length ? el('div', { class: 'cp-lost' }, el('div', { class: 'cp-k', text: T('bs.debrief.equipmentLost') }), itemsGrid(lost, 26)) : null,
+        Object.keys(lost).length && !model.craftLost ? el('div', { class: 'cp-lost' }, el('div', { class: 'cp-k', text: T('bs.debrief.equipmentLost') }), itemsGrid(lost, 26)) : null,
         model.storage && model.storage.over ? el('p', { class: 'cp-note bad', text: T('cp.db.storageOver', { used: model.storage.used, cap: model.storage.cap }) }) : null);
 
       // progressão e promoções

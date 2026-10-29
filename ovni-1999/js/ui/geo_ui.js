@@ -396,6 +396,7 @@
     for (const r of ['soldier', 'scientist', 'engineer']) k.push('geo.ev.delivery.' + r + '.one', 'geo.ev.delivery.' + r + '.other');
     for (const r of ['council', 'debt', 'baseLost', 'cydonia']) k.push('geo.end.' + r);
     for (const r of ['busy', 'quota', 'unavailable', 'slot']) k.push('geo.save.err.' + r);
+    k.push('geo.ev.researchDone.idle.one', 'geo.ev.researchDone.idle.other', 'geo.ev.craftLost.noTransport', 'geo.ev.terrorSite.eta', 'geo.ev.terrorSite.late', 'geo.ev.terrorSite.noTeam');
     return k;
   }
   // razões que o sim pode devolver à interface (World.canOrder/order, Campaign.startMission)
@@ -468,7 +469,8 @@
       selection: null, hover: null, highlights: [], mode: 'normal', cursor: null, targetFrom: null, touch: false,
       showRadar: ui.radar !== false,
     };
-    const clk = { speed: Math.max(0, Math.min(SPEED_N - 1, ui.speed | 0)), paused: false, acc: 0 };
+    // uma cena nova sobre uma campanha em curso (carregar, «Continuar») abre em pausa a 5 s: o jogador orienta-se primeiro
+    const clk = { speed: G.t > 0 ? 0 : Math.max(0, Math.min(SPEED_N - 1, ui.speed | 0)), paused: G.t > 0, acc: 0 };
     const S = {
       root: null, side: null, els: {}, popup: null, dlg: null, queue: [], waiting: false, toasts: new Map(), toastT: 0,
       hl: new Map(), dirty: true, lastDraw: -1e9, lastRefresh: -1e9, sigs: {}, drag: null, pinchT: 0, hidden: false,
@@ -1373,6 +1375,8 @@
         case 'ufoLanded': {
           const u = C().findUfo(G, ev.ufoId);
           if (!u) return null;
+          // pouso no mar dura 5 s (orig): não há assalto possível, por isso não se interrompe o jogador
+          if (u.status !== 'landed' || !GM().isLand(u.lon, u.lat)) return null;
           const ref = refOf('ufo', u.id);
           return {
             tone: 'warn', icon: 'ufo', title: T('geo.ev.ufoLanded'), sound: 'radar_ping', focus: ref,
@@ -1437,10 +1441,14 @@
         case 'craftLost': {
           const n = (ev.soldiers || []).length;
           const def = D().crafts[ev.type];
+          // sem transporte a base não consegue responder a nada: diz-se já onde comprar outro
+          const noTransport = !Object.keys(G.crafts).some((id) => D().crafts[G.crafts[id].type] && D().crafts[G.crafts[id].type].transport);
+          const lines = n ? [Tn('geo.ev.craftLost.crew', n)] : [];
+          if (noTransport) lines.push(T('geo.ev.craftLost.noTransport'));
           return {
             tone: 'alert', icon: 'alert', title: T('geo.ev.craftLost'), sound: 'ui_deny',
             text: T('geo.ev.craftLost.body.' + (ev.reason || 'dogfight'), { craft: def ? T(def.nameKey) : ev.type }),
-            lines: n ? [Tn('geo.ev.craftLost.crew', n)] : [], buttons: [ok],
+            lines, buttons: noTransport && G.bases[0] ? [baseBtn(G.bases[0].id, 'market'), ok] : [ok],
           };
         }
         case 'targetLost': {
@@ -1458,6 +1466,10 @@
             if (e.unlocked && e.unlocked.length) lines.push(T('geo.ev.researchDone.unlocked', { list: e.unlocked.map(researchName).join(', ') }));
             if (e.manufacture && e.manufacture.length) lines.push(T('geo.ev.researchDone.manufacture', { list: e.manufacture.map(prodName).join(', ') }));
           }
+          // cientistas parados custam salário e tempo: lembra-se aqui, onde o jogador decide o próximo projeto
+          let idle = 0;
+          try { idle = OV.BaseSim.staff(G, ev.baseId).scientists.free | 0; } catch (e) { idle = 0; }
+          if (idle > 0 && C().availableResearch(G, ev.baseId).length) lines.push(Tn('geo.ev.researchDone.idle', idle));
           return {
             tone: 'good', icon: 'lab', title: T('geo.ev.researchDone'), sound: 'research_done', stinger: 'research',
             text: T('geo.ev.researchDone.body', { topic: researchName(ev.topic), base: b(ev) }), lines,
@@ -1504,7 +1516,7 @@
           return {
             tone: 'terror', icon: 'skull', title: T('geo.ev.terrorSite'), sound: 'siren', focus: ref, kicker: T('geo.ev.terrorSite.kicker'),
             text: T('geo.ev.terrorSite.body', { city: cityName(s.cityId), race: has('race.' + s.race + '.plural') ? T('race.' + s.race + '.plural') : raceName(s.race) }), rows: siteRows(G, s),
-            lines: [T('geo.ev.terrorSite.stakes')],
+            lines: [T('geo.ev.terrorSite.stakes'), terrorEtaLine(ref, s)],
             buttons: [sendBtn(ref, true), centreBtn(ref), ok],
           };
         }
@@ -1573,6 +1585,14 @@
         default:
           return null;
       }
+    }
+    // a equipa chega a tempo? (transporte mais rápido que pode partir agora vs. tempo que resta ao ataque)
+    function terrorEtaLine(ref, site) {
+      const rows = craftsFor(G, null, ref).filter((r) => r.ok && D().crafts[G.crafts[r.craftId].type].transport && r.eta);
+      if (!rows.length) return T('geo.ev.terrorSite.noTeam');
+      const r = rows[0];
+      const left = Math.max(0, site.leftS) / 3600;
+      return T(r.eta.h <= left ? 'geo.ev.terrorSite.eta' : 'geo.ev.terrorSite.late', { craft: craftName(G, G.crafts[r.craftId]), t: fmtDur(r.eta.h) });
     }
     function showPopup(it) {
       const spec = popupSpec(it);

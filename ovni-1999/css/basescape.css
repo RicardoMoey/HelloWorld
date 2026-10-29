@@ -87,7 +87,7 @@
 /* medidores */
 .bsc-meter { min-width: 0; }
 .bsc-meter-t { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; font-size: 11px; color: var(--muted); }
-.bsc-meter-t span { font: 700 9.5px var(--sans); letter-spacing: 1.2px; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bsc-meter-t span { font: 700 9.5px/1.5 var(--sans); letter-spacing: 1.2px; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-top: 1px; }
 .bsc-meter-t b { font: 700 11.5px var(--mono); color: var(--ink); white-space: nowrap; }
 .bsc-meter-bar { position: relative; height: 6px; margin-top: 3px; background: #050a10; border: 1px solid #1a2a3a; border-radius: 3px; overflow: hidden; }
 .bsc-meter-bar i { position: absolute; left: 0; top: 0; bottom: 0; background: linear-gradient(90deg, #2fb7a7, var(--teal)); border-radius: 3px; transition: width 0.25s; }

@@ -66,13 +66,16 @@
         }
       };
       const body = typeof spec.body === 'string' ? el('div', { class: 'modal-text', html: spec.body }) : spec.body;
+      // um clique no fundo logo a seguir à abertura vem do mesmo gesto que a abriu (clique fantasma do toque)
+      const t0 = performance.now();
+      const fresh = () => performance.now() - t0 < 320;
       const btns = (spec.buttons || [{ label: OV.T('common.ok'), value: true, kind: 'primary' }]).map((b) =>
         el('button', { class: 'btn ' + (b.kind || ''), onclick: () => close(b.value) }, b.label));
       const box = el('div', { class: 'modal' + (spec.wide ? ' wide' : '') + (spec.cls ? ' ' + spec.cls : ''), role: 'dialog', 'aria-modal': 'true' },
         spec.title ? el('h2', { class: 'modal-title', text: spec.title }) : null,
         body,
         el('div', { class: 'modal-actions' }, btns));
-      const back = el('div', { class: 'modal-back', onclick: (e) => { if (e.target === back && spec.dismissible !== false) close(null); } }, box);
+      const back = el('div', { class: 'modal-back', onclick: (e) => { if (e.target === back && spec.dismissible !== false && !fresh()) close(null); } }, box);
       host.appendChild(back);
       document.addEventListener('keydown', onKey, true);
       const prim = box.querySelector('.btn.primary') || box.querySelector('.btn');

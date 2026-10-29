@@ -198,3 +198,5 @@
 @media (prefers-reduced-motion: reduce) {
   .df-panel, .df-panel.hit, .df-chip, .df-banner { animation: none; }
 }
+/* o rótulo do dano não fica cortado pela marca tracejada de 50 % (queda) */
+.df-hbar.ufo span { text-align: left; padding-left: 7px; }

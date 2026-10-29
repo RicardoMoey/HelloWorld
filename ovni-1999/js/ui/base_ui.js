@@ -552,7 +552,7 @@
         const def = D().facilities[type];
         let why = null;
         if (def.research && !researched(g, def.research)) why = T('base.place.locked', { topic: topicName(def.research) });
-        else if (def.lift && b.grid.some((f) => D().facilities[f.type] && D().facilities[f.type].lift)) why = errText('lift');
+        else if (def.lift && b.grid.some((f) => D().facilities[f.type] && D().facilities[f.type].lift)) why = T('base.build.liftOne');
         else if (g.funds < def.cost) why = errText('funds');
         const on = S.build && S.build.type === type;
         const row = el('button', { type: 'button', class: 'bsc-row bsc-fac' + (why ? ' locked' : '') + (on ? ' on' : ''), dataset: { fac: type }, 'aria-disabled': why ? 'true' : null },
@@ -1734,8 +1734,8 @@
       if (m.ctrl || m.alt) return false;
       if (k === 'Escape') {
         if (S.build) cancelBuild();
-        else if (S.sel) { S.sel = null; S.dismantle = null; sfx('ui_click'); S.dirty = true; renderInfo(); }
-        else back();
+        else if (S.dismantle) { S.sel = null; S.dismantle = null; sfx('ui_click'); S.dirty = true; renderInfo(); }
+        else back(); // uma instalação só selecionada não prende o Esc: o jogador quer sair
         return true;
       }
       if (S.build) {

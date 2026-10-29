@@ -287,6 +287,7 @@ try {
   await page.locator('.cp-deb .btn.primary').click();
   check(await waitGeo(8000), 'relatório → Geoscape');
   check(await page.evaluate(() => OV.Save.list().some((e) => e.slot === 'auto' && !e.battle)), 'gravação automática depois da missão');
+  check(await page.evaluate(() => !OV.Save.list().some((e) => e.slot === 'autoTurn')), 'gravação do último turno apagada (batalha resolvida)');
 
   // ---------------------------------------------------------------------------------------------
   log('segunda missão sem recarregar (volta ao Geoscape que ficou por baixo)');

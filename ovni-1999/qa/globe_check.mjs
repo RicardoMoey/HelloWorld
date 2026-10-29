@@ -1,8 +1,10 @@
 /* QA visual e de desempenho do globo do Geoscape (OV.GlobeRender) num Chromium real (Playwright).
    Serve /home/user/HelloWorld com «python3 -m http.server» numa porta livre, abre qa/globe_check.html em vários cenários
    (dia sobre a Europa, noite sobre a Ásia, crepúsculo, nível de cidade, colocar base válida/inválida, alvo, muitos
-   objetos, polos, Pacífico), grava capturas, verifica a API no navegador (pick∘project, objectAt, countryAt, animações)
-   e mede o desempenho a rodar o globo (1440×900 @2×). Falha em erros de consola/página vindos do globo.
+   objetos, polos, Pacífico), grava capturas (também de fotogramas em movimento, a meia resolução), verifica a API no
+   navegador (pick∘project, objectAt, countryAt, animações), verifica que a imagem parada depois de um movimento é igual
+   píxel a píxel à de uma abertura direta na mesma câmara, e mede o desempenho a rodar o globo (1440×900 @2×: tempo do
+   draw(), CPU do fio principal por fotograma e fps). Falha em erros de consola/página vindos do globo.
    Uso: node ovni-1999/qa/globe_check.mjs [--out <pasta>] [--only <texto>] [--frames 240] [--no-perf] */
 import { createRequire } from 'module';
 import fs from 'fs';
@@ -96,6 +98,38 @@ try {
     console.log('captura ' + file);
   }
 
+  // fotogramas em movimento (caminho grosseiro a meia resolução): deriva lenta (≈2 px no total) e captura
+  for (const [file, query] of [['14_europe_moving.png', 'scene=europe'], ['15_asia_night_moving.png', 'scene=night'], ['16_city_moving.png', 'scene=city']]) {
+    if (ONLY && !file.includes(ONLY) && !query.includes(ONLY)) continue;
+    await open(query);
+    await page.evaluate(() => { const { OV, view } = window.QA; window.__osc = setInterval(() => OV.GlobeRender.rotateBy(view, 0.05, 0), 8); });
+    await page.waitForTimeout(300);
+    const busy = await page.evaluate(() => window.QA.OV.GlobeRender.busy(window.QA.view));
+    await page.screenshot({ path: path.join(OUT, file) });
+    await page.evaluate(() => clearInterval(window.__osc));
+    check(busy, file + ': em movimento o globo fica por refinar (busy)');
+    console.log('captura ' + file);
+  }
+
+  // a imagem parada depois de um movimento é a mesma de uma abertura direta (o caminho grosseiro não deixa rasto)
+  if (!ONLY) {
+    const canvasHash = () => page.evaluate(() => {
+      const c = document.getElementById('view'), d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+      let h = 0x811c9dc5;
+      for (let i = 0; i < d.length; i += 4) h = Math.imul(h ^ (d[i] | (d[i + 1] << 8) | (d[i + 2] << 16)), 0x01000193);
+      return (h >>> 0).toString(16);
+    });
+    await open('scene=europe&lon=20&lat=30&zoom=1.5');
+    const direct = await canvasHash();
+    await open('scene=europe&lon=-60&lat=10&zoom=1');
+    await page.evaluate(() => { const { OV, view } = window.QA; window.QA.unfreeze(); OV.GlobeRender.rotateTo(view, 20, 30, 500, 1.5); });
+    await page.waitForFunction(() => { const { OV, view } = window.QA; return view.lon === 20 && view.lat === 30 && !OV.GlobeRender.busy(view); }, null, { timeout: 20000 });
+    await page.evaluate(() => window.QA.freeze(1000));
+    await page.waitForTimeout(300);
+    const after = await canvasHash();
+    check(direct === after, 'imagem parada após rotateTo igual à abertura direta (' + direct + ' vs ' + after + ')');
+  }
+
   // API no navegador
   await open('scene=europe');
   const api = await page.evaluate(() => {
@@ -161,10 +195,17 @@ try {
   check(after.lon > before.lon + 5 && after.lat > before.lat, 'arrastar para a esquerda roda para este: ' + JSON.stringify([before, after]));
 
   if (PERF) {
-    // desempenho: rodar continuamente (camada base refeita em cada fotograma) e parado com o tempo a correr
-    for (const [name, query, rotate] of [['rodar', 'scene=europe', true], ['tempo_a_correr', 'scene=many', false], ['so_dinamica', 'scene=many', 'idle'], ['rodar_z3', 'scene=city', true]]) {
+    // desempenho: rodar continuamente (fotograma grosseiro em cada passo) e parado com o tempo a correr.
+    // «draw» é o tempo de parede de GlobeRender.draw (inclui o raster síncrono do canvas reduzido neste Chromium sem
+    // GPU); «CPU» é o tempo de CPU do fio principal por fotograma (JS + raster + composição), via CDP.
+    const cdp = await ctx.newCDPSession(page);
+    await cdp.send('Performance.enable');
+    const metrics = async () => Object.fromEntries((await cdp.send('Performance.getMetrics')).metrics.map((m) => [m.name, m.value]));
+    for (const [name, query, rotate] of [['rodar', 'scene=europe', true], ['rodar_noite', 'scene=night', true], ['tempo_a_correr', 'scene=many', false], ['so_dinamica', 'scene=many', 'idle'], ['rodar_z3', 'scene=city', true]]) {
       await page.goto(BASE + '?' + query);
       await page.waitForFunction(() => window.QA && window.QA.ready && window.QA.stats.frames > 2, null, { timeout: 30000 });
+      await page.waitForTimeout(500);
+      const m0 = await metrics();
       const r = await page.evaluate(({ n, rotate }) => new Promise((res) => {
         const { OV, G, view, stats } = window.QA;
         stats.ms.length = 0;
@@ -182,7 +223,9 @@ try {
         };
         requestAnimationFrame(step);
       }), { n: FRAMES, rotate });
-      console.log(`desempenho ${name}: ${r.fps.toFixed(1)} fps, draw mediana ${r.med.toFixed(1)} ms, p95 ${r.p95.toFixed(1)} ms, máx ${r.max.toFixed(1)} ms (Chromium sem GPU neste contentor)`);
+      const m1 = await metrics();
+      const cpu = ((m1.ThreadTime - m0.ThreadTime) * 1000) / FRAMES;
+      console.log(`desempenho ${name}: ${r.fps.toFixed(1)} fps, draw mediana ${r.med.toFixed(1)} ms, p95 ${r.p95.toFixed(1)} ms, máx ${r.max.toFixed(1)} ms, CPU do fio principal ${cpu.toFixed(1)} ms/fotograma (Chromium sem GPU neste contentor)`);
     }
   }
 

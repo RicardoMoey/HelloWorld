@@ -193,6 +193,10 @@
     };
     canvas.addEventListener('pointerup', (e) => finish(e, false));
     canvas.addEventListener('pointercancel', (e) => finish(e, true));
+    // toque: o navegador ainda gera um «click» de compatibilidade depois do pointerup, no elemento que estiver então
+    // por baixo do dedo — se o toque abriu um modal ou uma janela, esse clique fantasma fechava-a (fundo) ou carregava
+    // num botão. Cancelar o touchend no canvas suprime-o (os pointer events já trataram o toque).
+    canvas.addEventListener('touchend', (e) => { if (e.cancelable) e.preventDefault(); }, { passive: false });
     canvas.addEventListener('pointerleave', (e) => { if (e.pointerType === 'mouse' && !press) emit({ kind: 'leave' }); });
 
     // roda / trackpad: ctrl = pinça (Chrome) ou ctrl+roda; entalhe clássico = roda de rato; resto = deslocar

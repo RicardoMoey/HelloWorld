@@ -532,7 +532,8 @@ body.in-battle #toasts { top: calc(56px + env(safe-area-inset-top)); }
 .inv-head.eq { grid-template-columns: 56px minmax(140px, 1fr) minmax(180px, 240px) auto; }
 .inv-head.eq .inv-port { width: 56px; height: 56px; }
 .inv-head.eq .inv-meters { grid-template-columns: 1fr; }
-.eq-btns { display: flex; flex-wrap: wrap; gap: 4px; justify-content: flex-end; }
+.eq-btns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; align-content: start; }
+.eq-btns .btn { width: 100%; padding-left: 8px; padding-right: 8px; }
 .inv-equip .inv-body { flex: 1; min-height: 0; }
 .inv-equip .inv-ground-list { max-height: none; min-height: 0; }
 .eq-group { margin: 6px 0 1px; font: 800 9px var(--sans); letter-spacing: 1.6px; text-transform: uppercase; color: #6f879b; }

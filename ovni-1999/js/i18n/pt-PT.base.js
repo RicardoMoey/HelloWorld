@@ -289,6 +289,7 @@
     'base.err.unavailable': 'Não está disponível.',
     'base.err.research': 'Requer investigação que ainda não foi concluída.',
     'base.err.lift': 'O elevador de acesso é único e não pode ser desmantelado.',
+    'base.build.liftOne': 'Cada base tem um só elevador de acesso, e este já existe.',
     'base.err.cells': 'Fora dos limites da grelha da base.',
     'base.err.overlap': 'Posição ocupada por outra instalação.',
     'base.err.notConnected': 'Sem ligação ao elevador: as instalações têm de ficar encostadas umas às outras.',

@@ -261,3 +261,5 @@ table.cp-tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
   .cp-diff { min-height: 150px; }
 }
 .cp-ng-sbody, .cp-mr-body, .cp-end-body, .cp-sl-list, .cp-ng-body { touch-action: pan-y; }
+/* avisos por cima de um relatório/diálogo da campanha tapavam o título: descem para junto do rodapé */
+body:has(.cp-mr, .cp-sl, .cp-deb, .cp-brief) #toasts { top: auto; bottom: calc(92px + env(safe-area-inset-bottom)); }

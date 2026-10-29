@@ -227,10 +227,12 @@ try {
     check(await page.locator('#tooltip:not(.hidden)').count() === 1, 'tooltip num botão de postura');
     await H.shot('05b-tooltip');
     await page.mouse.move(5, 5);
-    await H.until(() => window.__G.ufos[0].dmg > 0 || window.__G.crafts.c2.hp < 100, 9000, 'troca de tiros com o Batedor Médio');
-    await sleep(100);
+    // congela no primeiro dano (com aproximação 4 o Batedor Médio cai depressa: sem isto o desengate chega tarde)
+    check(await H.freezeWhen("() => window.__G.ufos.some((u) => u.dmg > 0) || window.__G.crafts.c2.hp < 100 || !window.__G.dogfights.length"), 'troca de tiros com o Batedor Médio');
     await H.shot('06-exchange');
     await page.keyboard.press('5');
+    await sleep(80);
+    await H.thaw();
     await H.until(() => !!document.querySelector('.df-panel:not(.hidden) .df-banner:not(.hidden)'), 15000, 'resultado do desengate');
     await page.evaluate(() => window.OV.DogfightUI.setPaused(true));
     await sleep(300);

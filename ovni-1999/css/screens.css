@@ -307,3 +307,5 @@ table.scr-ktable { width: 100%; border-collapse: collapse; font-size: 13.5px; li
 }
 /* listas que rolam: arrasto vertical ao toque (o resto do ecrã tem touch-action: none, ver base.css) */
 .scr-scroll, .scr-qb-body, .scr-brief-body, .scr-deb-body, .scr-opts-body { touch-action: pan-y; }
+/* ecrã tátil sem teclado: as dicas de teclas do rodapé não ajudam (os botões dizem o que fazem) */
+@media (hover: none) and (pointer: coarse) { .scr-foot .scr-hint { visibility: hidden; } }
