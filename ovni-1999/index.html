@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>OVNI: Inimigo Desconhecido</title>
+<meta name="description" content="Engenharia reversa jogável de UFO: Enemy Unknown (1994): Geoscape e combate tático por turnos.">
+<meta name="theme-color" content="#0b0f14">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="icon" href="../icon-192.png">
+<link rel="apple-touch-icon" href="../icon-180.png">
+<link rel="stylesheet" href="css/base.css">
+<link rel="stylesheet" href="css/battle.css">
+<link rel="stylesheet" href="css/geo.css">
+<link rel="stylesheet" href="css/basescape.css">
+<link rel="stylesheet" href="css/screens.css">
+</head>
+<body>
+<canvas id="view" aria-label="Vista do jogo"></canvas>
+<div id="hud"></div>
+<div id="modals"></div>
+<div id="toasts" aria-live="polite"></div>
+<div id="tooltip" class="hidden" role="tooltip"></div>
+<div id="boot"><div class="boot-title">OVNI: Inimigo Desconhecido</div><div class="boot-sub">A carregar…</div></div>
+
+<!-- ORDEM DE CARREGAMENTO = fonte única (tools/load.js lê esta lista). Camadas: core → i18n → data → sim → gfx → audio → ui → main -->
+<script src="js/core/util.js"></script>
+<script src="js/core/rng.js"></script>
+<script src="js/i18n/pt-PT.js"></script>
+<script src="js/i18n/pt-PT.data.js"></script>
+<script src="js/i18n/pt-PT.battle.js"></script>
+<script src="js/i18n/pt-PT.geo.js"></script>
+<script src="js/i18n/pt-PT.base.js"></script>
+<script src="js/i18n/pt-PT.ufopaedia.js"></script>
+<script src="js/data/tuning.js"></script>
+<script src="js/data/items.js"></script>
+<script src="js/data/units.js"></script>
+<script src="js/data/ufos.js"></script>
+<script src="js/data/crafts.js"></script>
+<script src="js/data/base.js"></script>
+<script src="js/data/research.js"></script>
+<script src="js/data/geo.js"></script>
+<script src="js/data/world.js"></script>
+<script src="js/data/tiles.js"></script>
+<script src="js/data/blocks_ufo.js"></script>
+<script src="js/data/blocks_farm.js"></script>
+<script src="js/data/blocks_wild.js"></script>
+<script src="js/data/blocks_urban.js"></script>
+<script src="js/data/blocks_alien.js"></script>
+<script src="js/data/finalize.js"></script>
+<script src="js/sim/battle/map.js"></script>
+<script src="js/sim/battle/mapgen.js"></script>
+<script src="js/sim/battle/path.js"></script>
+<script src="js/sim/battle/los.js"></script>
+<script src="js/sim/battle/bunits.js"></script>
+<script src="js/sim/battle/combat.js"></script>
+<script src="js/sim/battle/env.js"></script>
+<script src="js/sim/battle/morale.js"></script>
+<script src="js/sim/battle/actions.js"></script>
+<script src="js/sim/battle/ai.js"></script>
+<script src="js/sim/battle/battle.js"></script>
+<script src="js/sim/geo/clock.js"></script>
+<script src="js/sim/geo/gmath.js"></script>
+<script src="js/sim/geo/soldiers.js"></script>
+<script src="js/sim/geo/economy.js"></script>
+<script src="js/sim/geo/base.js"></script>
+<script src="js/sim/geo/missions.js"></script>
+<script src="js/sim/geo/dogfight.js"></script>
+<script src="js/sim/geo/world.js"></script>
+<script src="js/sim/campaign.js"></script>
+<script src="js/sim/save.js"></script>
+<script src="js/gfx/color.js"></script>
+<script src="js/gfx/iso.js"></script>
+<script src="js/gfx/view.js"></script>
+<script src="js/gfx/sprites_tiles.js"></script>
+<script src="js/gfx/sprites_units.js"></script>
+<script src="js/gfx/sprites_items.js"></script>
+<script src="js/gfx/portraits.js"></script>
+<script src="js/gfx/fx.js"></script>
+<script src="js/gfx/battle_render.js"></script>
+<script src="js/gfx/globe_render.js"></script>
+<script src="js/gfx/base_render.js"></script>
+<script src="js/audio/audio.js"></script>
+<script src="js/ui/dom.js"></script>
+<script src="js/ui/input.js"></script>
+<script src="js/ui/scenes.js"></script>
+<script src="js/ui/presenter.js"></script>
+<script src="js/ui/battle_ui.js"></script>
+<script src="js/ui/inventory_ui.js"></script>
+<script src="js/ui/geo_ui.js"></script>
+<script src="js/ui/dogfight_ui.js"></script>
+<script src="js/ui/base_ui.js"></script>
+<script src="js/ui/screens.js"></script>
+<script src="js/ui/ufopaedia.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
