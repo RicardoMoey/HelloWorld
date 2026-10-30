@@ -509,6 +509,9 @@ function create(OV, opts) {
     let free = BS.staff(G, b.id).engineers.free;
     for (const p of prods) {
       if (free <= 0) break;
+      // ordem parada por pagar (armazém cheio, sem hangar, sem fundos): os engenheiros vão para a seguinte (o
+      // BaseSim volta a tentar pagá-la a cada hora; sem isto um fato parado pelo armazém prendia o Vingador)
+      if (p.stalled && !p.paid) continue;
       const ws = BS.capacities(G, b.id).workshops;
       const n = Math.min(free, ws.cap - ws.used);
       if (n > 0 && BS.setEngineers(G, b.id, p.id, n).ok) free -= n;

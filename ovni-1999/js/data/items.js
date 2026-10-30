@@ -155,7 +155,8 @@
     // equipamento
     electro_flare: { kind: 'flare', weight: 3, size: 1, storage: 0.1, buy: 60, sell: 40, armour: 8, light: T.LIGHT_FLARE },
     medikit: {
-      kind: 'medikit', weight: 5, size: 2, storage: 0.1, sell: 46500, research: 'medikit',
+      // ours (DESIGN §3.15: o tópico só abre o fabrico): usa-se sem investigação, como os 3 kits do equipamento inicial
+      kind: 'medikit', weight: 5, size: 2, storage: 0.1, sell: 46500,
       charges: { heal: T.MEDIKIT_CHARGES, stim: T.MEDIKIT_CHARGES, pain: T.MEDIKIT_CHARGES },
       healHP: T.MEDIKIT_HEAL_HP, healWounds: 1, stimEnergy: T.MEDIKIT_STIM_ENERGY, stimStun: T.MEDIKIT_STIM_STUN, useTU: T.TU_MEDIKIT,
     },

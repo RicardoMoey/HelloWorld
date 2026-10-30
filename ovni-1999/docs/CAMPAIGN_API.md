@@ -242,7 +242,9 @@ leftS}`. A terror site is always visible. Each 30-min check does `leftS −= 180
 `Missions.expiredPoints(G)` alien points: −500 in months 0–1, −1 000 from month 2 (ours, §11.6).
 Ours: a craft flying to the site does **not** stop the timer (the orig "cheeky exploit" is removed).
 A terror site is removed after **any** battle there (win, loss or abort; OpenXcom): the battle score already holds the
-civilian losses, so there is no `terrorSiteExpired` on top.
+civilian losses, so there is no `terrorSiteExpired` on top. Ours (§11.8): a lost or aborted terror battle costs at least
+`Missions.expiredPoints(G)` in civilians: `finishMission` passes it to the debrief as `terrorFloor`, which adds the line
+`OV.Battle.TERROR_ABANDONED_KEY` with the shortfall (`−(floor − civilians killed by aliens × value)`, only when positive).
 
 ### 1.14 Alien bases
 `alienBase = {id, lon, lat, race, region, country, missionId, discovered:bool, foundT:int|null, supplyT:int|null}`.
@@ -744,10 +746,15 @@ mission = {
 - `startMission` sets `G.activeMission = {siteRef, craftId, startedT: G.t}`.
 
 **`finishMission(G, B) → model`**, applied in this order:
-1. `deb = OV.Battle.debrief(B, {researched: G.researched})`.
+1. `deb = OV.Battle.debrief(B, {researched: G.researched, captureRoom, terrorFloor})`: `captureRoom` = free containment
+   places at the craft's base (`capacities.aliens`, 0 without a base); `terrorFloor` = `Missions.expiredPoints(G)` for
+   a terror site, else 0 (§1.13, §11.8). Only the first `captureRoom` captures score as captures (2 × value, or
+   `SCORE_CAPTURE_KNOWN` once interrogated); the rest count in the «aliens killed» line (value) and in `deb.kills`.
+   `deb.captured` still lists every capture, in the same order step 3 uses.
 2. `Economy.addScore(G, 'xcom', deb.score, lon, lat)` at the site point (for Cydonia: the base's point).
 3. `deb.recovered` → `base.stores`. `deb.captured` → `base.aliens` while containment has room (`capacities.aliens`).
-   The rest go to `model.capturedLost` (they die; orig).
+   The rest go to `model.capturedLost` (they die; orig) and their corpse to the stores; step 1 already scored them as
+   kills.
 4. `craft.equipment −= deb.equipmentLost`, clamped at 0 and with no zero keys.
 5. Soldiers, from `deb.soldiers`:
    - `ok` → `Soldiers.applyMission(G, id, {exp, hpLost, kills}, rng(G,'combat'))`;
@@ -1239,3 +1246,33 @@ Six seeds are noisy (any change re-rolls every later battle); the Veterano terro
 battles while the battle sweep shows no terror change by day or at month 2/4.
 
 `tools/sim.js` gained `--landed 1`, `--novice` and `runBattle({onEvent})` (per-event observer for statistics).
+
+### 11.8 Persona round 2 (sim/data fixer)
+Verified persona findings, fixed at the root. Tests: `tools/tests/sim_persona_r2.test.js` (plus the pinned item value in
+`data_items_units`). New: `OV.Battle.TERROR_ABANDONED_KEY` (the debrief line key, `'cp.mr.alienTerror.one'` =
+«Ataque terrorista sem resposta», an existing text) and the `Battle.debrief` context fields `captureRoom` and
+`terrorFloor` (both optional; a skirmish passes neither and keeps the old report).
+
+| Change | Where | Before → after | Why / measured |
+|---|---|---|---|
+| **rule** Abandoned terror | `Battle.debrief` (`ctx.terrorFloor`), `Campaign.finishMission` step 1 | a «token response» (fly in, start, abort on turn 1) cost only civilians × 30 ≈ −240, against −500 (months 0–1) / −1 000 (later) for ignoring the site, with no risk: it was the dominant play | a lost or aborted terror battle costs at least `Missions.expiredPoints(G)` in civilians (line «Ataque terrorista sem resposta» with the shortfall); persona script: turn-1 abort −240 → −500 (month 0) and −1 000 (month 2). Kills made before aborting still score, so a real attempt that goes wrong is never worse than ignoring the site plus its own losses |
+| **rule** Medi-Kit usable from the start | `Data.items.medikit.research` `'medikit'` → `null` | the 3 starting kits (one in the Skyranger, one in the medic's pack) were refused with `notResearched` until the «Kit Médico» topic, while the briefing warned «Ninguém leva um kit médico» | the kit is used without research, as in OpenXcom (no `requires`); the «Kit Médico» topic still exists and unlocks manufacture (`manufacture.medikit.requires`), DESIGN §3.15 already said «manuf.». The Ufopaedia article is now always open (`!research && !topic`) |
+| **rule** Captures without containment | `Battle.debrief` (`ctx.captureRoom`), `Campaign.finishMission` steps 1 and 3 | a stunned alien with no containment place scored 2 × value as «captured alive» while the same report said it did not survive, and its corpse was stored too | only captures that fit score as captures; the rest are «aliens killed» (value, `deb.kills`, `stats.aliensKilled`), as OpenXcom gives «live alien recovered» only with containment |
+
+
+`tools/campaign_bot.js`: engineers skip an unpaid stalled order (`p.stalled && !p.paid`; BaseSim retries the payment
+every hour). With usable starting Medi-Kits the bot's runs re-rolled into three Recruta timeouts in which a Power Suit
+order stalled by full stores (`storage`, §11.7) held all 20 engineers for 40+ days while the Avenger, already paid,
+had none.
+
+Campaign bot, `node ovni-1999/tools/sim.js campaign --seeds 6 [--seed0 7] --diff 0|1 --days 240 --det` (exit 0), seeds
+1–12, before → after (the three changes plus the bot fix):
+
+| | Recruta before | Recruta after | Veterano before | Veterano after |
+|---|---|---|---|---|
+| Victories (seeds 1–6 + 7–12) | 5 + 6 = 11/12 | 5 + 6 = 11/12 | 4 + 2 = 6/12 | 2 + 4 = 6/12 |
+| Other endings | 1 timeout | 1 timeout | 4 Cydonia lost, 3 timeouts | 3 Cydonia lost, 3 timeouts |
+| Soldiers lost (median, seeds 1–6 / 7–12) | 40.5 / 28 | 32 / 34 | 73 / 56 | 51.5 / 85 |
+
+Twelve seeds per difficulty are still noisy (any change re-rolls every later battle); the Veterano Cydonia result swings
+40–100 % between seed sets both before and after.

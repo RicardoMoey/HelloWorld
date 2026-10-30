@@ -10,7 +10,9 @@
    OV.Battle.serialize(B) → objeto JSON ; deserialize(obj) → B ; hash(B) → uint32
    OV.Battle.unitAt(B,i) ; unitsOf(B, side, all) ; outcome(B) → null|'win'|'loss'|'abort' ; objectiveDestroyed(B)
    OV.Battle.beginBattle(B) → Generator ; beginPlayerTurn(B) → Generator ; endPlayerTurn(B) → Generator (devolvem {outcome})
-   OV.Battle.abort(B) → {survivors, mia, craftLost} ; debrief(B, ctx?) → relatório da missão (§3.17) */
+   OV.Battle.abort(B) → {survivors, mia, craftLost} ; debrief(B, ctx?) → relatório da missão (§3.17)
+     ctx = {researched?, interrogated?, captureRoom? (lugares livres na contenção), terrorFloor? (pontos de um terror
+     ignorado: um terror perdido/abortado custa pelo menos isto em civis + linha TERROR_ABANDONED_KEY)} */
 (function (OV) {
   'use strict';
 
@@ -22,6 +24,8 @@
   const SCHEMA = 1;
   const SIDES = ['xcom', 'alien', 'civ'];
   const LIVE = { ok: 1, panic: 1 };
+  // chave da linha do relatório de um terror abandonado (texto «Ataque terrorista sem resposta»)
+  const TERROR_ABANDONED_KEY = 'cp.mr.alienTerror.one';
 
   // ---- missão normalizada ------------------------------------------------------------------------------
   const KIND_TERRAIN = { terror: 'URBAN', alienBase: 'ALIENBASE', cydonia: 'MARS' };
@@ -844,15 +848,20 @@
     }
 
     // alienígenas
+    // ctx.captureRoom (campanha): só os que cabem na contenção contam como capturados; os outros morrem e contam
+    // como abatidos (o OpenXcom só dá «live alien recovered» com contenção). captured mantém todos, pela mesma ordem.
+    const room = Number.isFinite(c.captureRoom) ? Math.max(0, c.captureRoom | 0) : captured.length;
     const aliens = B.units.filter((u) => u.origSide === 'alien');
     const killed = aliens.filter((u) => u.status === 'dead' && !u.crashDead).concat(stunKills);
-    line('bs.debrief.aliensKilled', killed.length, killed.reduce((s, u) => s + (u.value | 0), 0));
-    let capPts = 0;
+    let capPts = 0, capKept = 0;
     for (const cap of captured) {
       const u = find(cap.unitId);
+      if (capKept >= room) { killed.push(u); continue; }
+      capKept++;
       capPts += interrogated(cap.unitType) ? tune('SCORE_CAPTURE_KNOWN', 10) : 2 * (u.value | 0);
     }
-    line('bs.debrief.aliensCaptured', captured.length, capPts);
+    line('bs.debrief.aliensKilled', killed.length, killed.reduce((s, u) => s + (u.value | 0), 0));
+    line('bs.debrief.aliensCaptured', capKept, capPts);
 
     // civis
     const civValue = (Data.units.civilian_m && Data.units.civilian_m.value) | 0 || 30;
@@ -864,6 +873,10 @@
     line('bs.debrief.civSaved', saved, saved * civValue);
     line('bs.debrief.civKilledByAliens', byAliens, -byAliens * civValue);
     line('bs.debrief.civKilledByXcom', byXcom, -byXcom * (civValue + 2 * U.idiv(civValue, 3)));
+    // ours (campanha, ctx.terrorFloor = Missions.expiredPoints): abandonar um terror custa pelo menos o mesmo que
+    // ignorá-lo — sem isto, abortar no 1.º turno (só civis × valor) era a jogada dominante
+    const floor = Math.max(0, c.terrorFloor | 0);
+    if (M.kind === 'terror' && result !== 'win' && floor > byAliens * civValue) line(TERROR_ABANDONED_KEY, 1, -(floor - byAliens * civValue));
 
     // soldados
     const soldiers = [], lost = [], dead = [], mia = [], wounded = {}, exp = {};
@@ -911,6 +924,6 @@
   OV.Battle = Object.assign(OV.Battle || {}, {
     SCHEMA, SIDES, create, normalizeMission, quickMission, quickLoadout, rebuildDerived, serialize, deserialize, hash,
     unitAt, unitsOf, outcome, objectiveDestroyed, spawnAlien, nearestFree,
-    beginBattle, beginPlayerTurn, endPlayerTurn, abort, debrief, recordBrought,
+    beginBattle, beginPlayerTurn, endPlayerTurn, abort, debrief, recordBrought, TERROR_ABANDONED_KEY,
   });
 })(globalThis.OV || (globalThis.OV = {}));

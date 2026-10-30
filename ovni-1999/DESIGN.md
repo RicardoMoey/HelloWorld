@@ -1241,7 +1241,7 @@ Scope (25k lines) vs one session; iso art legibility of procedural sprites; LOS/
 - Original interior layouts of each UFO (our templates are recognisable approximations, not MAP-file copies).
 - Throw-range formula (ours simplified), explosion vertical handling (orig flat; ours damages the floor above).
 - Effective hit-chance table is a Monte Carlo approximation of the OpenXcom model.
-- Medi-Kit availability at start in the original (we give 3 in stores).
+- Medi-Kit availability at start in the original (we give 3 in stores; usable without research, the topic unlocks manufacture — OpenXcom's item has no `requires`).
 **Deliberate deviations (ours)**: research/manufacture/facility-time compression; doubled escalation; radar chances 15/30 %; region weighting toward the base; terror site 8–16 h; crash site 24–72 h; seeded alien base; alien base reveal 50 %/month; promotion quotas N/4, N/8, N/15, ≥ 20; wound recovery ×0.5; craft repair 5 HP/h; immediate take-off; personnel delivery 48 h; cheat turn 12/10/8; smaller maps (30–50 tiles, 3 levels) and crews; crashed power-source blast HE 120–180 r6; alloys recovered per UFO type (not per tile); Muton terror slots filled by Muton soldiers (Silacoid/Celatid P1); Lightning cut; Cydonia single stage; 3 difficulty levels; inventory slot model simplified; instant grenades option default ON; grenade fuse 0–5; stairs as vertical links (6 TU); green path colour uses snap reserve; retaliation base defence auto-resolved in MVP.
 
 **Wave 4 pacing deviations (ours; measured with the campaign bot, details and numbers in `docs/CAMPAIGN_API.md` §11)**:
@@ -1300,3 +1300,11 @@ Scope (25k lines) vs one session; iso art legibility of procedural sprites; LOS/
   ≈ $450 000 per Interceptor per month; the cycle now loses money.
 - **Manufacture respects the stores**: the next unit is not paid (stall `storage`) while its product would not fit after
   its materials leave; it resumes on its own when there is room.
+
+**Persona round 2 deviations (ours; sim/data fixer, numbers in `docs/CAMPAIGN_API.md` §11.8)**:
+- **An abandoned terror site costs at least as much as an ignored one**: a lost or aborted terror battle scores the
+  civilians as before, plus «Ataque terrorista sem resposta» for the shortfall up to `Missions.expiredPoints(G)` (500 in
+  months 0–1, 1 000 later). OpenXcom removes the site after any battle and counts only the civilians, so flying in and
+  aborting on turn 1 (≈ −240) beat ignoring the site; now it is equal at best, and a real attempt still keeps its kills.
+- **Captures need a containment place to score**: a stunned alien that dies for lack of containment counts as killed
+  (value), not captured (2 × value). OpenXcom gives the live-alien points only with containment.

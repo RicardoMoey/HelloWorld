@@ -690,7 +690,10 @@
     const where = { kind: ref.kind, lon: site.lon, lat: site.lat };
 
     // 1–2) relatório da batalha e pontuação (a nave perdida é descontada por World.loseCraft, não duas vezes)
-    const deb = OV.Battle.debrief(B, { researched: G.researched });
+    // a contenção e o valor de um terror ignorado entram no próprio relatório (pontos coerentes com o que acontece)
+    const room0 = base ? containmentRoom(G, baseId) : 0;
+    const terrorFloor = ref.kind === 'site' ? OV.Missions.expiredPoints(G) : 0;
+    const deb = OV.Battle.debrief(B, { researched: G.researched, captureRoom: room0, terrorFloor });
     const craftLine = deb.craftLost ? deb.lines.filter((l) => l.key === 'bs.debrief.craftLost').reduce((s, l) => s + l.points, 0) : 0;
     OV.Economy.addScore(G, 'xcom', deb.score - craftLine, site.lon, site.lat);
 
@@ -698,7 +701,7 @@
     const stored = {}, capturedStored = {}, capturedLost = {};
     if (!deb.craftLost && base) {
       for (const k of Object.keys(deb.recovered).sort()) { bagAdd(base.stores, k, deb.recovered[k]); bagAdd(stored, k, deb.recovered[k]); }
-      let room = containmentRoom(G, baseId);
+      let room = room0;
       for (const cap of deb.captured) {
         if (room > 0) {
           room--;

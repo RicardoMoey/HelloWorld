@@ -224,7 +224,9 @@ module.exports = function (OV, t) {
     t.eq([it.rifle.research, it.grenade.research, it.electro_flare.research], [null, null, null]);
     t.eq([it.laser_pistol.research, it.laser_rifle.research, it.heavy_laser.research], ['laser_pistol', 'laser_rifle', 'heavy_laser']);
     t.eq([it.plasma_pistol_clip.research, it.stun_bomb.research, it.blaster_bomb.research], ['plasma_pistol', 'small_launcher', 'blaster_launcher']);
-    t.eq([it.medikit.research, it.motion_scanner.research, it.alien_grenade.research], ['medikit', 'motion_scanner', 'alien_grenade']);
+    // o kit médico usa-se desde o início (equipamento inicial); o tópico «medikit» só abre o fabrico
+    t.eq([it.medikit.research, it.motion_scanner.research, it.alien_grenade.research], [null, 'motion_scanner', 'alien_grenade']);
+    t.eq(D.manufacture.medikit.requires, 'medikit');
     t.eq([it.ufo_power_source.research, it.ufo_navigation.research, it.elerium_115.topic, it.alien_alloys.topic], ['power_source', 'ufo_navigation', 'elerium', 'alien_alloys']);
     t.eq([D.armours.personal_armour.research, D.armours.power_suit.research, D.armours.flying_suit.research], ['personal_armour', 'power_suit', 'flying_suit']);
     // quando a tabela de investigação existe, os tópicos do MVP têm de existir lá
