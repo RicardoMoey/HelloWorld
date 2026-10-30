@@ -338,7 +338,8 @@
     'scr.opt.acc.motion.auto': 'Sistema',
     'scr.opt.acc.motion.on': 'Sim',
     'scr.opt.acc.motion.off': 'Não',
-    'scr.opt.acc.motion.hint': '«Sistema» segue a preferência do computador; «Sim» tira animações, tremores e rotações automáticas.',
+    'scr.opt.acc.motion.hint': '«Sistema» segue a preferência do sistema operativo; «Sim» tira animações, tremores e rotações automáticas.',
+    'scr.opt.acc.motion.hint.touch': '«Sistema» segue a definição do iPad (Acessibilidade › Movimento); «Sim» tira animações, tremores e rotações automáticas.',
     'scr.opt.acc.textScale': 'Tamanho do texto',
     'scr.opt.acc.textScale.hint': 'Aumenta o texto e os botões dos menus e do painel de combate.',
     // ---- ronda de personas 4

@@ -17,6 +17,7 @@
                        crewText({min,max}) → texto ; lossCauses(B, {mission?}) → {enemy, friendly, wounds, other, total, main,
                        tip, civ (civis mortos pela X-COM)} ; monthWarn(q) → texto|null (Mês abaixo de MONTH_MIN da missão)
                        lossNotes(B, resultado, {campaign?, debrief?, mission?}) → [nós DOM] (lossCauses também dá weak/race),
+                       showKbCursor(sóToque, tecladoUsado) → bool (linha «Cursor de teclado» nas Opções),
                        loadoutFor(nível, k, noite, pesada?, kitMédico?) — sem o 5.º argumento, kit pelas posições 1 e 5,
                        ui: {makeScreen, header, panelSection, seg, goBack, portraitEl, itemIconEl, unitSpriteEl, canvasCopy,
                             statLegend(['tu', …]) → <p> «UT Unidades de Tempo · …», scrollKeys(ev, caixa) → bool} } */
@@ -42,6 +43,16 @@
   const isTouch = () => !!(OV.Input && OV.Input.lastPointerType === 'touch') || (typeof matchMedia === 'function' && matchMedia('(hover: none) and (pointer: coarse)').matches);
   // aparelho só de toque (iPad sem trackpad): as opções do rato (margens, roda) não se mostram
   const mouseLess = () => typeof matchMedia === 'function' && matchMedia('(hover: none) and (pointer: coarse)').matches;
+  // teclado físico usado nesta sessão (iPad com teclado externo): só então o cursor de teclado aparece nas Opções
+  // de um aparelho de toque; o teclado do ecrã só escreve em campos de texto, que não contam
+  let kbSeen = false;
+  if (typeof window !== 'undefined' && window.addEventListener) {
+    window.addEventListener('keydown', (e) => {
+      const tg = e.target || {};
+      if (tg.tagName !== 'INPUT' && tg.tagName !== 'TEXTAREA' && !tg.isContentEditable) kbSeen = true;
+    }, true);
+  }
+  const showKbCursor = (touchOnly, seen) => !touchOnly || !!seen;
   // texto com variante de toque (iPad) quando existe a chave «….touch»
   const TT = (k, p) => (isTouch() && OV.T.has(k + '.touch') ? T(k + '.touch', p) : T(k, p));
   const dpr = () => (OV.View && OV.View.dpr) || Math.min(2, (typeof devicePixelRatio === 'number' && devicePixelRatio) || 1);
@@ -1955,8 +1966,9 @@
                 optRow(T('scr.opt.hitPreview'), toggleBtn(getK('hitPreview'), setK('hitPreview'), T('scr.opt.hitPreview')))),
               panelSection(T(ACC + 'title'),
                 optRow(T(ACC + 'palette'), sseg('palette', ['normal', 'cvd'].map((v) => ({ v, label: T(ACC + 'palette.' + v) }))), T(ACC + 'palette.hint')),
-                optRow(T(ACC + 'kbCursor'), toggleBtn(getK('kbCursor'), setK('kbCursor'), T(ACC + 'kbCursor')), T(ACC + 'kbCursor.hint')),
-                optRow(T(ACC + 'motion'), sseg('reduceMotion', ['auto', 'on', 'off'].map((v) => ({ v, label: T(ACC + 'motion.' + v) }))), T(ACC + 'motion.hint')),
+                // só toque: sem teclado físico nesta sessão, o cursor de teclado não serve para nada
+                showKbCursor(mouseLess(), kbSeen) ? optRow(T(ACC + 'kbCursor'), toggleBtn(getK('kbCursor'), setK('kbCursor'), T(ACC + 'kbCursor')), T(ACC + 'kbCursor.hint')) : null,
+                optRow(T(ACC + 'motion'), sseg('reduceMotion', ['auto', 'on', 'off'].map((v) => ({ v, label: T(ACC + 'motion.' + v) }))), TT(ACC + 'motion.hint')),
                 optRow(T(ACC + 'textScale'), scaleSeg, T(ACC + 'textScale.hint'))))),
           el('footer', { class: 'scr-foot' },
             abortBtn(),
@@ -2107,7 +2119,7 @@
 
   OV.Screens = Object.assign(OV.Screens || {}, {
     VERSION, Backdrop, startBattle, buildQuickMission, quickFromURL, monthWarn, MONTH_MIN, missionTitle, loadoutFor, heavyPicks, quickStore, spareClip, trimToStr, defaultQuick,
-    openOptions, saves, resumeGame, missionRating, battleExit, crewText, lossCauses, lossNotes, _urlUsed: false,
+    openOptions, saves, resumeGame, missionRating, battleExit, crewText, lossCauses, lossNotes, showKbCursor, _urlUsed: false,
     ui: { makeScreen, header, panelSection, seg, goBack, portraitEl, itemIconEl, unitSpriteEl, canvasCopy, statLegend, scrollKeys },
   });
 })(globalThis.OV || (globalThis.OV = {}));
