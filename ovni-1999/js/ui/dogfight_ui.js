@@ -380,6 +380,8 @@
     if (!E.ask || p.track.outcome) return;
     p.ask = true;
     setCls(E.ask, 'hidden', false);
+    setCls(E.tip, 'hidden', true);
+    if (E.ask.parentNode) setCls(E.ask.parentNode, 'df-asking', true);
     setPaused(true, true);
     if (p.minimised) restore(p.id, true);
     setTimeout(() => { if (p.ask && E.askOff.isConnected && !(OV.Input && OV.Input.lastPointerType === 'touch')) E.askOff.focus({ preventScroll: true }); }, 0);
@@ -389,6 +391,7 @@
     if (!p.ask || !S) return;
     p.ask = false;
     setCls(p.el.ask, 'hidden', true);
+    if (p.el.ask.parentNode) setCls(p.el.ask.parentNode, 'df-asking', false);
     if (off) {
       const craft = C().findCraft(S.G, p.d.craftId);
       for (const ws of p.d.weapons) {
@@ -903,7 +906,8 @@
     setText(E.st, mainTxt);
     E.st.dataset.tone = mainTone;
     setText(E.warn, st.warn ? T(st.warn.key) : '');
-    setCls(E.tip, 'hidden', !missileTip(G, d, tr));
+    // com a pergunta «Desligar mísseis?» aberta a mesma informação já está nela: o parágrafo sai
+    setCls(E.tip, 'hidden', !missileTip(G, d, tr) || !!p.ask);
     E.warn.dataset.tone = st.warn ? st.warn.tone : '';
     setCls(E.pauseTag, 'on', !!paused && !tr.outcome);
     setCls(E.root, 'paused', !!paused);

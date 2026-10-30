@@ -285,7 +285,8 @@ try {
     const mode = await page.evaluate(() => OV.Game.G.dogfights[0] && OV.Game.G.dogfights[0].mode);
     check(mode === 'standard', 'abre em Normal (' + mode + ')');
     check(await page.locator('.df-hint').count() === 1, 'dica das posturas (primeiro combate)');
-    check(await page.locator('.df-tip:not(.hidden)').count() === 1, 'batedor pequeno com mísseis: aviso «Q desliga-os»');
+    // com a pergunta «Desligar mísseis?» aberta o aviso sai (ronda de personas 2): a pergunta diz o mesmo
+    check(await page.locator('.df-tip:not(.hidden)').count() === 1 || await page.locator('.df-ask:not(.hidden)').count() === 1, 'batedor pequeno com mísseis: aviso «Q desliga-os» (ou a pergunta)');
     await shot(page, '11_dogfight_open');
     await noMissing(page, 'interceção');
     await page.keyboard.press('q');

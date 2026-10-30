@@ -17,6 +17,7 @@
     'up.search.aria': 'Pesquisar artigos da Ufopédia',
     'up.search.none': 'Nenhum artigo corresponde à pesquisa.',
     'up.nav': 'Artigos por secção',
+    'up.info.aria': 'Texto do artigo (↑ ↓ deslocam, ← → mudam de artigo)',
     'up.fig': 'FIG. {n} — {name}',
     'up.fig.aria': 'Ilustração do artigo',
     'up.ranks': 'Patente',

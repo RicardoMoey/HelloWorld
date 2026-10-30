@@ -223,3 +223,6 @@
 .df-ask-a { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
 .df-ask-a .btn { min-height: 38px; }
 @media (hover: none) { .df-ask-a .btn { min-height: 44px; } .df-ask kbd { display: none; } }
+
+/* ronda de personas 2: com a pergunta dos mísseis aberta, a ajuda do combate não fica por baixo dela */
+.df-view.df-asking .df-hint, .df-view.df-asking .df-tip { display: none; }

@@ -24,6 +24,8 @@
       const prev = S.top();
       if (prev && prev.pause) prev.pause();
       const sc = typeof name === 'string' ? S.create(name, params) : name;
+      // um ecrã novo por cima (briefing, base, relatório) leva os avisos antigos consigo
+      if (sc.isScreen && prev && OV.Dom && OV.Dom.clearToasts) OV.Dom.clearToasts();
       S.stack.push(sc);
       if (sc.enter) sc.enter(params || {});
       S.dirty = true;

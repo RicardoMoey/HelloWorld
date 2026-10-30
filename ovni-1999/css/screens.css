@@ -327,3 +327,19 @@ table.scr-ktable { width: 100%; border-collapse: collapse; font-size: 13.5px; li
 .scr-deb-cause:empty { display: none; }
 .scr-deb-cause { max-width: 820px; }
 .scr-deb-cause .scr-tip, .scr-deb-cause .scr-cause { margin-top: 8px; }
+
+/* ---- ronda de personas 2 ----------------------------------------------------------------------------------------- */
+.scr-chip.t-dim { border-color: #5a4a7a; color: #d7c8ff; }
+.scr-legend { margin: 8px 0 0; font-size: 11.5px; line-height: 1.5; }
+.scr-legend b { color: var(--teal); font-weight: 700; }
+.scr-deb-body:focus-visible, .scr-howto-body:focus-visible { outline: 2px solid var(--cyan); outline-offset: -2px; }
+.scr-st, .scr-gain { cursor: help; }
+@media (hover: none) { .scr-st, .scr-gain { cursor: default; } }
+/* menu em ecrãs baixos (1024×560): os 8 itens e a dica cabem sem deslocar */
+@media (max-height: 600px) and (min-width: 901px) {
+  .scr-menu-col { gap: 10px; }
+  .scr-mi { min-height: 38px; padding-top: 3px; padding-bottom: 3px; }
+  .scr-mi-label { font-size: 15.5px; }
+  .scr-mi-hint { font-size: 11.5px; }
+  .scr-logo-big { font-size: clamp(36px, 10vh, 80px); }
+}

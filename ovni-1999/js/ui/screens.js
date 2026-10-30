@@ -13,8 +13,10 @@
                        heavyPicks(squad, n) → Set de índices ; quickStore(mês, noite) → {item: n}
                        defaultQuick, openOptions, saves, resumeGame, missionRating, battleExit,
                        crewText({min,max}) → texto ; lossCauses(B) → {enemy, friendly, wounds, other, total, main, tip}
-                       lossNotes(B, resultado) → [nós DOM],
-                       ui: {makeScreen, header, panelSection, seg, goBack, portraitEl, itemIconEl, unitSpriteEl, canvasCopy} } */
+                       lossNotes(B, resultado, {campaign?}) → [nós DOM] (lossCauses também dá weak/race: armas fracas),
+                       loadoutFor(nível, k, noite, pesada?, kitMédico?) — sem o 5.º argumento, kit pelas posições 1 e 5,
+                       ui: {makeScreen, header, panelSection, seg, goBack, portraitEl, itemIconEl, unitSpriteEl, canvasCopy,
+                            statLegend(['tu', …]) → <p> «UT Unidades de Tempo · …», scrollKeys(ev, caixa) → bool} } */
 (function (OV) {
   'use strict';
 
@@ -552,6 +554,31 @@
     else OV.Scenes.set('menu');
   }
 
+  /* teclado numa área com deslocação (relatório, Como Jogar): ↑/↓ 60 px, PageUp/PageDown 80 % da altura, Início/Fim.
+     → true quando tratou a tecla */
+  function scrollKeys(ev, box) {
+    if (!box || box.scrollHeight <= box.clientHeight + 1) return false;
+    const k = ev.key, h = box.clientHeight;
+    let top = null;
+    if (k === 'ArrowDown') top = 60;
+    else if (k === 'ArrowUp') top = -60;
+    else if (k === 'PageDown') top = h * 0.8;
+    else if (k === 'PageUp') top = -h * 0.8;
+    else if (k === 'Home') { box.scrollTop = 0; return true; }
+    else if (k === 'End') { box.scrollTop = box.scrollHeight; return true; }
+    if (top === null) return false;
+    box.scrollBy({ top });
+    return true;
+  }
+  // legenda das estatísticas abreviadas (briefing): «UT Unidades de Tempo · SAÚ Saúde · …»
+  function statLegend(keys) {
+    const parts = [];
+    keys.forEach((k, i) => {
+      if (i) parts.push(' · ');
+      parts.push(el('b', { text: T('stat.' + k + '.abbr') }), ' ' + T('stat.' + k));
+    });
+    return el('p', { class: 'scr-legend scr-muted small' }, parts);
+  }
   // controlo segmentado: [{v, label, title?}]
   function seg(spec) {
     const wrap = el('div', { class: 'scr-seg' + (spec.cls ? ' ' + spec.cls : ''), role: 'radiogroup', 'aria-label': spec.label || null });
@@ -729,7 +756,7 @@
      3 laser pesado/plasma + fato energético; 4 kit de Cidónia. heavy = arma pesada (os dois soldados com mais Força;
      sem o 4.º argumento, as posições 3 e 7 como antes). De noite um sinalizador vai no cinto (lança-se por 13 UT, não
      21–23 da mochila) e outro na mochila. */
-  function loadoutFor(tier, k, night, heavyFlag) {
+  function loadoutFor(tier, k, night, heavyFlag, medFlag) {
     const heavy = heavyFlag === undefined ? k === 3 || k === 7 : !!heavyFlag;
     let lo, armour;
     switch (OV.U.clamp(tier | 0, 0, 4)) {
@@ -759,7 +786,8 @@
         armour = 'flying_suit';
     }
     lo.L = null;
-    if (tier >= 2 && (k === 1 || k === 5)) lo.pack.push('medikit');
+    const med = medFlag === undefined ? tier >= 2 && (k === 1 || k === 5) : !!medFlag;
+    if (med) lo.pack.push('medikit');
     if (tier >= 1 && k === 0) lo.pack.push('motion_scanner');
     if (night) {
       const fits = (slot, list) => !D().fitsSlot || D().fitsSlot('electro_flare', slot, list);
@@ -773,6 +801,19 @@
       lo.pack.push('electro_flare');
     }
     return { lo, armour };
+  }
+  // peso do equipamento (soma dos objetos; o carregador na arma pesa o mesmo que no cinto)
+  function loWeight(lo) {
+    return [lo.R, lo.L].concat(lo.belt || [], lo.pack || []).filter(Boolean).reduce((w, id) => w + ((D().items[id] && D().items[id].weight) | 0), 0);
+  }
+  /* Os n kits médicos vão para os soldados com mais folga (Força − peso) depois do equipamento base; quem não o
+     aguenta não o leva (o kit fica no chão da nave). Devolve o Set de índices escolhidos. */
+  function medPicks(squad, los, n) {
+    const mw = (D().items.medikit && D().items.medikit.weight) | 0;
+    const slack = (k) => (((squad[k].stats && squad[k].stats.str) | 0) - loWeight(los[k]));
+    const idx = squad.map((s, k) => k).filter((k) => slack(k) >= mw);
+    idx.sort((a, b) => slack(b) - slack(a) || a - b);
+    return new Set(idx.slice(0, Math.max(0, n)));
   }
   // os n soldados com mais Força levam a arma pesada (empates: a ordem da equipa)
   function heavyPicks(squad, n) {
@@ -818,22 +859,29 @@
     const pickRng = OV.RNG.create((qs.seed ^ 0x9e3779b9) >>> 0);
     const ufoKind = !!UFO_KINDS[qs.kind];
     const terrain = KIND_TERRAIN[qs.kind] || (qs.terrain === 'auto' ? pickRng.pick(UFO_TERRAINS) : qs.terrain);
+    // base alienígena e Cidónia: penumbra fixa (SHADE_ALIEN_BASE/SHADE_MARS ≤ DARK_SHADE), não é noite
     const fixedShade = qs.kind === 'alienBase' || qs.kind === 'cydonia';
-    const night = qs.time === 'night' || fixedShade;
+    const night = qs.time === 'night' && !fixedShade;
     const mission = OV.Battle.quickMission({
       kind: qs.kind, ufoType: ufoKind ? qs.ufo : null, landed: qs.kind === 'landed', terrain,
-      night: qs.time === 'night', shade: fixedShade ? undefined : shadeFor(qs.time),
+      night, shade: fixedShade ? undefined : shadeFor(qs.time),
       difficulty: qs.diff, month: qs.month, squadSize: qs.squad, seed: qs.seed,
     });
     const heavy = heavyPicks(mission.squad, mission.squad.length >= 6 ? 2 : 1);
     mission.squad.forEach((s, k) => {
-      const { lo, armour } = loadoutFor(qs.month, k, night, heavy.has(k));
+      const { lo, armour } = loadoutFor(qs.month, k, night, heavy.has(k), false);
       s.loadout = lo;
       s.armour = armour;
     });
     mission.craftItems = quickStore(qs.month, night);
+    if (qs.month >= 2) {
+      const want = mission.squad.length >= 6 ? 2 : 1;
+      const meds = medPicks(mission.squad, mission.squad.map((s) => s.loadout), want);
+      for (const k of meds) mission.squad[k].loadout.pack.push('medikit');
+      if (meds.size < want) mission.craftItems.medikit = (mission.craftItems.medikit | 0) + want - meds.size;
+    }
     mission.settings = { instantGrenades: settings().instantGrenades !== false };
-    const meta = { quick: qs, time: fixedShade ? 'night' : qs.time, terrain };
+    const meta = { quick: qs, time: fixedShade ? 'dim' : qs.time, terrain };
     if (qs.kind === 'terror' && Data.cities && Data.cities.length) meta.cityKey = pickRng.pick(Data.cities).nameKey;
     return { mission, meta };
   }
@@ -858,14 +906,42 @@
     for (const c of order) if (out[c] > 0 && (!best || out[c] > out[best])) best = c;
     out.main = best;
     out.tip = best ? 'scr.db.tip.' + best : null;
+    // mortos pelo inimigo com armas balísticas contra armaduras fortes (Muton, Homem-Serpente…) ou já no mês ≥ 2:
+    // o problema é a tecnologia, não o ajoelhar
+    out.weak = weakWeapons(B);
+    if (best === 'enemy' && out.weak) { out.tip = 'scr.db.tip.weapons'; out.race = out.weak; }
     return out;
   }
-  // linhas do relatório: «Soldados mortos por fogo amigo ×N» e a dica (só sem vitória)
-  function lossNotes(B, result) {
+  // raça (id) quando a equipa só levou armas balísticas e o inimigo tem armadura ≥ 20 ou o mês é ≥ 2; senão null
+  function weakWeapons(B) {
+    const Data = D();
+    if (!B || !Array.isArray(B.units)) return null;
+    const M = B.mission ? OV.Battle.normalizeMission(B.mission) : null;
+    const race = M && Data.races[M.race];
+    if (!race) return null;
+    const xcom = new Set(B.units.filter((u) => u.origSide === 'xcom').map((u) => u.id));
+    const types = B.brought ? Object.keys(B.brought) : (B.items || []).filter((it) => xcom.has(it.owner)).map((it) => it.type);
+    const energy = (id) => {
+      const d = Data.items[id];
+      if (!d || (d.kind !== 'firearm' && d.kind !== 'ammo')) return false;
+      if (d.dmg === 'LASER' || d.dmg === 'PLASMA') return true;
+      return (d.ammo || []).some((a) => Data.items[a] && (Data.items[a].dmg === 'LASER' || Data.items[a].dmg === 'PLASMA'));
+    };
+    if (types.some(energy)) return null;
+    const unit = race.members && Data.units[race.members.soldier];
+    const front = (unit && unit.armour && unit.armour.front) | 0;
+    return front >= 20 || (M.month | 0) >= 2 ? M.race : null;
+  }
+  // linhas do relatório: «Soldados mortos por fogo amigo ×N» e a dica (só sem vitória); o.campaign: dica de investigação
+  function lossNotes(B, result, o) {
     const c = lossCauses(B);
     const out = [];
     if (c.friendly) out.push(el('p', { class: 'scr-cause bad', text: Tn('scr.db.friendly', c.friendly) }));
-    if (result !== 'win' && c.tip) out.push(el('p', { class: 'scr-tip', role: 'note' }, el('b', { text: T('scr.db.tip') }), ' ', T(c.tip)));
+    if (result !== 'win' && c.tip) {
+      const race = c.race && D().races[c.race];
+      const key = c.tip === 'scr.db.tip.weapons' && o && o.campaign ? 'scr.db.tip.weapons.cp' : c.tip;
+      out.push(el('p', { class: 'scr-tip', role: 'note' }, el('b', { text: T('scr.db.tip') }), ' ', T(key, { race: race ? T(race.pluralKey || race.nameKey) : '' })));
+    }
     return out;
   }
 
@@ -971,7 +1047,14 @@
       if (i !== sel) sfx('ui_select');
       sel = i;
       items.forEach((it, k) => it.b.classList.toggle('sel', k === sel));
-      if (focus !== false) items[sel].b.focus({ preventScroll: true });
+      if (focus !== false) {
+        items[sel].b.focus({ preventScroll: true });
+        // ecrãs baixos (1024×560): o item escolhido (e, no último, a dica do rodapé) entra na vista
+        const foot = sel === n - 1 && items[sel].b.closest ? items[sel].b.closest('.scr-menu-col') : null;
+        const tail = foot && foot.querySelector('.scr-menu-foot');
+        if (tail && tail.scrollIntoView) tail.scrollIntoView({ block: 'nearest' });
+        else if (items[sel].b.scrollIntoView) items[sel].b.scrollIntoView({ block: 'nearest' });
+      }
     }
     function refreshContinue() {
       const latest = saves()[0];
@@ -1041,8 +1124,9 @@
   OV.SceneDefs.quickbattle = function (params) {
     const urlQuick = params && params.params && !OV.Screens._urlUsed ? quickFromURL(params.params) : null;
     if (urlQuick) OV.Screens._urlUsed = true;
+    // cada Batalha Rápida é nova: semente sorteada sempre, exceto a que o jogador escreveu (seedLocked)
     let q = sanitizeQuick(lsGet('ovni1999.quick') || {});
-    if (!(lsGet('ovni1999.quick') || {}).seed) q.seed = uiRng.int(1, 99999);
+    if (!q.seedLocked) q.seed = uiRng.int(1, 99999);
     const controls = [];
     let summary = null, startBtn = null, seedInp = null, squadOut = null, squadInp = null, autoGo = !!urlQuick;
 
@@ -1129,6 +1213,7 @@
           get: () => (q.kind === 'alienBase' || q.kind === 'cydonia' ? null : q.time), set: (v) => set('time', v),
           disabled: () => q.kind === 'alienBase' || q.kind === 'cydonia',
         });
+        const timeNote = el('div', { class: 'scr-fnote' });
         const cDiff = seg({ label: T('scr.qb.diff'), options: [0, 1, 2].map((d) => ({ v: d, label: T('diff.' + d) })), get: () => q.diff, set: (v) => set('diff', v) });
         const cMonth = seg({
           label: T('scr.qb.month'), options: [0, 1, 2, 3, 4].map((m) => ({ v: m, label: String(m), title: T('scr.tier.' + m) })),
@@ -1138,16 +1223,21 @@
         controls.push(cKind, cUfo, cTerrain, cTime, cDiff, cMonth,
           { refresh: () => { ufoNote.textContent = UFO_KINDS[q.kind] ? '' : T('scr.qb.ufo.none'); } },
           { refresh: () => { terrNote.textContent = KIND_TERRAIN[q.kind] ? T('scr.qb.terrain.fixed', { terrain: T('terrain.' + KIND_TERRAIN[q.kind]) }) : ''; } },
-          { refresh: () => { monthNote.textContent = T('scr.tier.' + q.month); } });
+          { refresh: () => { monthNote.textContent = T('scr.tier.' + q.month); } },
+          { refresh: () => { timeNote.textContent = q.kind === 'alienBase' || q.kind === 'cydonia' ? T('scr.qb.time.fixed', { time: T('scr.time.dim') }) : ''; } });
 
         squadInp = el('input', { type: 'range', min: '4', max: String(maxSquad(q.kind)), step: '1', 'aria-label': T('scr.qb.squad') });
         squadOut = el('output', { class: 'scr-range-v' });
         squadInp.addEventListener('input', () => set('squad', +squadInp.value));
         squadInp.addEventListener('change', () => sfx('ui_click'));
+        // o teclado global ignora campos <input>: o Enter do deslizador trata-se aqui
+        squadInp.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.repeat) { e.preventDefault(); start(); } });
         seedInp = el('input', { type: 'number', min: '1', max: '4294967295', class: 'scr-seed', 'aria-label': T('scr.qb.seed') });
-        seedInp.addEventListener('change', () => set('seed', (+seedInp.value >>> 0) || 1));
-        seedInp.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); set('seed', (+seedInp.value >>> 0) || 1); start(); } });
-        const reroll = el('button', { type: 'button', class: 'btn small ghost', text: T('scr.qb.seed.random'), onclick: () => { sfx('ui_click'); set('seed', uiRng.int(1, 99999)); } });
+        const typed = () => { q.seedLocked = true; set('seed', (+seedInp.value >>> 0) || 1); };
+        seedInp.addEventListener('change', typed);
+        seedInp.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); typed(); start(); } });
+        const reroll = el('button', { type: 'button', class: 'btn small ghost', text: T('scr.qb.seed.random'), onclick: () => { sfx('ui_click'); q.seedLocked = false; set('seed', uiRng.int(1, 99999)); } });
+        OV.Dom.tooltip(reroll, () => '<b>' + OV.U.esc(T('scr.qb.seed.random')) + '</b><br><span class="muted">' + OV.U.esc(T('scr.qb.seed.tip')) + '</span>');
 
         startBtn = el('button', { type: 'button', class: 'btn primary scr-big', text: T('scr.qb.start'), onclick: start });
         summary = el('aside', { class: 'scr-summary' });
@@ -1158,7 +1248,7 @@
               row(T('scr.qb.mission'), cKind),
               row(T('scr.qb.ufo'), cUfo, ufoNote),
               row(T('scr.qb.terrain'), cTerrain, terrNote),
-              row(T('scr.qb.time'), cTime),
+              row(T('scr.qb.time'), cTime, timeNote),
               row(T('scr.qb.diff'), cDiff),
               row(T('scr.qb.month'), cMonth, monthNote),
               row(T('scr.qb.squad'), el('div', { class: 'scr-range' }, squadInp, squadOut)),
@@ -1185,8 +1275,9 @@
       },
       keys(ev) {
         if (ev.key === 'Enter') {
+          // «Enter começa» também com o foco num segmento (esses mudam-se com as setas e o Espaço)
           const a = document.activeElement;
-          if (!a || a === document.body || a === startBtn) { start(); return true; }
+          if (!a || a === document.body || a === startBtn || (a.classList && a.classList.contains('scr-seg-b'))) { start(); return true; }
         }
         return false;
       },
@@ -1207,7 +1298,7 @@
     function soldierCard(s) {
       const rank = D().soldierRank(s.rank | 0);
       const st = s.stats || {};
-      const statCell = (k) => el('span', { class: 'scr-st' }, el('i', { text: T('stat.' + k + '.abbr') }), el('b', { text: String(st[k] | 0) }));
+      const statCell = (k) => el('span', { class: 'scr-st', title: T('stat.' + k), 'aria-label': T('stat.' + k) + ' ' + (st[k] | 0) }, el('i', { text: T('stat.' + k + '.abbr'), 'aria-hidden': 'true' }), el('b', { text: String(st[k] | 0), 'aria-hidden': 'true' }));
       return el('div', { class: 'scr-soldier' },
         portraitEl(s, 58),
         el('div', { class: 'scr-soldier-info' },
@@ -1242,6 +1333,7 @@
         const notes = [];
         if (time === 'night') notes.push(T('scr.br.note.night'));
         if (time === 'dusk') notes.push(T('scr.br.note.dusk'));
+        if (time === 'dim') notes.push(T('scr.br.note.dim'));
         if (M.kind === 'crash') notes.push(T('scr.br.note.crash'));
         if (M.kind === 'terror') notes.push(T('scr.br.note.terror'));
         const craft = D().crafts[M.craftType];
@@ -1273,7 +1365,7 @@
                     el('dt', { text: T('scr.br.race') }), el('dd', { text: race ? T(race.pluralKey || race.nameKey) : '—' }),
                     el('dt', { text: T('scr.br.crew') }), el('dd', { text: crewText(range) }))),
                 notes.map((n) => el('p', { class: 'scr-note', text: n })))),
-            panelSection(T('scr.br.squad') + ' · ' + (mission.squad || []).length, roster)),
+            panelSection(T('scr.br.squad') + ' · ' + (mission.squad || []).length, roster, statLegend(['tu', 'hp', 'fire', 'react', 'str']))),
           el('footer', { class: 'scr-foot' },
             el('span', { class: 'scr-hint', text: T(isTouch() ? 'scr.br.hint.touch' : 'scr.br.hint') }),
             el('div', { class: 'scr-foot-btns' }, backBtn, equipBtn, startBtn))));
@@ -1497,7 +1589,7 @@
           el('div', { class: 'scr-prog' }, prog.map((g) => {
             const w = who(g.soldierId);
             const rank = D().soldierRank(w.rank | 0);
-            const gainEls = Object.keys(g.gains || {}).map((k) => el('span', { class: 'scr-gain' }, el('i', { text: T('stat.' + k + '.abbr') }), '+' + g.gains[k]));
+            const gainEls = Object.keys(g.gains || {}).map((k) => el('span', { class: 'scr-gain', title: T('stat.' + k), 'aria-label': T('stat.' + k) + ' +' + g.gains[k] }, el('i', { text: T('stat.' + k + '.abbr'), 'aria-hidden': 'true' }), '+' + g.gains[k]));
             const promo = g.promoted !== null && g.promoted !== undefined ? D().soldierRank(g.promoted) : null;
             return el('div', { class: 'scr-prog-row' },
               portraitEl(w, 36),
@@ -1516,7 +1608,7 @@
             el('div', { class: 'scr-result-sub', text: T('scr.db.sub.' + result) + (deb.turns ? ' · ' + Tn('scr.db.turns', deb.turns | 0) : '') }),
             // a causa principal das baixas e a dica ficam à vista, por baixo do resultado
             el('div', { class: 'scr-deb-cause' }, lossNotes(B, result))),
-          el('div', { class: 'scr-deb-body' },
+          el('div', { class: 'scr-deb-body', tabindex: '0', 'aria-label': T('scr.db.bodyAria') },
             el('div', { class: 'scr-deb-col' }, scoreSec, alienSec),
             el('div', { class: 'scr-deb-col' }, lossSec, woundSec, recSec),
             progSec ? el('div', { class: 'scr-deb-wide' }, progSec) : null),
@@ -1527,7 +1619,7 @@
               contBtn))));
       },
       focus: () => contBtn,
-      keys(ev) {
+      keys(ev, s) {
         // Enter continua sempre que o foco não está noutro botão (também com a lista do relatório em foco)
         if (ev.key === 'Enter') {
           const a = document.activeElement;
@@ -1535,7 +1627,8 @@
           cont();
           return true;
         }
-        return false;
+        // ↓/↑/PageDown/PageUp/Início/Fim deslocam o relatório (a progressão dos soldados fica no fim)
+        return scrollKeys(ev, s && s.root && s.root.querySelector('.scr-deb-body'));
       },
     });
   };
@@ -1561,11 +1654,22 @@
     const setK = (k) => (v) => { S()[k] = v; save(); };
     const getK = (k) => () => S()[k];
     const segs = [];
+    // o rótulo da linha dá o nome ao grupo (aria-labelledby) e a dica descreve-o
+    let rowN = 0;
     function optRow(label, ctl, hint) {
-      return el('div', { class: 'scr-orow' }, el('div', { class: 'scr-olabel' }, el('span', { text: label }), hint ? el('small', { text: hint }) : null), ctl);
+      const id = 'scr-opt-l' + (++rowN);
+      const lab = el('span', { id, text: label });
+      const role = ctl && ctl.getAttribute ? ctl.getAttribute('role') : null;
+      if (role === 'radiogroup') { ctl.removeAttribute('aria-label'); ctl.setAttribute('aria-labelledby', id); }
+      let small = null;
+      if (hint) {
+        small = el('small', { id: id + 'h', text: hint });
+        if (role === 'radiogroup' || role === 'switch') ctl.setAttribute('aria-describedby', id + 'h');
+      }
+      return el('div', { class: 'scr-orow' }, el('div', { class: 'scr-olabel' }, lab, small), ctl);
     }
     function sseg(k, opts) {
-      const s = seg({ label: k, options: opts, get: getK(k), set: (v) => { setK(k)(v); s.refresh(); } });
+      const s = seg({ label: null, options: opts, get: getK(k), set: (v) => { setK(k)(v); s.refresh(); } });
       segs.push(s);
       return s;
     }
@@ -1642,10 +1746,15 @@
   // ================================================================================================
   // Cena: como jogar
   // ================================================================================================
+  // linha de uma tabela: variante «.mac» no Mac (⌘ em vez de Ctrl; Ctrl+clique é o clique secundário)
+  const isMacUI = () => !!(OV.Input && OV.Input.isMac);
+  function rowText(key) {
+    return isMacUI() && OV.T.has(key + '.mac') ? T(key + '.mac') : T(key);
+  }
   function table(prefix, n, colA, keys) {
     const rows = [];
     for (let i = 1; i <= n; i++) {
-      const [a, b] = T(prefix + '.' + i).split('|');
+      const [a, b] = rowText(prefix + '.' + i).split('|');
       rows.push(el('tr', null, el('td', { class: 'scr-ka', text: a }), el('td', { text: b || '' })));
     }
     return el('table', { class: 'scr-ktable' + (keys ? ' keys' : '') },
@@ -1693,7 +1802,9 @@
         geo: [
           el('div', { class: 'scr-two' },
             el('div', null, el('div', { class: 'scr-cards one' }, card('scr.howto.geo.title', 'scr.howto.geo.body'), card('scr.howto.base.title', 'scr.howto.base.body'))),
-            panelSection(T('scr.howto.key.title'), table('scr.howto.geo', rowsOf('scr.howto.geo'), 'scr.howto.col.gesture'))),
+            el('div', null,
+              panelSection(T('scr.howto.key.title'), table('scr.howto.geo', rowsOf('scr.howto.geo'), 'scr.howto.col.gesture')),
+              panelSection(T('scr.howto.bk.title'), table('scr.howto.bk', rowsOf('scr.howto.bk'), 'scr.howto.col.key', true)))),
         ],
       };
     }
@@ -1728,9 +1839,7 @@
         if (ev.key >= '1' && ev.key <= '3') { sfx('ui_click'); show(tabs[+ev.key - 1]); return true; }
         if (ev.key === 'ArrowRight') { sfx('ui_click'); show(tabs[(i + 1) % tabs.length]); return true; }
         if (ev.key === 'ArrowLeft') { sfx('ui_click'); show(tabs[(i + tabs.length - 1) % tabs.length]); return true; }
-        if (ev.key === 'ArrowDown' || ev.key === 'PageDown') { body.scrollBy({ top: ev.key === 'PageDown' ? body.clientHeight * 0.8 : 60 }); return true; }
-        if (ev.key === 'ArrowUp' || ev.key === 'PageUp') { body.scrollBy({ top: ev.key === 'PageUp' ? -body.clientHeight * 0.8 : -60 }); return true; }
-        return false;
+        return scrollKeys(ev, body);
       },
       back: goBack,
     });
@@ -1769,6 +1878,6 @@
   OV.Screens = Object.assign(OV.Screens || {}, {
     VERSION, Backdrop, startBattle, buildQuickMission, quickFromURL, missionTitle, loadoutFor, heavyPicks, quickStore, defaultQuick,
     openOptions, saves, resumeGame, missionRating, battleExit, crewText, lossCauses, lossNotes, _urlUsed: false,
-    ui: { makeScreen, header, panelSection, seg, goBack, portraitEl, itemIconEl, unitSpriteEl, canvasCopy },
+    ui: { makeScreen, header, panelSection, seg, goBack, portraitEl, itemIconEl, unitSpriteEl, canvasCopy, statLegend, scrollKeys },
   });
 })(globalThis.OV || (globalThis.OV = {}));

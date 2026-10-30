@@ -124,3 +124,13 @@
 @media (prefers-reduced-motion: reduce) {
   .up-art.up-slide-l, .up-art.up-slide-r { animation: none; }
 }
+
+/* ---- ronda de personas 2 ----------------------------------------------------------------------------------------- */
+/* retrato: a figura ocupa a sua altura real e o texto vem a seguir (não por baixo da imagem) */
+@media (max-width: 900px) {
+  .up-art { grid-auto-rows: max-content; align-content: start; }
+  .up-fig { min-height: auto; flex: none; }
+  .up-fig-box { height: min(300px, 32vh); min-height: 180px; }
+}
+/* texto e lista em foco com o mesmo contorno ciano dos botões (o «auto 1px» era invisível no fundo escuro) */
+.up-info:focus-visible, .up-nav:focus-visible, .up-art:focus-visible { outline: 2px solid var(--cyan); outline-offset: -2px; }

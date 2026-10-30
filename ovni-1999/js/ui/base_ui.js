@@ -6,13 +6,15 @@
    Cena: OV.SceneDefs.basescape({G, baseId, tab}) (isScreen).
    API: OV.BaseUI = {
      TABS,
-     open(G, baseId?, tab?, {pick?})   empilha 'basescape' (ou muda de base/separador se já estiver no topo); tab
-                              'research' abre a escolha de projeto sozinha sem projetos a decorrer ou com pick
+     open(G, baseId?, tab?, {pick?, item?})   empilha 'basescape' (ou muda de base/separador se já estiver no topo); tab
+                              'research' abre a escolha de projeto sozinha sem projetos a decorrer ou com pick;
+                              tab 'market' + item: Comprar com a linha do objeto realçada e o botão em foco
      close()                  volta ao ecrã anterior (Geoscape) ; isOpen() → bool ; refresh()
      errText(reason) → texto pt-PT de 'base.err.<reason>'
+     groupDeliveries(G, deliveries) → [{kind, itemId, n, h}] (mesmo tipo + mesma hora somados) ; nextTen(v) → dezena seguinte
      debug: { state(), cellCenter(x, y) → {x, y} px do centro de uma célula, scene() }
    }
-   Teclado: 1–9 separadores, U Ufopédia, B construir, N novo projeto/produção, E equipar, X missão final (Naves), M memorial, [ ] base
+   Teclado: 1–9 separadores (←/→ com o foco num separador), U Ufopédia, B construir, N novo projeto/produção, E equipar, X missão final (Naves), M memorial, [ ] base
    anterior/seguinte, setas + Enter na construção, ⌫ desmantelar, Esc cancela/volta. */
 (function (OV) {
   'use strict';
@@ -195,6 +197,20 @@
     return def ? T(abbr ? def.abbrKey : def.nameKey) : '';
   }
   const hoursLeft = (G, etaT) => Math.max(0, Math.ceil((etaT - G.t) / 3600));
+  // «+10» vai até à dezena seguinte (1 → 10 → 20), não 1 → 11
+  const nextTen = (v) => Math.floor(v / 10) * 10 + 10;
+  /* encomendas do mesmo tipo que chegam na mesma hora numa só linha («7 soldados · chegam dentro de 48 h»):
+     → [{kind, itemId, n, h}] por ordem de chegada */
+  function groupDeliveries(G, list) {
+    const out = [], by = {};
+    for (const d of list.slice().sort((x, y) => x.etaT - y.etaT)) {
+      const h = hoursLeft(G, d.etaT);
+      const k = d.kind + '|' + (d.itemId || '') + '|' + h;
+      if (by[k]) by[k].n += d.n | 0;
+      else out.push((by[k] = { kind: d.kind, itemId: d.itemId || null, n: d.n | 0, h }));
+    }
+    return out;
+  }
   const researched = (G, id) => !id || G.researched.indexOf(id) >= 0;
   const inHangar = (c) => !!c && IN_HANGAR[c.status] === 1;
   function effectLines(def) {
@@ -395,8 +411,9 @@
         const on = tab === S.tab;
         const bd = badges[tab];
         const t = el('button', {
-          type: 'button', class: 'bsc-tab' + (on ? ' on' : ''), role: 'tab', 'aria-selected': on ? 'true' : 'false', dataset: { tab },
-        }, el('kbd', { text: String(i + 1) }), el('span', { class: 'bsc-tab-l', text: T('base.tab.' + tab) }),
+          type: 'button', class: 'bsc-tab' + (on ? ' on' : ''), role: 'tab', 'aria-selected': on ? 'true' : 'false', 'aria-keyshortcuts': String(i + 1), dataset: { tab },
+          tabindex: on ? '0' : '-1',
+        }, el('kbd', { text: String(i + 1), 'aria-hidden': 'true' }), el('span', { class: 'bsc-tab-l', text: T('base.tab.' + tab) }),
         bd ? el('span', { class: 'bsc-badge ' + (bd.cls || ''), text: bd.text }) : null);
         t.addEventListener('click', () => setTab(tab));
         OV.Dom.tooltip(t, () => tipHtml(T('base.tab.' + tab), [esc(T('base.tabtip.' + tab)), bd && bd.tip ? warnLine(bd.tip) : ''], String(i + 1)));
@@ -967,15 +984,15 @@
     }
     function deliveriesSection(filter) {
       const g = S.G, b = base();
-      const list = b.deliveries.filter(filter).slice().sort((x, y) => x.etaT - y.etaT);
+      const list = groupDeliveries(g, b.deliveries.filter(filter));
       const box = el('div', { class: 'bsc-list bsc-deliv' });
       if (!list.length) box.appendChild(note(T('base.deliv.none'), 'muted'));
       for (const d of list) {
         const what = d.kind === 'item' || d.kind === 'craft' ? itemName(d.itemId) : Tn('base.kind.' + d.kind, d.n);
-        box.appendChild(el('div', { class: 'bsc-row' },
+        box.appendChild(el('div', { class: 'bsc-row', dataset: { deliv: d.kind + ':' + (d.itemId || '') } },
           d.kind === 'item' ? itemIcon(d.itemId, 28) : d.kind === 'craft' ? craftIcon(d.itemId, 28) : el('span', { class: 'bsc-pglyph small ' + d.kind }),
           el('div', { class: 'bsc-row-main' }, el('div', { class: 'bsc-row-name', text: (d.kind === 'item' || d.kind === 'craft' ? d.n + ' × ' : d.n + ' ') + what })),
-          el('div', { class: 'bsc-row-val mono', text: T('base.deliv.eta', { h: hoursLeft(g, d.etaT) }) })));
+          el('div', { class: 'bsc-row-val mono', text: Tn('base.deliv.eta', d.n, { h: d.h }) })));
       }
       return section(T('base.deliv.title'), box);
     }
@@ -1002,7 +1019,7 @@
           const art = articleFor(g, [id]);
           const cell = el('div', { class: 'bsc-item' + (art ? ' link' : ''), dataset: { item: id } }, itemIcon(id, 40),
             el('div', { class: 'bsc-item-t' }, el('div', { class: 'bsc-item-n', text: itemName(id) }),
-              el('div', { class: 'bsc-item-s', text: T('base.stores.units', { u: dec1((it.storage || 0.1) * n) }) })),
+              el('div', { class: 'bsc-item-s', text: T('base.stores.unitsEach', { each: dec1(it.storage || 0.1), u: dec1((it.storage || 0.1) * n) }) })),
             el('b', { class: 'bsc-item-c', text: '×' + int(n) }));
           OV.Dom.tooltip(cell, () => tipHtml(itemName(id), [esc(T('base.stores.tipCount', { n: int(n) })), it.sell > 0 ? esc(T('base.stores.tipSell', { money: money(it.sell) })) : '', art ? esc(T('base.stores.tipArticle')) : '']));
           if (art) cell.addEventListener('click', () => openUfopaedia(art));
@@ -1442,6 +1459,14 @@
     }
 
     // ---------------------------------------------------------------------------------------------------- 8
+    /* comprar/vender: o 2.º clique de um duplo clique (event.detail ≥ 2) ou um clique a menos de 400 ms do anterior
+       não repete a encomenda (o botão é recriado depois de cada compra) */
+    function oneShot(e) {
+      const t = typeof performance !== 'undefined' ? performance.now() : Date.now();
+      if ((e && e.detail > 1) || t - (S.lastTradeT || -1e9) < 400) return false;
+      S.lastTradeT = t;
+      return true;
+    }
     function qtyCtl(map, id, max, onChange, tag) {
       const v = Math.max(1, Math.min(max || 999, map[id] || 1));
       map[id] = v;
@@ -1452,7 +1477,7 @@
         btn('−', { cls: 'small', title: T('base.market.less'), aria: T('base.market.lessOf', { name: nm }), why: v <= 1 ? T('base.market.minQty') : null, data: { qty: k + ':-1' }, on: () => set(v - 1) }),
         el('b', { class: 'bsc-step-v', text: String(v) }),
         btn('+', { cls: 'small', title: T('base.market.more'), aria: T('base.market.moreOf', { name: nm }), why: max && v >= max ? T('base.market.maxQty') : null, data: { qty: k + ':+1' }, on: () => set(v + 1) }),
-        btn('+10', { cls: 'small', title: T('base.market.more10'), aria: T('base.market.more10Of', { name: nm }), why: max && v >= max ? T('base.market.maxQty') : null, data: { qty: k + ':+10' }, on: () => set(v + 10) }));
+        btn('+10', { cls: 'small', title: T('base.market.more10'), aria: T('base.market.more10Of', { name: nm }), why: max && v >= max ? T('base.market.maxQty') : null, data: { qty: k + ':+10' }, on: () => set(nextTen(v)) }));
     }
     function tabMarket() {
       const g = S.G, b = base();
@@ -1472,6 +1497,9 @@
     function marketBuy() {
       const g = S.G, b = base();
       const box = el('div');
+      // armazém sobrelotado: a saída (vender ou construir armazéns) fica à vista, não só na dica do botão
+      const caps = BS().capacities(g, b.id);
+      if (caps.storage.usedTenths > caps.storage.cap * 10) box.appendChild(note(T('base.market.storageFull'), 'bad'));
       const groups = {};
       for (const id of Object.keys(D().crafts)) {
         const cd = D().crafts[id];
@@ -1490,17 +1518,23 @@
           const def = isCraft ? D().crafts[id] : D().items[id];
           const n = S.qty[id] || 1;
           const why = BS().canBuy(g, b.id, id, n);
+          const space = isCraft ? 0 : def.storage || 0.1;
           const eta = isCraft ? def.deliveryH | 0 : def.deliveryH > 0 ? def.deliveryH : tune('DELIVERY_ITEMS_H', 24);
           const have = isCraft ? b.crafts.map((x) => C().findCraft(g, x)).filter((x) => x && x.type === id).length : b.stores[id] | 0;
           list.appendChild(el('div', { class: 'bsc-row bsc-mrow', dataset: { buy: id } },
             isCraft ? craftIcon(id, 40) : itemIcon(id, 40),
             el('div', { class: 'bsc-row-main' }, el('div', { class: 'bsc-row-name', text: itemName(id) }),
-              el('div', { class: 'bsc-row-sub', text: T('base.market.priceLine', { price: money(def.buy), h: eta, have }) + (isCraft ? ' · ' + T('base.market.rent', { money: money(def.rent) }) : '') })),
+              el('div', { class: 'bsc-row-sub', text: T('base.market.priceLine', { price: money(def.buy), h: eta, have }) + (isCraft ? ' · ' + T('base.market.rent', { money: money(def.rent) }) : ' · ' + T('base.market.space', { u: dec1(space) })) }),
+              why === 'storage' || why === 'hangar' ? el('div', { class: 'bsc-row-why', text: errText(why) }) : null),
             qtyCtl(S.qty, id, isCraft ? 3 : 0, renderContent, 'buy'),
             el('div', { class: 'bsc-mtotal mono' + (g.funds < def.buy * n ? ' bad' : ''), text: money(def.buy * n) }),
             btn(T('base.market.buy'), {
               cls: 'small primary', title: T('base.market.buyN', { n, name: itemName(id) }), tip: T('base.market.buyEta', { h: eta }), why: why ? errText(why) : null, data: { act: 'buy', id },
-              on: () => act(() => BS().buy(g, b.id, id, n), T('base.toast.bought', { n, name: itemName(id), h: eta })),
+              on: (e) => {
+                if (!oneShot(e)) return;
+                S.qty[id] = 1;
+                if (!act(() => BS().buy(g, b.id, id, n), T('base.toast.bought', { n, name: itemName(id), h: eta }))) { S.qty[id] = n; renderContent(); }
+              },
             })));
         }
         box.appendChild(section(T('base.cat.' + cat), list));
@@ -1524,14 +1558,14 @@
           const why = !(it.sell > 0) ? errText('unsellable') : null;
           list.appendChild(el('div', { class: 'bsc-row bsc-mrow' + (why ? ' locked' : ''), dataset: { sell: id } }, itemIcon(id, 36),
             el('div', { class: 'bsc-row-main' }, el('div', { class: 'bsc-row-name', text: itemName(id) }),
-              el('div', { class: 'bsc-row-sub', text: why ? why : T('base.market.sellLine', { price: money(it.sell), have }) })),
+              el('div', { class: 'bsc-row-sub', text: why ? why : T('base.market.sellLine', { price: money(it.sell), have }) + ' · ' + T('base.market.frees', { u: dec1((it.storage || 0.1) * n) }) })),
             why ? el('span') : qtyCtl(S.sellQty, id, have, renderContent, 'sell'),
             el('div', { class: 'bsc-mtotal mono good', text: why ? '' : money(it.sell * n) }),
             el('div', { class: 'bsc-row-btns' },
               why ? null : btn(T('base.market.all'), { cls: 'small', title: T('base.market.allTip'), aria: T('base.market.allOf', { name: itemName(id) }), data: { sellAll: id }, on: () => { S.sellQty[id] = have; renderContent(); } }),
               btn(T('base.market.sell'), {
                 cls: 'small', title: T('base.market.sellN', { n, name: itemName(id) }), tip: T('base.market.sellNow'), why, data: { act: 'sell', id },
-                on: () => { S.sellQty[id] = 1; act(() => BS().sell(g, b.id, id, n), T('base.toast.sold', { n, name: itemName(id), money: money(it.sell * n) })); },
+                on: (e) => { if (!oneShot(e)) return; S.sellQty[id] = 1; act(() => BS().sell(g, b.id, id, n), T('base.toast.sold', { n, name: itemName(id), money: money(it.sell * n) })); },
               }))));
         }
         box.appendChild(section(T('base.cat.' + cat), list));
@@ -1839,6 +1873,16 @@
         else back(); // uma instalação só selecionada não prende o Esc: o jogador quer sair
         return true;
       }
+      // foco num separador (role=tab): ←/→/Início/Fim mudam de separador (padrão WAI-ARIA); a grelha fica para depois
+      const ae = document.activeElement;
+      if (ae && ae.classList && ae.classList.contains('bsc-tab') && (k === 'ArrowLeft' || k === 'ArrowRight' || k === 'Home' || k === 'End')) {
+        const i = TABS.indexOf(S.tab);
+        const j = k === 'Home' ? 0 : k === 'End' ? TABS.length - 1 : (i + (k === 'ArrowRight' ? 1 : -1) + TABS.length) % TABS.length;
+        setTab(TABS[j]);
+        const t = S.r.tabs && S.r.tabs.querySelector('.bsc-tab[data-tab="' + TABS[j] + '"]');
+        if (t) t.focus({ preventScroll: true });
+        return true;
+      }
       if (S.build) {
         if (k === 'ArrowLeft') { moveCursor(-1, 0); return true; }
         if (k === 'ArrowRight') { moveCursor(1, 0); return true; }
@@ -1937,6 +1981,19 @@
       // vindo do aviso «Investigação concluída → Novo projeto»: abre logo a escolha se houver quem trabalhe
       // com projetos a decorrer (ex.: cientistas acabados de chegar) mostra-se a lista para os atribuir; a escolha de
       // projeto só abre sozinha sem projetos ou quando pedida («Novo projeto»)
+      // vindo de «Comprar munição» (Geoscape): Mercado › Comprar com a linha do objeto à vista e o botão em foco
+      if (P.tab === 'market' && P.item) {
+        S.market = 'buy';
+        renderContent();
+        setTimeout(() => {
+          const row = S.root && S.r.content.querySelector('[data-buy="' + P.item + '"]');
+          if (!row) return;
+          row.classList.add('bsc-hl');
+          row.scrollIntoView({ block: 'center' });
+          const b = row.querySelector('[data-act="buy"]');
+          if (b && OV.Input.lastPointerType !== 'touch') b.focus({ preventScroll: true });
+        }, 60);
+      }
       if (P.tab === 'research' && (P.pick || !base().research.length)) {
         const b = base(), st = BS().staff(g, b.id), caps = BS().capacities(g, b.id);
         if (st.scientists.free > 0 && caps.labs.used < caps.labs.cap && C().availableResearch(g, b.id).length) setTimeout(() => { if (S.root && OV.Scenes.top() === sc) researchPicker(); }, 220);
@@ -1986,7 +2043,7 @@
       top.go(baseId, tab);
       return top;
     }
-    return OV.Scenes.push('basescape', { G, baseId: baseId || null, tab: tab || null, pick: !!(opts && opts.pick) });
+    return OV.Scenes.push('basescape', { G, baseId: baseId || null, tab: tab || null, pick: !!(opts && opts.pick), item: (opts && opts.item) || null });
   }
   function close() {
     const top = OV.Scenes.top();
@@ -2003,7 +2060,7 @@
     close,
     isOpen: () => !!active,
     refresh() { if (active) active.refresh(); },
-    errText,
+    errText, groupDeliveries, nextTen,
     debug: {
       scene: () => active,
       state: () => (active ? active.debugState() : null),

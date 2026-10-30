@@ -1395,7 +1395,7 @@
       textEl = el('p', { class: 'up-text' });
       chipsEl = el('div', { class: 'up-chips', role: 'group', 'aria-label': T('up.ranks') });
       statsEl = el('div', { class: 'up-stats' });
-      infoEl = el('div', { class: 'up-info scr-scroll', 'data-scroll': '' }, chipsEl, textEl, statsEl);
+      infoEl = el('div', { class: 'up-info scr-scroll', 'data-scroll': '', tabindex: '0', 'aria-label': T('up.info.aria') }, chipsEl, textEl, statsEl);
       artBox = el('article', { class: 'up-art', 'data-scroll': '' }, fig, infoEl);
       // deslizar com dois dedos no trackpad (horizontal) muda de artigo
       artBox.addEventListener('wheel', (e) => {
@@ -1472,6 +1472,15 @@
       onInput(ev) {
         if (ev.kind !== 'key') return false;
         const k = ev.key;
+        // foco no texto do artigo (ou no artigo inteiro, em retrato): ↑/↓/PageUp/PageDown/Início/Fim deslocam o texto;
+        // só ←/→ mudam de artigo
+        const a = document.activeElement;
+        const box = a && a.closest ? a.closest('.up-info, .up-art') : null;
+        if (box && k !== 'ArrowLeft' && k !== 'ArrowRight') {
+          const sk = OV.Screens && OV.Screens.ui && OV.Screens.ui.scrollKeys;
+          const scroller = box.scrollHeight > box.clientHeight + 1 ? box : box.closest('.up-art');
+          if (sk && scroller && sk(ev, scroller)) return true;
+        }
         if (k === 'ArrowRight' || k === 'ArrowDown' || k === 'PageDown') { go(1); return true; }
         if (k === 'ArrowLeft' || k === 'ArrowUp' || k === 'PageUp') { go(-1); return true; }
         if (k === 'Home' || k === 'End') {

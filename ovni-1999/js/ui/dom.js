@@ -1,5 +1,5 @@
 /* Utilitários DOM: criação de elementos, toasts, modais com Promise (foco preso e devolvido), tooltips, barras.
-   OV.Dom = { $, el, clear, toast, modal, anyModalOpen, tooltip (também toque longo no iPad), hideTooltip, hideLongPress, bar,
+   OV.Dom = { $, el, clear, toast, clearToasts, modal, anyModalOpen, tooltip (também toque longo no iPad), hideTooltip, hideLongPress, bar,
               download, pickFile,
               trapFocus(caixa, {keep, returnTo}) → release(restore?) ; trapOpen() ; focusKey(nó) ; refocus(chave, dentro?) ;
               focusables(caixa) } */
@@ -47,6 +47,11 @@
     while (box.children.length > 5) box.removeChild(box.firstChild);
     setTimeout(() => d.classList.add('fade'), 3400);
     setTimeout(() => d.remove(), 4100);
+  }
+  // avisos do ecrã anterior não ficam por cima de um ecrã novo (briefing, base, relatório)
+  function clearToasts() {
+    const box = $('toasts');
+    if (box) clear(box);
   }
 
   // ---- foco preso num diálogo ------------------------------------------------------------------------------
@@ -171,9 +176,27 @@
 
   // ---- tooltip ------------------------------------------------------------------------------
   const noHover = () => typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(hover: none)').matches;
+  /* um nó que aparece debaixo de um ponteiro parado (diálogo novo, botão recriado) não mostra a dica logo: só depois
+     de um movimento real do ponteiro (senão a dica do botão por omissão tapa a própria pergunta) */
+  let lastMoveT = -1, lastX = NaN, lastY = NaN;
+  const nowT = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+  if (typeof document !== 'undefined' && document.addEventListener) {
+    document.addEventListener('pointermove', (e) => {
+      if (e.clientX === lastX && e.clientY === lastY) return;
+      lastX = e.clientX;
+      lastY = e.clientY;
+      lastMoveT = nowT();
+    }, { capture: true, passive: true });
+  }
   function tooltip(node, content) {
-    node.addEventListener('mouseenter', () => {
+    node.addEventListener('mouseenter', function onEnter() {
       if (noHover()) return;
+      if (nowT() - lastMoveT > 120) {
+        // entrou sem o ponteiro se mexer (o nó apareceu debaixo dele): espera pelo primeiro movimento sobre ele
+        const later = () => { node.removeEventListener('pointermove', later); if (node.matches && node.matches(':hover')) onEnter(); };
+        node.addEventListener('pointermove', later);
+        return;
+      }
       const t = $('tooltip');
       const html = typeof content === 'function' ? content() : content;
       if (!html) return;
@@ -278,5 +301,5 @@
     });
   }
 
-  OV.Dom = { $, el, clear, toast, modal, anyModalOpen, tooltip, hideTooltip, hideLongPress, bar, download, pickFile, trapFocus, trapOpen, focusKey, refocus, focusables };
+  OV.Dom = { $, el, clear, toast, clearToasts, modal, anyModalOpen, tooltip, hideTooltip, hideLongPress, bar, download, pickFile, trapFocus, trapOpen, focusKey, refocus, focusables };
 })(globalThis.OV || (globalThis.OV = {}));

@@ -96,6 +96,7 @@
     const opts = o || {};
     const b = el('button', { type: 'button', class: 'btn ' + (opts.cls || ''), dataset: opts.data || null }, label);
     if (opts.key) b.setAttribute('aria-keyshortcuts', opts.key);
+    if (opts.aria) b.setAttribute('aria-label', opts.aria);
     b.addEventListener('click', (e) => {
       if (b.disabled) return;
       if (opts.sound !== false) sfx(opts.sound || 'ui_click');
@@ -979,7 +980,7 @@
     function soldierCard(s) {
       const rank = D().soldierRank(s.rank | 0);
       const st = s.stats || {};
-      const statCell = (k) => el('span', { class: 'scr-st' }, el('i', { text: T('stat.' + k + '.abbr') }), el('b', { text: String(st[k] | 0) }));
+      const statCell = (k) => el('span', { class: 'scr-st', title: T('stat.' + k), 'aria-label': T('stat.' + k) + ' ' + (st[k] | 0) }, el('i', { text: T('stat.' + k + '.abbr'), 'aria-hidden': 'true' }), el('b', { text: String(st[k] | 0), 'aria-hidden': 'true' }));
       return el('div', { class: 'scr-soldier cp-sol' },
         ui.portraitEl(s, 54),
         el('div', { class: 'scr-soldier-info' },
@@ -995,7 +996,8 @@
       const M = OV.Battle.normalizeMission(mission);
       const meta = mission.meta || {};
       const craft = C().findCraft(G, craftId);
-      const time = meta.time || (M.night ? 'night' : 'day');
+      // base alienígena e Cidónia: penumbra fixa (nem noite nem sinalizadores)
+      const time = M.kind === 'alienBase' || M.kind === 'cydonia' ? 'dim' : meta.time || (M.night ? 'night' : 'day');
       const raceId = meta.race;
       const race = raceId ? D().races[raceId] : null;
       // a tripulação real usa a tabela do mês (crewRules.earlyMonths): o efetivo estimado também
@@ -1006,6 +1008,7 @@
       if (time === 'night') notes.push(T('scr.br.note.night'));
       if (time === 'night' && nightUfo()) notes.push(T('cp.br.note.waitDay'));
       if (time === 'dusk') notes.push(T('scr.br.note.dusk'));
+      if (time === 'dim') notes.push(T('scr.br.note.dim'));
       if (M.kind === 'crash') notes.push(T('scr.br.note.crash'));
       if (M.kind === 'terror') notes.push(T('scr.br.note.terror'));
       if (M.kind === 'landed') notes.push(T('cp.br.note.landed'));
@@ -1038,7 +1041,8 @@
               el('span', { text: w.text }),
               w.id === 'unarmed' ? btn(T('cp.br.autoKit'), { cls: 'small', key: 'A', tip: T('cp.br.autoKit.tip'), onClick: autoKitNow }) : null)))) : null),
           ui.panelSection(T('scr.br.squad') + ' · ' + squad.length,
-            squad.length ? el('div', { class: 'scr-roster' }, squad.map(soldierCard)) : el('p', { class: 'cp-note bad', text: T('cp.br.noSquad') }))),
+            squad.length ? el('div', { class: 'scr-roster' }, squad.map(soldierCard)) : el('p', { class: 'cp-note bad', text: T('cp.br.noSquad') }),
+            squad.length && ui.statLegend ? ui.statLegend(['tu', 'hp', 'fire', 'react', 'brav']) : null)),
         el('footer', { class: 'scr-foot' },
           el('span', { class: 'scr-hint', text: T(nightUfo() ? 'cp.br.hint.night' : 'cp.br.hint') }),
           el('div', { class: 'scr-foot-btns' },
@@ -1310,8 +1314,11 @@
 
       // pontuação
       const anyIcon = (deb.lines || []).some((l) => l.itemId);
+      // capturados que morreram por falta de contenção: a linha dos pontos di-lo (os pontos contam na mesma)
+      const lostN = Object.keys(model.capturedLost || {}).reduce((n, k) => n + (model.capturedLost[k] | 0), 0);
+      const lineText = (l) => (l.key === 'bs.debrief.aliensCaptured' && lostN ? T('cp.db.capturedLine', { n: lostN }) : T(l.key));
       const rows = (deb.lines || []).map((l) => el('tr', null,
-        el('td', { class: 'scr-sl' }, l.itemId ? ui.itemIconEl(l.itemId, 26) : anyIcon ? el('span', { class: 'scr-sl-gap' }) : null, el('span', { text: T(l.key) })),
+        el('td', { class: 'scr-sl' }, l.itemId ? ui.itemIconEl(l.itemId, 26) : anyIcon ? el('span', { class: 'scr-sl-gap' }) : null, el('span', { text: lineText(l) })),
         el('td', { class: 'scr-sn', text: '×' + (l.n | 0) }),
         el('td', { class: 'scr-sp ' + (l.points > 0 ? 'good' : l.points < 0 ? 'bad' : ''), text: signed(l.points) })));
       const scoreSec = ui.panelSection(T('bs.debrief.score'),
@@ -1334,7 +1341,8 @@
           el('div', { class: 'scr-alien-pic' }, ui.unitSpriteEl(ty, 40)),
           el('span', { class: 'scr-alien-name', text: unitName(ty) }),
           killed[ty] ? el('span', { class: 'scr-tag bad', text: T('scr.db.killed') + ' ×' + killed[ty] }) : null,
-          captured[ty] ? el('span', { class: 'scr-tag good', text: T('scr.db.captured') + ' ×' + captured[ty] }) : null))) : el('p', { class: 'scr-muted', text: T('scr.db.noAliens') }),
+          captured[ty] && (model.capturedLost || {})[ty] >= captured[ty] ? el('span', { class: 'scr-tag warn', text: T('cp.db.capturedDied') + ' ×' + captured[ty] })
+            : captured[ty] ? el('span', { class: 'scr-tag good', text: T('scr.db.captured') + ' ×' + captured[ty] }) : null))) : el('p', { class: 'scr-muted', text: T('scr.db.noAliens') }),
         contain.length ? el('ul', { class: 'cp-warns' }, contain) : null);
 
       // baixas
@@ -1382,7 +1390,7 @@
       const progSec = prog.length || extraPromo.length ? ui.panelSection(T('scr.db.progress'),
         el('div', { class: 'scr-prog' }, prog.map((g) => {
           const w = who(g.soldierId);
-          const gainEls = Object.keys(g.gains || {}).map((k) => el('span', { class: 'scr-gain' }, el('i', { text: T('stat.' + k + '.abbr') }), '+' + g.gains[k]));
+          const gainEls = Object.keys(g.gains || {}).map((k) => el('span', { class: 'scr-gain', title: T('stat.' + k), 'aria-label': T('stat.' + k) + ' +' + g.gains[k] }, el('i', { text: T('stat.' + k + '.abbr'), 'aria-hidden': 'true' }), '+' + g.gains[k]));
           const promo = g.promoted !== null && g.promoted !== undefined ? D().soldierRank(g.promoted) : null;
           return el('div', { class: 'scr-prog-row' },
             ui.portraitEl({ portraitSeed: w.portraitSeed, female: w.female, nat: w.nat, armour: w.armour, rank: w.rank }, 36),
@@ -1405,8 +1413,8 @@
           el('div', { class: 'scr-kicker', text: T('bs.debrief.title') + ' · ' + OV.Screens.missionTitle(M, meta) }),
           el('h1', { class: 'scr-result', text: T('scr.db.result.' + result) }),
           el('div', { class: 'scr-result-sub', text: [T('scr.db.sub.' + result), deb.turns ? Tn('scr.db.turns', deb.turns | 0) : null, where.join(' · ') || null].filter(Boolean).join(' · ') }),
-          el('div', { class: 'scr-deb-cause' }, OV.Screens.lossNotes ? OV.Screens.lossNotes(B, result) : null)),
-        el('div', { class: 'scr-deb-body' },
+          el('div', { class: 'scr-deb-cause' }, OV.Screens.lossNotes ? OV.Screens.lossNotes(B, result, { campaign: true }) : null)),
+        el('div', { class: 'scr-deb-body', tabindex: '0', 'aria-label': T('scr.db.bodyAria') },
           el('div', { class: 'scr-deb-col' }, scoreSec, alienSec),
           el('div', { class: 'scr-deb-col' }, lossSec, woundSec, recSec, resSec),
           progSec ? el('div', { class: 'scr-deb-wide' }, progSec) : null),
@@ -1441,7 +1449,8 @@
         if (ev.key === 'Enter') { if (!activeIsButtonIn(sc.root) || document.activeElement === contBtn) { sfx('ui_confirm'); cont(); return true; } }
         if ((ev.key === 'i' || ev.key === 'I') && researchBtn) { sfx('ui_click'); openResearch(); return true; }
         if ((ev.key === 'r' || ev.key === 'R') && retryBtn && !ev.repeat) { sfx('ui_click'); retry(); return true; }
-        return false;
+        // ↓/↑/PageDown/PageUp/Início/Fim deslocam o relatório (pontuação, material, progressão dos soldados)
+        return !!(ui.scrollKeys && sc && sc.root && ui.scrollKeys(ev, sc.root.querySelector('.scr-deb-body')));
       },
     });
     return sc;
@@ -1572,6 +1581,12 @@
       else if ((R.fundsAfter | 0) < 0 && !R.defeat) warns.push({ cls: 'warn', text: T('cp.mr.warn.negative') });
       const terrorPts = OV.Missions && OV.Missions.expiredPoints ? OV.Missions.expiredPoints(G) : 1000;
       if ((R.badMonths | 0) === 1 && !R.defeat) warns.push({ cls: 'bad', text: T('cp.mr.warn.badMonth') + ' ' + T(split.length > 1 ? 'cp.mr.advice.terror' : 'cp.mr.advice', { points: OV.U.fmtInt(terrorPts) }) });
+      // classificação perto do limite (menos de 150 pontos acima): avisar antes do mês mau
+      const near = 150;
+      if (!R.defeat && (R.badMonths | 0) === 0 && (R.rating | 0) < thr + near) warns.push({ cls: 'warn', text: T('cp.mr.warn.near', { n: OV.U.fmtInt((R.rating | 0) - thr), thr: OV.U.fmtInt(thr) }) });
+      // cientistas sem projeto: o mês sem investigação explica-se e diz-se onde corrigir
+      const idleSci = OV.GeoUI && OV.GeoUI.model && OV.GeoUI.model.idleStaff ? OV.GeoUI.model.idleStaff(G).sci : 0;
+      if ((R.research | 0) === 0 && idleSci > 0) warns.push({ cls: 'warn', text: Tn('cp.mr.warn.noResearch', idleSci) });
       const pacts = (R.countries || []).filter((c) => c.newPact);
       if (pacts.length) warns.push({ cls: 'bad', text: T('cp.mr.warn.pacts', { list: pacts.map((c) => (D().countries[c.id] ? T(D().countries[c.id].nameKey) : c.id)).join(', ') }) });
       if (R.alienBaseRevealed) {
@@ -1801,10 +1816,12 @@
         if (e.difficulty !== null && e.difficulty !== undefined) sub.push(T('diff.' + e.difficulty));
       }
       const acts = el('div', { class: 'cp-sl-acts' });
-      if (mode === 'save' && manual(e.slot)) acts.appendChild(btn(T(e.empty ? 'cp.sl.save' : 'cp.sl.overwrite'), { cls: 'small primary', key: 'Enter', tip: T('cp.sl.save.tip'), onClick: () => doSave(e) }));
-      if (mode === 'load' && !e.empty && !e.corrupt) acts.appendChild(btn(T('cp.sl.open'), { cls: 'small primary', key: 'Enter', tip: T('cp.sl.open.tip'), onClick: () => doLoad(e) }));
-      if (!e.empty && !e.corrupt) acts.appendChild(btn(T('cp.sl.export'), { cls: 'small', key: 'E', tip: T('cp.sl.export.tip'), onClick: () => doExport(e) }));
-      if (!e.empty) acts.appendChild(btn(T('cp.sl.delete'), { cls: 'small danger', key: '⌫', tip: T('cp.sl.delete.tip'), onClick: () => doDelete(e) }));
+      // botões repetidos em cada linha: o nome acessível diz a posição («Gravar: Posição 2»)
+      const aria = (k) => T('cp.sl.aria', { act: T(k), slot: slotName(e.slot) });
+      if (mode === 'save' && manual(e.slot)) acts.appendChild(btn(T(e.empty ? 'cp.sl.save' : 'cp.sl.overwrite'), { cls: 'small primary', key: 'Enter', aria: aria(e.empty ? 'cp.sl.save' : 'cp.sl.overwrite'), tip: T('cp.sl.save.tip'), onClick: () => doSave(e) }));
+      if (mode === 'load' && !e.empty && !e.corrupt) acts.appendChild(btn(T('cp.sl.open'), { cls: 'small primary', key: 'Enter', aria: aria('cp.sl.open'), tip: T('cp.sl.open.tip'), onClick: () => doLoad(e) }));
+      if (!e.empty && !e.corrupt) acts.appendChild(btn(T('cp.sl.export'), { cls: 'small', key: 'E', aria: aria('cp.sl.export'), tip: T('cp.sl.export.tip'), onClick: () => doExport(e) }));
+      if (!e.empty) acts.appendChild(btn(T('cp.sl.delete'), { cls: 'small danger', key: '⌫', aria: aria('cp.sl.delete'), tip: T('cp.sl.delete.tip'), onClick: () => doDelete(e) }));
       const row = el('div', { class: 'cp-sl-row' + (e.empty ? ' empty' : '') + (e.corrupt ? ' corrupt' : '') + (i === sel ? ' sel' : ''), role: 'option', dataset: { slot: e.slot }, tabindex: '-1' },
         el('span', { class: 'cp-sl-slot', text: slotName(e.slot) }),
         el('div', { class: 'cp-sl-main' },

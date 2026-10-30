@@ -13,7 +13,8 @@
      intercept(G, ufoId?)            abre o fluxo de interceção (com o OVNI já escolhido como alvo, se dado)
      current() → {G, view, speed, paused, popup:string|null, dialog:string|null, mode} | null   estado (QA/depuração)
      setSpeed(i) ; togglePause() ; select(ref|null)                 controlo programático da cena aberta
-     model                           funções puras (sem DOM; testadas em Node)
+     model                           funções puras (sem DOM; testadas em Node), incl. dayAt(G, ref), crewEstimate(G, ref),
+                                     arrivingSoldiers(G, base), squadShort(G), noAmmo(craft), classify(ev)
    }
    Teclas: 1–6 velocidades, P/Espaço pausa, I intercetar, B bases, U Ufopédia, F financiamento, S gravar, Esc opções
    (ou fecha a janela aberta), C centrar na seleção, H centrar na base, R radares, T / ⇧T próximo OVNI/local/nave,
@@ -167,6 +168,12 @@
     }
     return parts.length ? parts.join(' · ') : T('geo.i.unarmed');
   }
+  // intercetor com armas mas sem munição em nenhuma (os feixes não gastam munição)
+  function noAmmo(c) {
+    const ws = (c && c.weapons ? c.weapons : []).filter((w) => w && D().craftWeapons[w.type]);
+    if (!ws.length) return false;
+    return ws.every((w) => { const wd = D().craftWeapons[w.type]; return wd.ammoMax !== null && !wd.beam && (w.ammo | 0) <= 0; });
+  }
   function etaHours(G, c, ref) {
     const def = D().crafts[c.type];
     const tg = ref === 'home' ? C().targetOf(G, { kind: 'base', id: c.baseId }) : C().targetOf(G, ref);
@@ -316,12 +323,24 @@
       return null;
     }
   }
+  // já é dia pleno no alvo (o crepúsculo ainda não conta como «amanheceu»)
+  function dayAt(G, ref) {
+    const tg = C().targetOf(G, ref);
+    if (!tg) return true;
+    try { return GM().dayPhase(G, tg.lon, tg.lat) === 'day'; } catch (e) { return true; }
+  }
   // linha dos avisos de OVNI aterrado/despenhado: «Skyranger-1 chega em 2 h — lá será noite»
   function teamEtaLine(G, ref, leftS) {
     const e = teamEta(G, ref);
     if (!e) return T('geo.ev.terrorSite.noTeam');
     const p = { craft: craftName(G, G.crafts[e.craftId]), t: fmtDur(e.h) };
     if (leftS > 0 && e.h * 3600 > leftS) return T('geo.ev.team.late', p);
+    // de noite: quantos sinalizadores vão a bordo e como se usam (ação concreta, não só «leve sinalizadores»)
+    if (e.phase === 'night') {
+      const c = G.crafts[e.craftId];
+      const n = (c && c.equipment && c.equipment.electro_flare) | 0;
+      return n > 0 ? Tn('geo.ev.team.eta.night.flares', n, p) : T('geo.ev.team.eta.night.none', p);
+    }
     return T('geo.ev.team.eta.' + (e.phase || 'day'), p);
   }
 
@@ -343,6 +362,40 @@
       out.eng += e;
     }
     return out;
+  }
+
+  // ---- efetivo estimado de um alvo em terra (o mesmo do briefing; OVNI só quando o tipo é conhecido) --------------
+  function crewEstimate(G, ref) {
+    if (!ref || !D().deploymentRange) return null;
+    const tg = C().targetOf(G, ref);
+    if (!tg) return null;
+    let dep = null;
+    if (ref.kind === 'ufo') dep = typeKnown(G, tg.obj) && D().ufos[tg.obj.type] ? D().ufos[tg.obj.type].deployment : null;
+    else if (ref.kind === 'site') dep = 'dep_terror_site';
+    else if (ref.kind === 'alienBase') dep = 'dep_alien_base';
+    if (!dep || !D().deployments[dep]) return null;
+    try { return D().deploymentRange(dep, G.difficulty | 0, G.month | 0); } catch (e) { return null; }
+  }
+  // soldiers a caminho para uma base: {n, h} (h = horas até à primeira chegada) ou null
+  function arrivingSoldiers(G, base) {
+    const L = (base.deliveries || []).filter((d) => d.kind === 'soldier');
+    if (!L.length) return null;
+    const n = L.reduce((s, d) => s + (d.n | 0), 0);
+    const h = Math.max(0, Math.ceil((Math.min(...L.map((d) => d.etaT)) - G.t) / 3600));
+    return { n, h };
+  }
+  /* poucos soldados aptos: numa base com transporte, menos aptos do que min(lugares, SQUAD_SHORT) → {baseId, fit,
+     seats, arriving} (o primeiro caso) ou null. Alimenta o aviso persistente do Geoscape e o selo do botão «Bases». */
+  function squadShort(G) {
+    const min = 6;
+    for (const b of G.bases) {
+      const seats = (b.crafts || []).map((id) => G.crafts[id]).filter((c) => c && D().crafts[c.type] && D().crafts[c.type].transport)
+        .reduce((m, c) => Math.max(m, D().crafts[c.type].seatsUI | 0), 0);
+      if (!seats) continue;
+      const fit = (b.soldiers || []).filter((id) => { const x = C().findSoldier(G, id); return x && !(x.woundDays > 0); }).length;
+      if (fit < Math.min(seats, min)) return { baseId: b.id, fit, seats, arriving: arrivingSoldiers(G, b) };
+    }
+    return null;
   }
 
   // ---- primeiros passos (só no primeiro mês; G.ui.geo.stepsOff esconde) ---------------------------------------------
@@ -441,12 +494,14 @@
   };
   // eventos que só param o tempo quando o sim os marca stop (ufoLost sem perseguidores ⇒ toast)
   function classify(ev) {
+    // sem munição para rearmar: janela com «Comprar munição» (um aviso que passa não chega)
+    if (ev.t === 'craftRearmShort' && ev.what !== 'fuel') return 'popup';
     const m = REACT[ev.t] || 'debug';
     if (m === 'popup' && ev.stop === false) return 'toast';
     return m;
   }
   // tipos de janela que se juntam numa só quando ficam em fila (mesmo tipo)
-  const MERGE = { facilityDone: 1, productionDone: 1, deliveryArrived: 1, craftLost: 1 };
+  const MERGE = { facilityDone: 1, productionDone: 1, deliveryArrived: 1, craftLost: 1, craftRearmShort: 1 };
   // base perdida: as naves destruídas com ela entram no aviso «Defesa da base» em vez de uma janela cada
   function dropBaseLosses(evs) {
     const lost = evs.filter((e) => e.t === 'baseDefence' && e.result === 'lost');
@@ -539,7 +594,10 @@
     for (const r of ['council', 'debt', 'baseLost', 'cydonia']) k.push('geo.end.' + r);
     for (const r of ['busy', 'quota', 'unavailable', 'slot']) k.push('geo.save.err.' + r);
     k.push('geo.ev.researchDone.idle.one', 'geo.ev.researchDone.idle.other', 'geo.ev.craftLost.noTransport', 'geo.ev.terrorSite.eta', 'geo.ev.terrorSite.late', 'geo.ev.terrorSite.noTeam');
-    for (const p of ['day', 'dusk', 'night']) k.push('geo.ev.team.eta.' + p);
+    for (const p of ['day', 'dusk']) k.push('geo.ev.team.eta.' + p);
+    k.push('geo.ev.team.eta.night.flares.one', 'geo.ev.team.eta.night.flares.other', 'geo.ev.team.eta.night.none');
+    k.push('geo.alert.sci.one', 'geo.alert.sci.other', 'geo.alert.sciBtn', 'geo.alert.sciBtn.tip', 'geo.alert.hireBtn.tip', 'geo.alert.squad.one', 'geo.alert.squad.other', 'geo.alert.squad.arriving.one', 'geo.alert.squad.arriving.other', 'geo.alert.hireBtn');
+    k.push('geo.fix.short.one', 'geo.fix.short.other', 'geo.fix.short.arriving.one', 'geo.fix.short.arriving.other', 'geo.warn.noAmmo', 'geo.int.noAmmo.title', 'geo.int.noAmmo.body', 'geo.int.noAmmo.confirm', 'geo.int.noAmmo.go', 'geo.a.buyAmmo');
     for (const id of STEP_IDS) k.push('geo.steps.' + id);
     for (const r of ['sci', 'eng']) k.push('geo.idle.' + r + '.one', 'geo.idle.' + r + '.other');
     return k;
@@ -554,7 +612,8 @@
     targetName, craftStatusKey, ufoRows, craftRows, baseRows, siteRows, alienBaseRows, cityRows, weaponsText, etaHours,
     launchState, craftsFor, targetsFor, reasonText, warnText, fundingRows, runClock, REACT, MERGE, classify, toastFor,
     prodName, itemName, researchName, textKeys, ufoVisible, WORLD_REASONS, WORLD_WARNS, MISSION_REASONS,
-    groundTarget, teamEta, teamEtaLine, nightAt, idleStaff, nextSteps, suggestSpeed, dropBaseLosses, logTerror,
+    groundTarget, teamEta, teamEtaLine, nightAt, dayAt, idleStaff, nextSteps, suggestSpeed, dropBaseLosses, logTerror,
+    crewEstimate, arrivingSoldiers, squadShort, noAmmo,
   };
 
   // =================================================================================================================
@@ -746,6 +805,8 @@
       const basesBadge = el('span', { class: 'geo-badge hidden', 'aria-hidden': 'true', text: '!' });
       basesB.appendChild(basesBadge);
       const steps = el('div', { class: 'geo-steps hidden', role: 'status' });
+      // avisos persistentes (qualquer mês): cientistas parados, poucos soldados aptos
+      const alerts = el('div', { class: 'geo-alerts hidden', role: 'status' });
       const nudge = el('div', { class: 'geo-nudge hidden', role: 'status' });
       const acts = el('div', { class: 'geo-acts' },
         btn(T('geo.btn.intercept'), { cls: 'primary geo-int-b', icon: 'craft', key: 'I', tip: tip(T('geo.btn.intercept.tip'), 'I'), onClick: () => openIntercept({}) }),
@@ -761,6 +822,7 @@
         el('div', { class: 'geo-timebox' }, pauseB, speedBox),
         nudge,
         acts,
+        alerts,
         steps,
         lists);
       // ferramentas do globo (canto superior esquerdo)
@@ -782,7 +844,7 @@
       root.append(side, tools, card, banner, layer, hint);
       OV.Dom.$('hud').appendChild(root);
       S.side = side;
-      S.els = { date, time, funds, runDot, pauseB, speeds, lists, card, banner, layer, hint, radarB, zoomInd, fundsRow, basesB, basesBadge, steps, nudge };
+      S.els = { date, time, funds, runDot, pauseB, speeds, lists, card, banner, layer, hint, radarB, zoomInd, fundsRow, basesB, basesBadge, steps, nudge, alerts };
       if (hintSeen) hint.classList.add('hidden');
       hintSeen = true;
       setTimeout(() => { if (S.els.hint) S.els.hint.classList.add('fade'); }, 14000);
@@ -892,12 +954,15 @@
       if (force || S.sigs.auxHour !== hour) {
         S.sigs.auxHour = hour;
         S.idle = idleStaff(G);
-        const on = S.idle.sci > 0 || S.idle.eng > 0;
+        S.short = squadShort(G);
+        const on = S.idle.sci > 0 || S.idle.eng > 0 || !!S.short;
         S.els.basesBadge.classList.toggle('hidden', !on);
         S.els.basesB.classList.toggle('geo-warnb', on);
+        renderAlerts();
       }
       const ns = nextSteps(G);
       const sig = ns.show ? ns.steps.map((x) => x.id + (x.done ? 1 : 0)).join(',') : '';
+      if (sig !== S.sigs.steps) renderAlerts();
       if (!force && sig === S.sigs.steps) return;
       S.sigs.steps = sig;
       const box = S.els.steps;
@@ -909,6 +974,33 @@
       OV.Dom.tooltip(x, tip(T('geo.steps.hide')));
       box.append(el('div', { class: 'geo-steps-h' }, el('span', { text: T('geo.steps.title') }), x),
         el('ol', null, ns.steps.map((st) => el('li', { class: st.done ? 'done' : '' }, el('i', { 'aria-hidden': 'true', text: st.done ? '✓' : '' }), el('span', { text: TT('geo.steps.' + st.id) })))));
+    }
+    /* avisos persistentes no painel: ficam enquanto o problema existir (os toasts passam e os «Próximos passos» só
+       cobrem o 1.º mês). Cada linha tem a ação que o resolve. */
+    function renderAlerts() {
+      const box = S.els.alerts;
+      if (!box) return;
+      // no 1.º mês, enquanto os «Próximos passos» ainda pedem a 1.ª investigação, o aviso não se repete
+      const ns = nextSteps(G);
+      const stepAsks = ns.show && ns.steps.some((x) => x.id === 'research' && !x.done);
+      const idle = stepAsks ? { sci: 0 } : S.idle || { sci: 0 };
+      const sh = S.short;
+      const sig = (idle.sci || 0) + '|' + (sh ? sh.fit + '/' + sh.seats + '/' + (sh.arriving ? sh.arriving.n + ':' + sh.arriving.h : '') : '');
+      if (sig === S.sigs.alerts) return;
+      S.sigs.alerts = sig;
+      OV.Dom.clear(box);
+      const rows = [];
+      if (idle.sci > 0) {
+        rows.push(el('div', { class: 'geo-alert', dataset: { alert: 'sci' } }, el('span', { text: Tn('geo.alert.sci', idle.sci) }),
+          btn(T('geo.alert.sciBtn'), { cls: 'small', tip: tip(T('geo.alert.sciBtn.tip')), onClick: () => { if (isTop()) openBase(idle.baseId || G.bases[0].id, 'research', { pick: true }); } })));
+      }
+      if (sh) {
+        const txt = Tn('geo.alert.squad', sh.fit, { seats: sh.seats }) + (sh.arriving ? ' ' + Tn('geo.alert.squad.arriving', sh.arriving.n, { t: fmtDur(sh.arriving.h) }) : '');
+        rows.push(el('div', { class: 'geo-alert', dataset: { alert: 'squad' } }, el('span', { text: txt }),
+          sh.arriving ? null : btn(T('geo.alert.hireBtn'), { cls: 'small', tip: tip(T('geo.alert.hireBtn.tip')), onClick: () => { if (isTop()) openBase(sh.baseId, 'personnel'); } })));
+      }
+      box.classList.toggle('hidden', !rows.length);
+      box.append(...rows);
     }
     // lembrete do pessoal parado: um toast por dia de jogo, só com o tempo a correr (nunca uma janela)
     function idleReminder() {
@@ -1173,17 +1265,30 @@
           const sub = T(craftStatusKey(c, G)) + ' · ' + T('geo.i.fuel') + ' ' + pct(c.fuel, def.fuel) + ' % · ' + T('geo.i.hull') + ' ' + pct(c.hp, def.hp) + ' %'
             + (def.transport ? ' · ' + T('geo.i.crewN', { n: (c.soldiers || []).length, max: def.seatsUI || def.seats }) : def.weapons ? ' · ' + weaponsText(c) : '');
           let right = '', note = null;
+          const dry = !def.transport && noAmmo(c);
           if (!r.ok) note = { text: reasonText(r.reason), tone: 'bad' };
+          else if (dry) note = { text: T('geo.warn.noAmmo'), tone: 'bad' };
           else if (r.warn) note = { text: warnText(r.warn), tone: 'warn' };
           if (r.eta) right = fmtDur(r.eta.h);
           if (G.bases.length > 1) right = baseName(C().findBase(G, r.baseId)) + (right ? ' · ' + right : '');
           const dim = st.send && r.ok && !r.team ? ' dim' : '';
-          list.appendChild(rowBtn('craft' + (def.transport ? ' transport' : '') + dim, craftName(G, c), sub, right, r.ok, note, () => {
+          const pick = () => {
             if (st.target) {
               const res = commitOrder(c.id, st.target);
               if (res.ok) closeDlg();
               else { st.err = reasonText(res.reason); renderIntercept(); }
             } else { st.craftId = c.id; st.step = 'target'; renderIntercept(); }
+          };
+          list.appendChild(rowBtn('craft' + (def.transport ? ' transport' : '') + dim + (dry ? ' dry' : ''), craftName(G, c), sub, right, r.ok, note, () => {
+            if (!dry) { pick(); return; }
+            // sem munição: perguntar antes de mandar um caça desarmado
+            OV.Dom.modal({
+              title: T('geo.int.noAmmo.title'), body: OV.U.esc(T('geo.int.noAmmo.confirm', { craft: craftName(G, c) })), cls: 'alert',
+              buttons: [{ label: T('common.cancel'), value: false }, { label: T('geo.a.buyAmmo'), value: 'buy' }, { label: T('geo.int.noAmmo.go'), value: true, kind: 'danger' }],
+            }).then((v) => {
+              if (v === true) pick();
+              else if (v === 'buy') { closeDlg(); openBase(c.baseId, 'market', { item: (c.weapons || []).map((w) => w && D().craftWeapons[w.type] && D().craftWeapons[w.type].ammoItem).find(Boolean) }); }
+            });
           }));
           if (def.transport && st.target && groundTarget(G, st.target)) {
             const fix = transportFix(c);
@@ -1266,6 +1371,15 @@
             OV.Dom.toast(k.equipped ? Tn('cp.crew.equipped', k.equipped) + (k.unarmed ? ' ' + Tn('cp.crew.unarmed', k.unarmed) : '') : T('cp.br.autoKit.none'), null, k.unarmed ? 'warn' : 'good');
             renderIntercept();
           } }), kitBtn(unarmed));
+      }
+      // menos soldados do que o efetivo estimado: dizê-lo, e se há recrutas a caminho, quando chegam
+      const crew = S.dlg && S.dlg.st && S.dlg.st.target ? crewEstimate(G, S.dlg.st.target) : null;
+      if (crew && fit < (crew.max | 0)) {
+        const arr = base ? arrivingSoldiers(G, base) : null;
+        const txt = Tn('geo.fix.short', fit, { crew: OV.Screens && OV.Screens.crewText ? OV.Screens.crewText(crew) : crew.min + '–' + crew.max })
+          + (arr ? ' ' + Tn('geo.fix.short.arriving', arr.n, { t: fmtDur(arr.h) }) : '');
+        return box('warn', txt, home && idle && seats ? crewBtn(T('geo.fix.boardBtn', { n: Math.min(idle, seats) })) : null,
+          !arr && !idle ? btn(T('geo.fix.hireBtn'), { cls: 'small', onClick: () => { closeDlg(); openBase(c.baseId, 'personnel'); } }) : null);
       }
       if (home && idle && seats) return box('info', Tn('geo.fix.seats', Math.min(idle, seats)), crewBtn(T('geo.fix.boardBtn', { n: Math.min(idle, seats) })));
       return null;
@@ -1809,6 +1923,18 @@
             buttons: [{ label: T('geo.a.wait'), key: 'Enter', def: true, esc: true, act: () => {} }, { label: T('geo.a.newDest'), key: 'D', act: () => openIntercept({ craftId: c.id }) }, recall],
           };
         }
+        case 'craftRearmShort': {
+          const c = craftOf(ev);
+          if (!c) return null;
+          const items = [...new Set(evs.map((e) => e.itemId).filter(Boolean))];
+          const names = items.map((id) => (D().items[id] ? T(D().items[id].nameKey) : id)).join(', ');
+          return {
+            tone: 'warn', icon: 'craft', title: T('geo.int.noAmmo.title'), sound: 'ui_deny', focus: refOf('craft', c.id),
+            text: T('geo.int.noAmmo.body', { craft: craftName(G, c), item: names }),
+            buttons: [{ label: T('geo.a.buyAmmo'), key: 'Enter', cls: 'primary', def: true, disabled: !fn('BaseUI', 'open'), act: () => openBase(c.baseId, 'market', { item: items[0] }) },
+              Object.assign({}, ok, { key: 'Esc', def: false })],
+          };
+        }
         case 'craftLowFuel': {
           const c = craftOf(ev);
           if (!c) return null;
@@ -1846,7 +1972,8 @@
           // cientistas parados custam salário e tempo: lembra-se aqui, onde o jogador decide o próximo projeto
           let idle = 0;
           try { idle = OV.BaseSim.staff(G, ev.baseId).scientists.free | 0; } catch (e) { idle = 0; }
-          if (idle > 0 && C().availableResearch(G, ev.baseId).length) lines.push(Tn('geo.ev.researchDone.idle', idle));
+          const idleSci = idle > 0 && C().availableResearch(G, ev.baseId).length > 0;
+          if (idleSci) lines.push(Tn('geo.ev.researchDone.idle', idle));
           // a investigação que abre Cidónia: a missão final parte daqui (ou do cartão da base, ou do hangar)
           const final = evs.some((e) => (e.flags || []).indexOf('cydoniaUnlocked') >= 0) && G.flags.cydoniaUnlocked && CU();
           let cyBtn = null;
@@ -1858,9 +1985,12 @@
           return {
             tone: 'good', icon: final ? 'star' : 'lab', title: T(final ? 'geo.ev.cydonia' : 'geo.ev.researchDone'), sound: 'research_done', stinger: 'research',
             text: T('geo.ev.researchDone.body', { topic: researchName(ev.topic), base: b(ev) }), lines,
+            // com cientistas parados, «Novo projeto» é o botão por omissão (Enter): carregar Enter não os deixa parados
             buttons: [cyBtn,
-              { label: T('geo.a.viewUfopaedia'), key: 'U', cls: final ? '' : 'primary', disabled: !fn('Ufopaedia', 'open'), act: () => openUfopaedia(ev.article || ev.topic) },
-              { label: T('geo.a.newProject'), key: 'N', disabled: !fn('BaseUI', 'open'), act: () => openBase(ev.baseId, 'research', { pick: true }) }, ok].filter(Boolean),
+              { label: T('geo.a.viewUfopaedia'), key: 'U', cls: final || idleSci ? '' : 'primary', disabled: !fn('Ufopaedia', 'open'), act: () => openUfopaedia(ev.article || ev.topic) },
+              idleSci && !final ? { label: T('geo.a.newProject'), key: 'Enter', cls: 'primary', def: true, disabled: !fn('BaseUI', 'open'), act: () => openBase(ev.baseId, 'research', { pick: true }) }
+                : { label: T('geo.a.newProject'), key: 'N', disabled: !fn('BaseUI', 'open'), act: () => openBase(ev.baseId, 'research', { pick: true }) },
+              idleSci && !final ? Object.assign({}, ok, { key: 'Esc', def: false }) : ok].filter(Boolean),
           };
         }
         case 'productionDone':
@@ -2212,7 +2342,8 @@
        o relógio para e volta a janela «Equipa no local». Devolve true quando parou (opção halt do runClock). */
     function waitForDay(craftId, ref, nt) {
       const L = Array.isArray(G.ui.waitDay) ? G.ui.waitDay.filter((w) => w.craftId !== craftId) : [];
-      L.push({ craftId, kind: ref.kind, id: ref.id });
+      // until: o mesmo limite das horas anunciadas (nightAt conta até 'day', não até ao fim da noite)
+      L.push({ craftId, kind: ref.kind, id: ref.id, until: G.t + nt.h * 3600 });
       G.ui.waitDay = L;
       OV.Dom.toast(T('geo.toast.waitDay', { t: fmtDur(nt.h) }), null, 'info');
     }
@@ -2223,7 +2354,7 @@
       G.ui.waitDay = L.filter((w) => {
         const c = G.crafts[w.craftId], ref = { kind: w.kind, id: w.id };
         if (!c || c.status !== 'patrol' || c.patrol || !c.dest || c.dest.kind !== w.kind || c.dest.id !== w.id || !C().targetOf(G, ref)) return false;
-        if (nightAt(G, ref)) return true;
+        if (!dayAt(G, ref) && !(w.until && G.t >= w.until)) return true;
         enqueuePopup({ t: 'craftArrived', craftId: c.id, target: ref, prompt: 'mission', dawn: true });
         fired = true;
         return false;

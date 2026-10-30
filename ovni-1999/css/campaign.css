@@ -275,3 +275,6 @@ body:has(.cp-mr) #toasts { display: none; }
 .cp-warns li .btn { min-height: 30px; }
 .cp-kbd-help { color: var(--muted); font-size: 12.5px; }
 :root[data-palette="cvd"] .cp-warns li.warn::before { background: var(--warn-c); }
+
+/* ---- ronda de personas 2 ----------------------------------------------------------------------------------------- */
+.scr-tag.warn { color: var(--amber); }

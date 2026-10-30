@@ -530,12 +530,17 @@
     'base.toast.sacked': 'Despedimento: {n} {kind}.',
     'base.deliv.title': 'Encomendas a caminho',
     'base.deliv.none': 'Nada a caminho.',
-    'base.deliv.eta': 'chega dentro de {h} h',
+    'base.deliv.eta.one': 'chega dentro de {h} h',
+    'base.deliv.eta.other': 'chegam dentro de {h} h',
 
     // armazém
     'base.stores.sub': '{n} objetos de {kinds} tipos',
     'base.stores.over': 'O armazém está acima da capacidade: venda material ou construa outro Armazém antes de comprar mais.',
     'base.stores.units': '{u} un. de espaço',
+    'base.stores.unitsEach': '{each} un. cada · {u} no total',
+    'base.market.space': 'ocupa {u} un. cada',
+    'base.market.frees': 'liberta {u} un.',
+    'base.market.storageFull': 'Armazém sobrelotado: não pode comprar material. Venda (separador Vender: cada linha diz quanto espaço liberta) ou construa outro Armazém.',
     'base.stores.tipCount': 'Em armazém: {n}',
     'base.stores.tipSell': 'Valor de venda: {money} cada',
     'base.stores.tipArticle': 'Clique para abrir o artigo da Ufopédia.',
