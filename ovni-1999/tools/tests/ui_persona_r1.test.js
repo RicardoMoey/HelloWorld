@@ -130,7 +130,7 @@ module.exports = function (OV, t) {
       OV.LOS.isVisibleTo = vis0;
     }
     const ht = OV.T(h.key, h.params);
-    t.ok(/Rui Lopes ficou ferido mortalmente: −7/.test(ht) && /tiro de/.test(ht) && ht.indexOf(OV.T(al.nameKey)) >= 0, ht);
+    t.ok(/Rui Lopes ficou ferido: −7 de saúde e uma ferida a sangrar/.test(ht) && /tiro de/.test(ht) && ht.indexOf(OV.T(al.nameKey)) >= 0, ht);
     t.eq(h.from, BM.idx(m, 8, 8, 0), 'posição de onde o atacante disparou');
     t.eq(M.logEntry(B, { t: 'morale', kind: 'change', unitId: rui.id }, ctx), null, 'variações de moral não entram');
     const fr = M.logEntry(B, { t: 'morale', kind: 'freeze', unitId: teresa.id, pos: 0 }, ctx);

@@ -15,7 +15,8 @@
    OV.Presenter.playing ; fast (×8 até ao fim da reprodução) ; hurry() ; timeScale() ; wait(ms) ; tween(ms, fn)
    OV.Presenter.lastResult = valor devolvido pelo último gerador ; side = lado cuja velocidade está em uso
    OV.Presenter.reduceMotion (posto pela interface): câmara sem deslizar. Textos no feminino (chave + '.f') para
-   soldadas. Movimento oculto: fatias de cálculo maiores entre fotogramas (o turno alienígena acaba mais cedo). */
+   soldadas. OV.Presenter.woundTurns(u) → turnos até a hemorragia matar (0 = não sangra). Movimento oculto: fatias
+   de cálculo maiores entre fotogramas (o turno alienígena acaba mais cedo). */
 (function (OV) {
   'use strict';
 
@@ -116,6 +117,11 @@
   // variante no feminino quando existe («ferida», «morta», «paralisada»)
   const gk = (key, u) => (u && u.female && OV.T.has(key + '.f') ? key + '.f' : key);
   const isPlayer = (u) => !!u && u.side === 'xcom';
+  // turnos até a hemorragia matar (0 = não sangra)
+  function woundTurns(u) {
+    const bleed = (u.wounds || []).reduce((a, w) => a + (w | 0), 0);
+    return bleed > 0 ? Math.max(1, Math.ceil(Math.max(0, u.hp | 0) / bleed)) : 0;
+  }
   function tileVoxel(B, i, h) {
     const [x, y, z] = xyz(B, i);
     return [x * 16 + 8, y * 16 + 8, z * 24 + (h || 0)];
@@ -468,7 +474,12 @@
         if (a.token === tok) a.flash = 1 - p;
       });
     }
-    if (isPlayer(u) && ev.wounds > 0 && ev.cause !== 'wounds' && u.status !== 'dead') toast(C, gk('bs.ev.wounded', u), { name: name(u) }, 'alert');
+    if (isPlayer(u) && ev.wounds > 0 && ev.cause !== 'wounds' && u.status !== 'dead') {
+      // «gravemente» só quando a hemorragia mata em ≤ 3 turnos (cada ferida tira 1 de Saúde por turno)
+      const left = woundTurns(u);
+      const key = left > 0 && left <= 3 ? (left === 1 ? 'bs.ev.woundedNext' : 'bs.ev.woundedGrave') : 'bs.ev.wounded';
+      toast(C, gk(key, u), { name: name(u), n: left }, 'alert');
+    }
     await wait(DUR.damage);
   };
 
@@ -753,5 +764,6 @@
     hurry() { if (P.playing) P.fast = true; },
     gunOf, shotSound,
   });
+  P.woundTurns = woundTurns;
   OV.Presenter = P;
 })(globalThis.OV || (globalThis.OV = {}));

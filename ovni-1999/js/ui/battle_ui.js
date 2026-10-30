@@ -12,10 +12,12 @@
    Acessibilidade: settings.palette 'cvd' (cores seguras para daltonismo; as formas estão sempre ligadas),
    settings.reduceMotion ('auto' segue prefers-reduced-motion), settings.textScale (etiquetas do mapa; o HUD usa
    --ui-scale). Relatório «Durante o turno alienígena» no início de cada turno e registo de mensagens (N).
-   OV.BattleUI = {scene (cena ativa | null), open(B, opts), openInventory(unitId), refresh(), model: {kbStep(m, x, y,
+   OV.BattleUI = {scene (cena ativa | null), open(B, opts), openInventory(unitId), refresh(), abort() (pede confirmação,
+     como o botão e a tecla X), model: {kbStep(m, x, y,
      dir, anchor) → {x, y, anchor}, logEntry(B, ev, ctx) → entrada|null, blastConfirm(settings, difficulty) → bool,
      handName(type) → texto curto, confirmEarly(pointerType, detail, dtMs) → bool (2.º clique de um duplo clique ou
-     depressa demais não confirma um explosivo)}, debug: {tileToScreen(x,y,z), unitScreen(id), selectAndMove(id,x,y,z) → Promise,
+     depressa demais não confirma um explosivo), reportSummary(rows) → texto, turnReportRows(entradas) → linhas do
+     relatório do turno (turno alienígena + secção «No início do turno X-COM»)}, debug: {tileToScreen(x,y,z), unitScreen(id), selectAndMove(id,x,y,z) → Promise,
      state(), hover(x,y), perf() → {fps, avg, p95, chunks, sprites}|null (só com ?debug=1, que também mostra a leitura
      no topo do ecrã), showAll(on) (só a vista), centre(x,y,z) (câmara), log() → [entrada], kb(x,y,z) (cursor de
      teclado), noteEvent(ev), report('turn'|'log'), grenades() → n (aviso de granadas alienígenas, Recruta)}} */
@@ -126,6 +128,8 @@
   const tk = (key) => (isTouch() && OV.T.has(key + '.touch') ? key + '.touch' : key);
   const confirmVia = () => (S && S.kcur && S.kcur.armed ? 'key' : isTouch() ? 'tap' : 'click');
   const isMac = () => !!(OV.Input && OV.Input.isMac);
+  // «Toque / Clique / Enter de novo para disparar|lançar» pelo meio de entrada em uso
+  const confirmKey = (base) => (confirmVia() === 'tap' ? base : base + '.' + confirmVia());
   // tiro forçado: ⌘ no Mac (lá Ctrl+clique é o clique secundário), Ctrl nos outros sistemas
   const forceMods = (m) => !!(m && (m.meta || (!isMac() && m.ctrl)));
   const forceKey = (key) => key === 'Meta' || (!isMac() && key === 'Control');
@@ -287,8 +291,14 @@
     const list = squad().filter(selectable);
     if (!list.length) return;
     const ok = onlyTU === false ? list : list.filter(hasTU);
+    // quem está em pânico é saltado: dizê-lo uma vez por turno (senão o Tab parece avariado)
+    const panicked = list.filter((u) => u.status === 'panic').length;
+    if (panicked && S.panicNote !== S.B.turn) {
+      S.panicNote = S.B.turn;
+      toast(Tn('hud.panicSkip', panicked), null, 'warn');
+    }
     if (!ok.length) {
-      toast('hud.noTUSoldiers', null, 'info');
+      if (!panicked) toast('hud.noTUSoldiers', null, 'info');
       return;
     }
     let k = list.findIndex((u) => u.id === S.selId);
@@ -725,7 +735,7 @@
     }
     if (S.tapLock === toI && !T0.blocked) {
       const risk = T0.blast && T0.blast.risk && blastConfirm(settings(), S.B.mission && S.B.mission.difficulty) ? T0.blast.risk : 0;
-      T0.sub = risk ? Tn('hud.confirmBlast.' + confirmVia(), risk, { n: risk }) : T('hud.confirmFire');
+      T0.sub = risk ? Tn('hud.confirmBlast.' + confirmVia(), risk, { n: risk }) : T(confirmKey('hud.confirmFire'));
       T0.subCol = risk ? 'out' : null;
       T0.lock = true;
     }
@@ -770,7 +780,7 @@
     if (ok && S.tapLock === i) {
       const risk = blast && blast.risk && blastConfirm(settings(), S.B.mission && S.B.mission.difficulty) ? blast.risk : 0;
       if (risk) sub = Tn('hud.confirmBlast.' + confirmVia(), risk, { n: risk });
-      else label = T('hud.confirmFire') + ' · ' + label;
+      else label = T(confirmKey('hud.confirmThrow')) + ' · ' + label;
     }
     S.view.throwInfo = { toI, ok, label, range, from: { x: u.x, y: u.y, z: u.z }, blast, sub, lock: ok && S.tapLock === i };
   }
@@ -803,10 +813,25 @@
   }
 
   // ---- modos ------------------------------------------------------------------------------------------------
+  /* a dica permanente do cursor de teclado (setas, Enter…) fica KB_HINT_MS à vista no início de cada turno e some
+     (não tapa os soldados do fundo do ecrã o combate inteiro); ? volta a mostrá-la. As dicas de apontar/lançar ficam. */
+  const KB_HINT_MS = 6000;
   function setHint(text) {
     if (!S.hud) return;
-    S.hud.hint.textContent = text || '';
-    S.hud.hint.classList.toggle('on', !!text);
+    let t = text || '';
+    if (t && t === T('hud.hint.kb')) {
+      const now = realNow();
+      if (!S.kbHint || S.kbHint.turn !== S.B.turn) S.kbHint = { turn: S.B.turn, until: now + KB_HINT_MS };
+      if (now >= S.kbHint.until) t = '';
+    }
+    S.hud.hint.textContent = t;
+    S.hud.hint.classList.toggle('on', !!t);
+  }
+  // ? : mostrar de novo a dica do teclado durante KB_HINT_MS
+  function showKbHint() {
+    if (!S || !S.hud) return;
+    S.kbHint = { turn: S.B.turn, until: realNow() + KB_HINT_MS };
+    setHint(modeHint());
   }
   function cancelMode(silent) {
     const was = S.mode !== 'move' || S.lock >= 0;
@@ -1239,7 +1264,7 @@
     if (u) select(u.id, { centre: true, quiet: true });
     // o que aconteceu aos nossos durante o turno alienígena (os avisos passam depressa demais)
     // e as granadas alienígenas ativadas à vista (Recruta): a mesma janela, com «Mostrar» a centrar em cada uma
-    const hurt = S.log.slice(mark).filter((e) => e.side !== 'xcom' && e.own).concat(warnGrenades());
+    const hurt = turnReportRows(S.log.slice(mark)).concat(warnGrenades());
     if (hurt.length) openReport('turn', hurt);
   }
   /* Recruta: granadas alienígenas ativadas no chão à vista (rebentam no fim deste turno) ficam com o raio marcado
@@ -1418,6 +1443,10 @@
         lastTurn = e.turn + ':' + e.side;
         listEl.appendChild(el('div', { class: 'bs-report-turn', text: T('hud.log.turn', { n: e.turn, side: T('bs.side.' + e.side) }) }));
       }
+      if (e.kind === 'sect') {
+        listEl.appendChild(el('div', { class: 'bs-report-turn', text: T(e.key) }));
+        continue;
+      }
       // atacante não visto que agora está à vista (o clarão do disparo revelou-o): dizê-lo e mostrar onde está
       const rev = kind === 'turn' ? revealed(e) : null;
       const row = el('div', { class: 'bs-report-row ' + e.kind },
@@ -1467,14 +1496,24 @@
     openReport('tips', tipRows());
   }
   function reportSummary(rows) {
-    // por soldado: quem morreu não conta também como ferido
+    // por soldado: quem morreu não conta também como ferido; pânico/descontrolo do início do turno à parte
     const deadN = new Set(rows.filter((e) => /^hud\.log\.kia/.test(e.key)).map((e) => e.params.name));
     const hurtN = new Set(rows.filter((e) => (/^hud\.log\.hit/.test(e.key) || /^hud\.log\.stunned/.test(e.key)) && !deadN.has(e.params.name)).map((e) => e.params.name));
-    const dead = deadN.size, hurt = hurtN.size;
+    const panicN = new Set(rows.filter((e) => /^bs\.morale\./.test(e.key) && !deadN.has(e.params.name)).map((e) => e.params.name));
+    const dead = deadN.size, hurt = hurtN.size, panic = panicN.size;
     const parts = [];
     if (dead) parts.push(Tn('hud.report.dead', dead));
     if (hurt) parts.push(Tn('hud.report.hurt', hurt));
+    if (panic) parts.push(Tn('hud.report.panic', panic));
     return parts.join(' · ');
+  }
+  /* entradas do registo desde o fim do turno X-COM → linhas do relatório: o que aconteceu aos nossos no turno
+     alienígena e, à parte, no início do turno X-COM (pânico, descontrolo, mortes por hemorragia) */
+  function turnReportRows(entries) {
+    const rows = entries.filter((e) => e.own && e.side !== 'xcom');
+    const start = entries.filter((e) => e.own && e.side === 'xcom');
+    if (start.length) rows.push({ key: 'hud.report.turnStart', params: null, kind: 'sect', at: -1, from: -1 }, ...start);
+    return rows;
   }
 
   // início de um turno do jogador sem gerador ativo: avisa quem abriu a cena (gravação automática da campanha)
@@ -1684,7 +1723,7 @@
     H.bGrenade = btn('', 'grenade', T('hud.btn.grenade'), 'G', () => cmdQuickThrow('grenade'), T('hud.tip.grenade'));
     H.bFlare = btn('', 'flare', T('hud.btn.flare'), 'L', () => cmdQuickThrow('flare'));
     H.bOpts = btn('', 'options', T('hud.btn.options'), 'Esc', openOptions);
-    H.bAbort = btn('danger', 'abort', T('hud.btn.abort'), null, abortMission, T('hud.tip.abort'));
+    H.bAbort = btn('danger', 'abort', T('hud.btn.abort'), 'X', abortMission, T('hud.tip.abort'));
     H.grid = el('div', { class: 'bs-grid' }, H.bKneel, H.bInv, H.bReload, H.bGrenade, H.bFlare, H.bMap, H.bPrev, H.bNext, H.bDone, H.bCentre, H.bOpts, H.bAbort);
     H.tools.append(H.level, H.grid);
 
@@ -1890,6 +1929,10 @@
         el('span', { class: 'bs-sq-rank r' + (u.rank | 0), text: rankAbbr(u) || '·' }),
         el('span', { class: 'bs-sq-name', text: uname(u) }),
         el('span', { class: 'bs-sq-bars' }, el('i', { class: 'tu', style: { width: tuPct.toFixed(0) + '%' } }), el('i', { class: 'hp', style: { width: hpPct.toFixed(0) + '%' } })));
+      // pânico: ícone e texto (não só a cor da risca), também para leitores de ecrã
+      const panic = alive && u.status === 'panic';
+      if (panic) row.appendChild(el('span', { class: 'bs-sq-st', 'aria-hidden': 'true' }, el('b', { text: '⚠' }), T('hud.sq.panic')));
+      const st = alive ? '' : u.status === 'dead' ? T(gk('bs.ev.kia', u), { name: uname(u) }) : u.mia ? T(gk('bs.status.mia', u)) : T('bs.status.stunned');
       if (alive) {
         row.addEventListener('click', () => {
           if (!S || S.playing || S.ended) return;
@@ -1898,9 +1941,11 @@
         row.addEventListener('dblclick', () => S && centreUnit(u));
         tip(row, uname(u), null, (rankName(u) ? rankName(u) + ' · ' : '') + T('hud.bar.tu') + ' ' + (u.tu | 0) + ' · ' + T('hud.bar.hp') + ' ' + (u.hp | 0) + ' — ' + T(tk('hud.tip.squad')));
       } else {
-        const st = u.status === 'dead' ? T(gk('bs.ev.kia', u), { name: uname(u) }) : u.mia ? T(gk('bs.status.mia', u)) : T('bs.status.stunned');
         tip(row, uname(u), null, st);
       }
+      // nome acessível com o estado (depois de tip, que o põe só com o nome)
+      row.setAttribute('aria-label', !alive ? (u.status === 'dead' ? st : T('hud.sq.gone.aria', { name: uname(u), st }))
+        : panic ? T('hud.sq.panic.aria', { name: uname(u) }) : hasTU(u) ? T('hud.sq.aria', { name: uname(u), tu: u.tu | 0, hp: u.hp | 0 }) : T('hud.sq.spent.aria', { name: uname(u) }));
       H.squad.appendChild(row);
     }
   }
@@ -2654,7 +2699,8 @@
       case 'j': toggleReserveKneel(); return true;
       case 'n': openReport('log'); return true;
       case 't': kbTurn(); return true;
-      case '?': openKeys(); return true;
+      case 'x': if (!m.shift) abortMission(); return true;
+      case '?': showKbHint(); openKeys(); return true;
       default: break;
     }
     return isPanKey(code, m);
@@ -2707,6 +2753,8 @@
     if (!S) return;
     const now = realNow();
     S.view.time = now;
+    // a dica do teclado some passado o seu tempo (sem esperar por outra tecla)
+    if (S.kbHint && now >= S.kbHint.until && S.hud && S.hud.hint.classList.contains('on') && S.hud.hint.textContent === T('hud.hint.kb')) setHint(kbHint());
     // Espaço seguro desde antes de a reprodução começar também acelera (o apresentador repõe fast ao arrancar)
     if (S.spaceDown && S.playing && OV.Presenter.playing && !OV.Presenter.fast) OV.Presenter.fast = true;
     const sc = OV.Presenter.playing ? OV.Presenter.timeScale() : 1;
@@ -2992,6 +3040,7 @@
         miniOn: !!S.miniOn,
         kcur: S.kcur.armed ? { x: S.kcur.x, y: S.kcur.y, z: S.view.viewZ } : null, tapLock: S.tapLock,
         pathSub: S.view.path ? S.view.path.sub || null : null, hint: S.hud ? S.hud.hint.textContent : '',
+        targetLabel: S.view.target && S.view.targetLabel ? Object.assign({}, S.view.targetLabel) : null,
         report: S.report ? { kind: S.report.kind, rows: Array.from(S.hud.report.querySelectorAll('.bs-report-txt')).map((n) => n.textContent) } : null,
       };
     },
@@ -3058,7 +3107,9 @@
     },
     openInventory,
     refresh() { if (S) invalidate(); },
-    model: { kbStep, logEntry, blastConfirm, handName, confirmEarly },
+    // abortar a missão (com a confirmação de sempre): botão do HUD, tecla X e o painel Opções (Esc)
+    abort() { if (S) abortMission(); },
+    model: { kbStep, logEntry, blastConfirm, handName, confirmEarly, reportSummary, turnReportRows },
     debug,
   };
 })(globalThis.OV || (globalThis.OV = {}));

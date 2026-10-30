@@ -14,7 +14,10 @@
    OV.InventoryUI.equipScreen(container, {squad, stores, onChange, night?, selectedId?, researched?}) → controlador
      (researched: G.researched da campanha | null = tudo conhecido; omitido = OV.Game.G.researched)
    OV.InventoryUI.model = {autoLoadout(soldier, stores, opts) → loadout, armedLo(loadout) → bool (arma que dispara),
-     loadPlan(loadout) → {R, L}: {slot, k, type}|null (carregador que entra em cada arma, como BUnits.autoLoad)}
+     loadPlan(loadout) → {R, L}: {slot, k, type}|null (carregador que entra em cada arma, como BUnits.autoLoad),
+     inWeapon(loadout) → {belt:Set(k), pack:Set(k)}, visibleIn(loadout, slot) → [tipos que ocupam espaço],
+     eqMove(loadout, from, k, type, to) → {ok, lo, back[], label?}|{ok:false, reason}, settleOrder(loadout) → loadout
+     (ordem guardada: o carregador «na arma» que é o único compatível do cinto passa para o fim)}
      squad = [{id, name, rank, stats{str,tu,hp…}, armour, portraitSeed, female, nat, loadout{R,L,belt[],pack[]}}]
      stores = {tipoDeItem: quantidade}. Trabalha sobre cópias (sem UT; o armazém é a reserva) e chama
      onChange({loadouts: {id: loadout}, stores}) a cada alteração; quem chama aplica-as ao jogo.
@@ -1265,8 +1268,15 @@
     let t = list.find((x) => x.id === V.med.patientId) || list[0] || u;
     V.med.patientId = t.id;
     const wounded = [0, 1, 2, 3, 4, 5].filter((p) => (t.wounds[p] | 0) > 0);
-    if (V.med.part === null || !(t.wounds[V.med.part] > 0)) V.med.part = wounded.length ? wounded[0] : null;
+    // parte escolhida à mão (setas ↑/↓, clique) fica; sem escolha (ou curada) → a 1.ª ferida
+    if (V.med.part === null || (!V.med.pinned && !(t.wounds[V.med.part] > 0))) {
+      V.med.part = wounded.length ? wounded[0] : null;
+      V.med.pinned = false;
+    }
     const part = V.med.part;
+    // botão com o foco real (Tab, clique): volta a tê-lo depois de redesenhar
+    const fa = document.activeElement;
+    if (fa && host.contains(fa) && fa.tagName === 'BUTTON') V.medFocus = medKey(fa);
     OV.Dom.hideTooltip();
     OV.Dom.clear(host);
     const card = V.mode === 'med' ? host : el('div', { class: 'medk panel' });
@@ -1286,10 +1296,12 @@
         el('span', { class: 'nm', text: p === u ? T('hud.medk.self', { name: unitName(p) }) : unitName(p) }),
         el('span', { class: 'st', text: (p.status === 'out' ? T('hud.medk.out') + ' · ' : '') + T('hud.medk.hp', { hp: Math.max(0, p.hp | 0), max: p.hpMax | 0 }) }),
         w ? el('span', { class: 'wd', text: String(w) }) : null);
+      b.setAttribute('aria-pressed', p.id === t.id ? 'true' : 'false');
       b.addEventListener('click', () => {
         if (!V || !V.med) return;
         V.med.patientId = p.id;
         V.med.part = null;
+        V.med.pinned = false;
         sfx('ui_click');
         renderMed();
       });
@@ -1303,16 +1315,19 @@
       const g = e.target.closest && e.target.closest('[data-part]');
       if (!g || !V || !V.med) return;
       V.med.part = +g.dataset.part;
+      V.med.pinned = true;
       sfx('ui_click');
       renderMed();
     });
     const partList = el('div', { class: 'medk-parts' });
     for (let p = 0; p < PARTS; p++) {
       const w = t.wounds[p] | 0;
-      const b = el('button', { class: 'medk-pb' + (w ? ' hurt' : '') + (p === part ? ' on' : ''), type: 'button', dataset: { part: String(p) } },
+      const b = el('button', { class: 'medk-pb' + (w ? ' hurt' : '') + (p === part ? ' on' : ''), type: 'button', dataset: { part: String(p) },
+        'aria-pressed': p === part ? 'true' : 'false', 'aria-label': T(p === part ? 'hud.medk.partSel' : 'hud.medk.partBtn', { part: T('hud.medk.part.' + p), n: w }) },
         el('span', { text: T('hud.medk.part.' + p) }), el('b', { text: String(w) }));
       b.addEventListener('click', () => {
         V.med.part = p;
+        V.med.pinned = true;
         sfx('ui_click');
         renderMed();
       });
@@ -1352,12 +1367,16 @@
     if (mv.steps.length) treat.appendChild(el('div', { class: 'medk-move', text: T('hud.medk.takeKit', { hand: T('inv.' + mv.hand).toLowerCase(), tu: mv.tu }) }));
     else if (mv.blocked) treat.appendChild(el('div', { class: 'medk-move bad', text: T('hud.handsFull') }));
     card.appendChild(el('div', { class: 'medk-main' }, el('div', { class: 'medk-left' }, fig, partList), el('div', { class: 'medk-right' }, stats, treat)));
+    // as teclas do painel, à vista (no toque: a sequência de toques)
+    const touchUI = isTouch() || (typeof matchMedia === 'function' && matchMedia('(hover: none)').matches);
+    card.appendChild(el('div', { class: 'medk-keys', text: T(touchUI ? 'hud.medk.keys.touch' : 'hud.medk.keys') }));
     if (V.medFlash) {
       const f = card.querySelector('.medk-' + V.medFlash);
       if (f) f.classList.add('flash');
       V.medFlash = null;
     }
     restoreFocus(V, card);
+    medRefocus(card);
   }
   async function doMed(kind) {
     if (!V || !V.med || V.busy) return;
@@ -1372,44 +1391,78 @@
       return;
     }
     V.medFlash = kind === 'heal' ? 'fig' : 'stats';
+    // curada a parte escolhida, o painel passa à ferida seguinte
+    if (kind === 'heal') V.med.pinned = false;
     await run(p.steps);
   }
+  /* teclado do kit médico, como o painel se vê: ←/→ mudam de ferido (a fila de pacientes é horizontal), ↑/↓ de
+     parte do corpo (a lista é vertical); 1/2/3 tratam; Tab / ⇧Tab percorrem os botões do painel (foco real, preso
+     no painel) e Enter/Espaço ativam o botão com foco — sem foco num botão, Enter cura a parte escolhida. */
+  const MED_PARTS = [0, 1, 2, 3, 4, 5];
   function keyMed(ev) {
     const key = ev.key;
     const lk = key.length === 1 ? key.toLowerCase() : key;
     if (key === 'Escape' || (lk === 'i' && V.mode === 'med')) { closeMed(); return true; }
     if (lk === 'i') { closeInv(); return true; }
+    const host = V.mode === 'med' ? V.panel : V.medHost;
+    const btns = host ? Array.from(host.querySelectorAll('button')).filter((b) => !b.disabled && b.offsetParent !== null) : [];
+    const act = document.activeElement;
+    if (key === 'Tab') {
+      if (!btns.length) return true;
+      const k = btns.indexOf(act);
+      const dir = ev.mods && ev.mods.shift ? -1 : 1;
+      const n = btns[k < 0 ? (dir > 0 ? 0 : btns.length - 1) : (k + dir + btns.length) % btns.length];
+      n.focus({ preventScroll: true });
+      n.scrollIntoView({ block: 'nearest' });
+      V.medFocus = medKey(n);
+      return true;
+    }
+    if ((key === 'Enter' || key === ' ') && act && btns.indexOf(act) >= 0) return false;
     if (V.busy) return true;
     const code = ev.code || '';
     const dm = /^(?:Digit|Numpad)([1-3])$/.exec(code);
     if (dm) { doMed(['heal', 'stim', 'pain'][+dm[1] - 1]); return true; }
     const u = cur();
     if (!u) return true;
-    if (key === 'ArrowUp' || key === 'ArrowDown') {
+    if (key === 'ArrowLeft' || key === 'ArrowRight') {
       const list = patients(u);
       if (list.length > 1) {
         let k = list.findIndex((x) => x.id === V.med.patientId);
-        k = (k + (key === 'ArrowDown' ? 1 : -1) + list.length) % list.length;
+        k = (k + (key === 'ArrowRight' ? 1 : -1) + list.length) % list.length;
         V.med.patientId = list[k].id;
         V.med.part = null;
+        V.med.pinned = false;
+        V.medFocus = 'pid:' + list[k].id;
+        if (act && act.blur) act.blur();
         sfx('ui_click');
         renderMed();
-      }
+      } else sfx('ui_deny', { vol: 0.5 });
       return true;
     }
-    if (key === 'ArrowLeft' || key === 'ArrowRight') {
-      const t = unitOf(V.med.patientId);
-      const ws = [0, 1, 2, 3, 4, 5].filter((p) => t && (t.wounds[p] | 0) > 0);
-      const pool = ws.length ? ws : [0, 1, 2, 3, 4, 5];
-      let k = pool.indexOf(V.med.part);
-      k = (k + (key === 'ArrowRight' ? 1 : -1) + pool.length) % pool.length;
-      V.med.part = pool[k];
+    if (key === 'ArrowUp' || key === 'ArrowDown') {
+      let k = MED_PARTS.indexOf(V.med.part);
+      k = k < 0 ? 0 : (k + (key === 'ArrowDown' ? 1 : -1) + MED_PARTS.length) % MED_PARTS.length;
+      V.med.part = MED_PARTS[k];
+      V.med.pinned = true;
+      V.medFocus = 'part:' + V.med.part;
+      if (act && act.blur) act.blur();
       sfx('ui_click', { vol: 0.5 });
       renderMed();
       return true;
     }
     if (key === 'Enter' || key === ' ') { doMed('heal'); return true; }
     return true;
+  }
+  // chave estável de um botão do painel (para lhe devolver o foco depois de redesenhar)
+  const medKey = (n) => (n.dataset.pid ? 'pid:' + n.dataset.pid : n.dataset.part ? 'part:' + n.dataset.part : n.dataset.act ? 'act:' + n.dataset.act : null);
+  // depois de redesenhar o painel: o foco real volta ao mesmo botão (paciente, parte ou tratamento)
+  function medRefocus(card) {
+    const k = V && V.medFocus;
+    if (!k) return;
+    const [kind, v] = [k.slice(0, k.indexOf(':')), k.slice(k.indexOf(':') + 1)];
+    const sel = kind === 'pid' ? '[data-pid="' + v + '"]' : kind === 'part' ? '.medk-pb[data-part="' + v + '"]' : '[data-act="' + v + '"]';
+    const n = card.querySelector(sel);
+    if (n) n.focus({ preventScroll: true });
   }
 
   /* =============================================================================================================
@@ -1584,12 +1637,14 @@
       return true;
     };
     const place = (t) => {
+      // o carregador que entra na arma não ocupa espaço (ver inWeapon)
       for (const slot of ['belt', 'pack']) {
-        if (D().fitsSlot(t, slot, lo[slot]) && take(t)) {
-          lo[slot].push(t);
+        lo[slot].push(t);
+        if (slotFits(lo, slot) && take(t)) {
           w += weightOf(t, null);
           return true;
         }
+        lo[slot].pop();
       }
       return false;
     };
@@ -1626,11 +1681,11 @@
     }
     if (opt.night && have('electro_flare') && w + weightOf('electro_flare', null) <= str) place('electro_flare');
     const best = squad.slice().sort((a, b) => ((b.stats && b.stats.hp) | 0) - ((a.stats && a.stats.hp) | 0))[0];
-    if (best && best.id === s.id && have('medikit') && w + weightOf('medikit', null) <= str && D().fitsSlot('medikit', 'pack', lo.pack) && take('medikit')) {
+    if (best && best.id === s.id && have('medikit') && w + weightOf('medikit', null) <= str && D().fitsSlot('medikit', 'pack', visibleIn(lo, 'pack')) && take('medikit')) {
       lo.pack.push('medikit');
       w += weightOf('medikit', null);
     }
-    return lo;
+    return settleOrder(lo);
   }
 
   // equipamento com uma arma de fogo que dispara: sem carregadores ou com carregador próprio na mochila/cinto
@@ -1663,13 +1718,119 @@
     }
     return out;
   }
-  // arma na mão com munição própria: o carregador largado nela vai para o cinto (ou a mochila) → compartimento | null
-  function loadSlot(lo, hand, type) {
-    const gd = lo && lo[hand] ? defOf(lo[hand]) : null;
+  /* O carregador «na arma» (loadPlan) continua na lista do cinto/mochila do equipamento — é dali que o motor o tira
+     para a arma no início da missão — mas não ocupa espaço: o cinto do «Equipar» é o cinto do combate. */
+  function inWeapon(lo) {
+    const plan = loadPlan(lo);
+    const out = { belt: new Set(), pack: new Set() };
+    for (const h of ['R', 'L']) if (plan[h]) out[plan[h].slot].add(plan[h].k);
+    return out;
+  }
+  // tipos que ocupam o compartimento (sem os carregadores que vão dentro das armas)
+  function visibleIn(lo, slot) {
+    const iw = inWeapon(lo)[slot];
+    return ((lo && lo[slot]) || []).filter((_, k) => !iw.has(k));
+  }
+  // o que ocupa o compartimento cabe nele?
+  function slotFits(lo, slot) {
+    const acc = [];
+    for (const t of visibleIn(lo, slot)) {
+      if (!D().fitsSlot(t, slot, acc)) return false;
+      acc.push(t);
+    }
+    return true;
+  }
+  /* ordem guardada: o carregador «na arma» que é o único compatível do cinto vai para o fim da lista. O motor põe o
+     cinto pela ordem e manda o que não cabe para a mochila, de onde autoLoad o tira na mesma — assim o cinto do
+     combate fica igual ao do ecrã mesmo cheio (não muda a escolha de loadPlan). */
+  function settleOrder(lo) {
+    const plan = loadPlan(lo);
+    for (const h of ['R', 'L']) {
+      const p = plan[h];
+      if (!p || p.slot !== 'belt') continue;
+      const gd = defOf(lo[h]);
+      const others = lo.belt.some((t, j) => j !== p.k && gd.ammo.indexOf(t) >= 0);
+      if (!others) lo.belt.push(lo.belt.splice(p.k, 1)[0]);
+    }
+    return lo;
+  }
+  /* mover um objeto no «Equipar» (pura). from = 'stores' | 'R' | 'L' | 'belt' | 'pack' (k = índice na lista), to =
+     'stores' | compartimento. Munição largada numa arma ocupada carrega-a (ou fica de reserva no cinto/mochila); uma
+     arma que sai das mãos para o armazém leva o carregador que tinha dentro; um carregador que deixa de estar «na
+     arma» e já não cabe volta ao armazém. → {ok, lo, back:[tipos para o armazém], label?: 'load'|'spare'|'stores'} |
+     {ok:false, reason: 'occupied'|'noFit'|'tooBig'} */
+  function eqMove(lo0, from, k, type, to) {
+    if (!lo0 || !type || to === from) return { ok: false, reason: 'same' };
+    const before = loadPlan(lo0);
+    const lo = cloneLo(lo0);
+    if (from === 'R' || from === 'L') lo[from] = null;
+    else if (from !== 'stores') lo[from].splice(k, 1);
+    const back = [];
+    let label = null;
+    // carregadores que estavam dentro de uma arma e deixaram de estar (a arma saiu da mão)
+    const freed = () => {
+      const now = loadPlan(lo);
+      const out = [];
+      for (const h of ['R', 'L']) {
+        const b = before[h];
+        if (!b) continue;
+        const still = ['R', 'L'].some((x) => now[x] && now[x].type === b.type && now[x].slot === b.slot);
+        if (!still) out.push(b);
+      }
+      return out;
+    };
+    const dropFreed = (all) => {
+      for (const b of freed()) {
+        if (!all && slotFits(lo, b.slot)) continue;
+        // tira um exemplar desse tipo que esteja à vista no compartimento (o último)
+        const iw = inWeapon(lo)[b.slot];
+        let j = -1;
+        for (let x = lo[b.slot].length - 1; x >= 0 && j < 0; x--) if (lo[b.slot][x] === b.type && !iw.has(x)) j = x;
+        if (j < 0) continue;
+        lo[b.slot].splice(j, 1);
+        back.push(b.type);
+      }
+    };
+    if (to === 'stores') {
+      back.push(type);
+      label = 'stores';
+      // a arma volta ao armazém com o carregador que tinha dentro
+      if (from === 'R' || from === 'L') dropFreed(true);
+      return { ok: true, lo: settleOrder(lo), back, label };
+    }
+    if (to === 'R' || to === 'L') {
+      if (lo[to]) {
+        const gd = defOf(lo[to]), d = defOf(type);
+        if (!gd || !d || d.kind !== 'ammo' || !Array.isArray(gd.ammo) || gd.ammo.indexOf(type) < 0) return { ok: false, reason: 'occupied' };
+        if (!loadPlan(lo)[to]) {
+          // arma vazia: o carregador vai para dentro dela (não ocupa espaço)
+          lo.belt.push(type);
+          label = 'load';
+        } else {
+          let put = null;
+          for (const sl of ['belt', 'pack']) {
+            lo[sl].push(type);
+            if (slotFits(lo, sl)) { put = sl; break; }
+            lo[sl].pop();
+          }
+          if (!put) return { ok: false, reason: 'noFit' };
+          label = 'spare';
+        }
+      } else {
+        if (!equipable(type)) return { ok: false, reason: 'noFit' };
+        lo[to] = type;
+      }
+      dropFreed(false);
+      return { ok: true, lo: settleOrder(lo), back, label };
+    }
+    if (!lo[to]) return { ok: false, reason: 'noFit' };
     const d = defOf(type);
-    if (!gd || !d || d.kind !== 'ammo' || !Array.isArray(gd.ammo) || gd.ammo.indexOf(type) < 0) return undefined;
-    for (const sl of ['belt', 'pack']) if (D().fitsSlot(type, sl, lo[sl])) return sl;
-    return null;
+    if (!d || (d.size || 1) > (D().invSlots[to].maxSize | 0)) return { ok: false, reason: 'tooBig' };
+    if (!D().fitsSlot(type, to, [])) return { ok: false, reason: 'noFit' };
+    lo[to].push(type);
+    dropFreed(false);
+    if (!slotFits(lo, to)) return { ok: false, reason: 'noFit' };
+    return { ok: true, lo: settleOrder(lo), back, label };
   }
 
   function equipScreen(container, options) {
@@ -1683,7 +1844,7 @@
       loadouts: {}, stores: {}, selId: o.selectedId !== undefined ? o.selectedId : squad.length ? squad[0].id : null, clip: null,
       hoverSrc: null, kbd: false, focusEl: null, focusKey: null,
     };
-    for (const s of squad) E.loadouts[s.id] = cloneLo(s.loadout);
+    for (const s of squad) E.loadouts[s.id] = settleOrder(cloneLo(s.loadout));
     for (const k of Object.keys(o.stores || {})) if ((o.stores[k] | 0) > 0) E.stores[k] = o.stores[k] | 0;
     // raiz = contentor de consultas (@container eq): o arranjo segue a largura disponível, não a do ecrã
     const root = el('div', { class: 'inv-equip' });
@@ -1712,49 +1873,35 @@
       if (!l || !(slot in l)) return null;
       return slot === 'R' || slot === 'L' ? l[slot] : l[slot][+k] || null;
     }
-    function removeSrc(src) {
+    // origem do objeto escolhido → [compartimento, índice]
+    function srcSlot(src) {
+      if (src.startsWith('st:')) return ['stores', -1];
       const [, slot, k] = src.split(':');
-      const l = lo();
-      if (slot === 'R' || slot === 'L') l[slot] = null;
-      else l[slot].splice(+k, 1);
+      return [slot, +k];
     }
     function eqPreview(src, drop) {
       const type = srcType(src);
       if (!type || !lo()) return null;
       const to = drop.slice(5);
-      const fromSlot = src.startsWith('st:') ? 'stores' : src.split(':')[1];
-      if (to === fromSlot) return null;
-      if (to === 'stores') return { ok: true, label: T('hud.equip.toStores') };
-      const l = lo();
-      if (to === 'R' || to === 'L') {
-        if (l[to]) {
-          // munição do armazém largada na arma: carrega-a (ou fica de reserva, se a arma já parte carregada)
-          const ls = fromSlot === 'stores' ? loadSlot(l, to, type) : undefined;
-          if (ls === null) return { ok: false, label: T('hud.inv.noFit'), reason: T('bs.noRoom') };
-          if (ls) return { ok: true, label: T(loadPlan(l)[to] ? 'hud.equip.spare' : 'hud.equip.load') };
-          return { ok: false, label: T('hud.inv.occupied'), reason: T('bs.slotFull') };
-        }
-        return equipable(type) ? { ok: true, label: '' } : { ok: false, label: T('hud.inv.noFit'), reason: T('bs.noRoom') };
-      }
-      const contents = l[to].slice();
-      if (fromSlot === to) return null;
-      if (!D().fitsSlot(type, to, contents)) return { ok: false, label: T('hud.inv.noFit'), reason: sizeOf(type) > (D().invSlots[to].maxSize | 0) ? T('hud.equip.tooBig', { slot: T('inv.' + to) }) : T('bs.noRoom') };
-      return { ok: true, label: '' };
+      const [from, k] = srcSlot(src);
+      if (to === from) return null;
+      const r = eqMove(lo(), from, k, type, to);
+      if (r.ok) return { ok: true, label: r.label === 'stores' ? T('hud.equip.toStores') : r.label ? T('hud.equip.' + r.label) : '' };
+      if (r.reason === 'occupied') return { ok: false, label: T('hud.inv.occupied'), reason: T('bs.slotFull') };
+      return { ok: false, label: T('hud.inv.noFit'), reason: r.reason === 'tooBig' ? T('hud.equip.tooBig', { slot: T('inv.' + to) }) : T('bs.noRoom') };
     }
     function eqCommit(src, drop) {
       const type = srcType(src);
       const to = drop.slice(5);
-      const l = lo();
-      if (!type || !l) return;
-      // munição largada numa arma ocupada: vai para o compartimento de onde a arma a carrega
-      const slot = (to === 'R' || to === 'L') && l[to] ? loadSlot(l, to, type) : to;
-      if (!slot) return;
-      if (src.startsWith('st:')) {
-        if (!take(type)) return;
-      } else removeSrc(src);
-      if (slot === 'stores') give(type);
-      else if (slot === 'R' || slot === 'L') l[slot] = type;
-      else l[slot].push(type);
+      if (!type || !lo()) return;
+      const [from, k] = srcSlot(src);
+      const r = eqMove(lo(), from, k, type, to);
+      if (!r.ok) return;
+      if (from === 'stores' && !take(type)) return;
+      E.loadouts[E.selId] = r.lo;
+      for (const t of r.back) give(t);
+      // a arma saiu da mão para o cinto/mochila e o carregador que tinha dentro já não coube: voltou ao armazém
+      if (to !== 'stores' && r.back.length) OV.Dom.toast(OV.Tn('hud.equip.clipBack', r.back.length), null, 'info');
       sfx('ui_click');
       emit();
       draw();
@@ -1795,7 +1942,7 @@
             else l[slot].push(t);
           }
         }
-        E.loadouts[s.id] = l;
+        E.loadouts[s.id] = settleOrder(l);
         if (missing) OV.Dom.toast('hud.equip.missing', { n: missing }, 'warn');
         sfx('ui_confirm');
         emit();
@@ -1893,16 +2040,23 @@
         }
         head.appendChild(btns);
         doll.appendChild(head);
-        // a arma parte carregada com o 1.º carregador compatível: indicador «20/20» na mão e «Na arma» nesse carregador
+        /* a arma parte carregada com o 1.º carregador compatível: indicador «20/20» na mão; esse carregador vai dentro
+           dela e não aparece nem conta no cinto/mochila (como no inventário de combate) */
         const plan = loadPlan(l);
-        const inWeapon = {};
-        for (const h of ['R', 'L']) if (plan[h]) inWeapon[plan[h].slot + ':' + plan[h].k] = true;
+        const iw = inWeapon(l);
         const hand = (h) => {
           const box = el('div', { class: 'inv-hand' + (l[h] ? '' : ' empty'), dataset: { drop: 'slot:' + h } }, el('div', { class: 'inv-cap' }, el('span', { text: T('inv.' + h) })));
           const gd = l[h] ? defOf(l[h]) : null;
           const needs = !!gd && gd.kind === 'firearm' && Array.isArray(gd.ammo) && gd.ammo.length > 0;
           const ammo = !needs ? undefined : plan[h] ? { type: plan[h].type, rounds: (defOf(plan[h].type) || {}).rounds | 0 } : null;
-          if (l[h]) box.appendChild(eqTile('lo:' + h + ':0', l[h], { icon: 96, nameOn: true, big: true, cls: 'big', ammo }));
+          if (l[h]) {
+            const tile = eqTile('lo:' + h + ':0', l[h], { icon: 96, nameOn: true, big: true, cls: 'big', ammo });
+            if (plan[h]) {
+              tile.classList.add('inweapon');
+              tile.dataset.clip = plan[h].type;
+            }
+            box.appendChild(tile);
+          }
           else {
             box.dataset.nav = '1';
             box.appendChild(el('div', { class: 'inv-empty', text: T('hud.hand.empty') }));
@@ -1917,13 +2071,9 @@
           const cells = el('div', { class: 'inv-cells' });
           cells.style.setProperty('--cap', String(cap));
           l[slot].forEach((t, k) => {
+            if (iw[slot].has(k)) return;
             used += sizeOf(t);
-            const c = eqTile('lo:' + slot + ':' + k, t, { icon: 46, cls: 'cell' });
-            if (inWeapon[slot + ':' + k]) {
-              c.classList.add('inweapon');
-              c.appendChild(el('span', { class: 'eq-inw', text: T('hud.equip.inWeapon') }));
-            }
-            cells.appendChild(c);
+            cells.appendChild(eqTile('lo:' + slot + ':' + k, t, { icon: 46, cls: 'cell' }));
           });
           for (let k = used; k < cap; k++) {
             const c = el('div', { class: 'inv-slotcell' });
@@ -1960,7 +2110,7 @@
       for (const n of root.querySelectorAll('[data-src]')) {
         const type = srcType(n.dataset.src);
         if (!type) continue;
-        const extra = n.classList.contains('inweapon') ? T('hud.equip.inWeapon.tip') : n.querySelector('.inv-badge.ammo.empty') ? T('hud.equip.noAmmo.tip') : null;
+        const extra = n.dataset.clip ? T('hud.equip.inWeapon.tip', { clip: T(defOf(n.dataset.clip).nameKey) }) : n.querySelector('.inv-badge.ammo.empty') ? T('hud.equip.noAmmo.tip') : null;
         OV.Dom.tooltip(n, () => (picker.sel ? '' : tipHtml(T(defOf(type).nameKey), extra ? [extra].concat(eqStatLines(type, s)) : eqStatLines(type, s))));
         n.addEventListener('mouseenter', () => { E.hoverSrc = n.dataset.src; drawInfo(); });
         n.addEventListener('mouseleave', () => { if (E.hoverSrc === n.dataset.src) { E.hoverSrc = null; drawInfo(); } });
@@ -2075,7 +2225,7 @@
     isOpen: () => !!V,
     refresh() { if (V) render(); },
     equipScreen,
-    model: { autoLoadout, armedLo, loadPlan },
+    model: { autoLoadout, armedLo, loadPlan, inWeapon, visibleIn, eqMove, settleOrder },
     debug: {
       state() {
         if (!V) return { open: false };

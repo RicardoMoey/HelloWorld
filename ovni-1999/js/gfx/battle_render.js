@@ -12,6 +12,7 @@
      (as etiquetas ficam dentro do resto do ecrã). clampCam(view, B) usa view.viewZ (0 por omissão).
      view.kcur = {x,y,z} cursor de teclado (contorno branco/preto bem visível); view.palette 'normal'|'cvd';
      view.reduceMotion (sem pulsações); view.textScale (etiquetas); path.sub = segunda etiqueta (dica da porta, reserva; path.subCol = nome da paleta).
+     Escreve view.targetLabel = {right, x, y, tx, ty} (px CSS): onde ficaram as etiquetas do alvo (do lado oposto ao atirador).
      Formas independentes da cor: passos que guardam a reserva = pontos cheios, que a comem = pontos ocos ligados a
      tracejado (com uma barra onde a reserva acaba), inalcançáveis = ✕; contorno do alcance cheio (mantém a
      reserva) e tracejado (come a reserva); inimigo à vista = losango com cantos + seta por cima da cabeça
@@ -899,6 +900,7 @@
       rec: r, hostile: u.side === 'alien' && u.status !== 'dead' });
   }
 
+  const tileOfRec = (B, r) => (Math.round(r.fz) * B.map.h + Math.round(r.fy)) * B.map.w + Math.round(r.fx);
   // há parede ou objeto alto à frente da unidade (desenhado depois dela, tapa-a)?
   function occluded(B, F, r) {
     const m = B.map, D = OV.Data.tileDefs;
@@ -927,8 +929,12 @@
       const r = q.rec;
       if (!r || !r.spr || !US) continue;
       if (occluded(B, F, r)) {
+        // o soldado selecionado (quem dispara) e o alvo apontado veem-se melhor através das paredes, com o anel
+        const sel = q.unitId === F.view.selectedId;
+        const tgt = !!F.view.target && F.view.target.toI >= 0 && q.hostile && q.rec && tileOfRec(B, q.rec) === F.view.target.toI;
         ctx.save();
-        ctx.globalAlpha = 0.42;
+        ctx.globalAlpha = sel || tgt ? 0.72 : 0.42;
+        if (sel) US.selectionRing(ctx, r.X, r.Y, F.S, PAL.select, r.size);
         US.blit(ctx, r.spr, r.X, r.Y, F.S, 0, 0);
         ctx.restore();
       }
@@ -1227,15 +1233,35 @@
       ctx.stroke();
     }
     const label = T.label !== undefined && T.label !== null ? String(T.label) : T.hitPct !== undefined && T.hitPct !== null ? (T.hitPct | 0) + '%' : null;
-    // ao lado do alvo, alinhadas pela aresta (nunca centradas na coluna da unidade); sem espaço à direita → esquerda
+    /* ao lado do alvo, alinhadas pela aresta (nunca centradas na coluna da unidade), do lado oposto ao atirador para
+       não taparem quem dispara nem a linha de tiro; sem espaço desse lado → o outro */
     const gap = Math.max(26 * d, 24 * F.S);
-    const ly = Y - 36 * F.S;
     const wMax = Math.max(label ? pillSize(ctx, F, label).w : 0, T.sub ? pillSize(ctx, F, String(T.sub)).w : 0);
-    const right = X + gap + wMax <= safeBox(F).x1;
+    const box = safeBox(F);
+    const side = labelSide(B, F, T, X, Y, gap, wMax, box);
+    const right = side.right;
+    const ly = side.ly;
     const lx = right ? X + gap : X - gap, al = right ? 'left' : 'right';
+    // onde ficaram as etiquetas (px CSS; leitura para o QA)
+    F.view.targetLabel = { right, x: lx / d, y: ly / d, tx: X / d, ty: Y / d };
     if (label) pill(ctx, F, lx, ly, label, T.blocked ? PAL.out : hitCol(T.hitPct), null, al);
     const subCol = typeof T.subCol === 'string' ? PAL[T.subCol] || PAL.out : T.subCol || PAL.reserve;
     if (T.sub) pill(ctx, F, lx, ly + 24 * d * F.ts, String(T.sub), subCol, null, al);
+  }
+  /* lado das etiquetas do alvo: o oposto ao atirador (no ecrã); com o atirador quase na mesma coluna, o lado com
+     espaço e as etiquetas por baixo do alvo quando o atirador está por cima (pura: só lê B e a vista) */
+  function labelSide(B, F, T, X, Y, gap, wMax, box) {
+    const fitsR = X + gap + wMax <= box.x1, fitsL = X - gap - wMax >= box.x0;
+    let right = fitsR, ly = Y - 36 * F.S;
+    const u = T.fromId !== undefined && T.fromId !== null && OV.BUnits ? OV.BUnits.findUnit(B, T.fromId) : null;
+    if (u && u.x >= 0) {
+      const [ux, uy] = tileCenterDev(F, B.map, (u.z * B.map.h + u.y) * B.map.w + u.x);
+      const dx = ux - X;
+      if (Math.abs(dx) > 8 * F.S) right = dx < 0 ? fitsR || !fitsL : !fitsL && fitsR;
+      // atirador por cima e quase na vertical: etiquetas abaixo do alvo (a linha de tiro chega por cima)
+      if (Math.abs(dx) < 40 * F.S && uy < Y - 16 * F.S) ly = Y + 14 * F.S;
+    }
+    return { right, ly };
   }
   // cor da etiqueta pela probabilidade (vermelho → âmbar → verde)
   function hitCol(p) {

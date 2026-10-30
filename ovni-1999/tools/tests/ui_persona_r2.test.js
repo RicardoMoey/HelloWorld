@@ -101,7 +101,7 @@ module.exports = function (OV, t) {
   t.test('persona r2: textos novos (porta longe, reserva, toque, Equipar) existem e dizem a verdade', () => {
     const keys = ['hud.door.hint.far', 'hud.door.hint.far.mac', 'hud.door.hint.far.key', 'hud.path.reserve', 'hud.path.reserve.kneel',
       'hud.path.reserve.fix', 'hud.path.reserve.fix.touch', 'hud.path.reserve.deny', 'hud.path.reserve.deny.touch', 'hud.hint.aim.touch',
-      'hud.equip.inWeapon', 'hud.equip.inWeapon.tip', 'hud.equip.load', 'hud.equip.spare', 'hud.equip.noAmmo.tip', 'hud.stop.reserved', 'hud.stop.reserved.touch',
+      'hud.equip.inWeapon.tip', 'hud.equip.load', 'hud.equip.spare', 'hud.equip.noAmmo.tip', 'hud.stop.reserved', 'hud.stop.reserved.touch',
       'hud.tip.squad.touch', 'hud.tip.alienKeys.touch', 'hud.tip.night.touch'];
     t.eq(keys.filter((k) => !has(k)), [], 'chaves');
     for (const k of ['hud.door.hint.far', 'hud.door.hint.far.mac', 'hud.door.hint.far.key']) t.ok(!/UT/.test(OV.STR[k]), k + ' sem custo inventado');

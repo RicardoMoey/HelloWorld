@@ -61,7 +61,10 @@ body.in-battle:has(.bs-report:not(.hidden)) #toasts { top: auto; bottom: calc((v
 .bs-sq.sel { border-color: var(--amber); border-left-color: var(--amber); background: linear-gradient(90deg, rgba(70, 48, 8, 0.9), rgba(12, 18, 26, 0.92)); color: #fff; }
 .bs-sq.spent { color: #8195a7; }
 .bs-sq.spent .bs-sq-rank { opacity: 0.6; }
-.bs-sq.panic { border-left-color: var(--violet); }
+.bs-sq.panic { border-left: 5px double var(--violet); }
+/* pânico: ícone + texto (forma e palavra, não só a cor da risca) */
+.bs-sq-st { grid-column: 1 / -1; display: flex; align-items: center; gap: 4px; margin-top: 1px; font: 800 calc(10px * var(--k)) var(--sans); letter-spacing: 1.2px; text-transform: uppercase; color: #e4d0ff; }
+.bs-sq-st b { font-size: calc(11px * var(--k)); color: #fff; }
 .bs-sq.gone { opacity: 0.42; cursor: default; }
 .bs-sq.gone .bs-sq-name { text-decoration: line-through; }
 .bs-sq-rank { font: 800 calc(11.5px * var(--k)) var(--sans); letter-spacing: 0.5px; text-transform: uppercase; color: #9aa4ae; }
@@ -355,6 +358,8 @@ body.in-battle:has(.bs-report:not(.hidden)) #toasts { top: auto; bottom: calc((v
   .bs-report-row .btn.small, .bs-report-head .btn.small { min-height: 34px; }
   /* toque: as teclas não existem — sem emblemas «Esc», «↵», «Q», «E» nos botões do combate */
   .bs-hud .key, .bs-hud .bs-hand-key, .inv-root .key, body.in-battle #modals .key { display: none; }
+  /* tratamentos do kit médico sem a coluna da tecla (senão o texto cai na coluna estreita de 22 px) */
+  .medk-treat .medk-b { grid-template-columns: minmax(0, 1fr) auto 62px; }
 }
 @media (hover: none) and (max-width: 960px) {
   .bs-reserve { grid-template-columns: repeat(5, 34px); }
@@ -581,7 +586,10 @@ body.bs-cvd .inv-chip.bad { color: #ffd0f4; background: #3a1032; border-color: #
 .medk-pb b { font: 800 11px var(--mono); color: #4f6b84; }
 .medk-pb.hurt { color: #ffd0c8; border-color: #5a2420; }
 .medk-pb.hurt b { color: #ff8a7a; }
-.medk-pb.on { border-color: var(--amber); color: #fff; }
+.medk-pb.on { border-color: var(--amber); color: #fff; background: linear-gradient(90deg, rgba(70, 48, 8, 0.9), #0f1823); box-shadow: inset 3px 0 0 var(--amber), 0 0 0 1px rgba(255, 181, 61, 0.45); }
+.medk-pb.on span::before { content: '▶ '; color: var(--amber); }
+.medk-pb:focus-visible, .medk-pat:focus-visible, .medk-b:focus-visible, .medk .inv-close:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+.medk-keys { margin-top: 8px; padding-top: 6px; border-top: 1px solid #1f3346; font: 600 11px/1.4 var(--sans); color: var(--muted); }
 .medk-pb:hover { border-color: var(--cyan); }
 .medk-right { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .medk-stats { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; border: 1px solid #1f3346; border-radius: 4px; background: rgba(0, 0, 0, 0.18); }
@@ -661,10 +669,8 @@ body.bs-cvd .inv-chip.bad { color: #ffd0f4; background: #3a1032; border-color: #
 .inv-equip .inv-it.row .inv-nm { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.2; overflow-wrap: anywhere; }
 .inv-equip .kfocus { outline: 2px solid var(--cyan); outline-offset: 2px; }
 .inv-it.unk { border-style: dashed; }
-/* carregador que entra na arma no início da missão (a mão mostra «20/20») */
-.inv-it.inweapon { border-color: #6a5420; background: rgba(60, 44, 10, 0.35); }
-.inv-it.inweapon .inv-badge.ammo, .inv-it.inweapon .inv-fp { display: none; }
-.eq-inw { position: absolute; left: 2px; right: 2px; bottom: 2px; text-align: center; white-space: nowrap; overflow: hidden; padding: 0 1px; border-radius: 2px; font: 800 8px/12px var(--sans); letter-spacing: 0; text-transform: uppercase; color: #120c02; background: var(--amber); pointer-events: none; }
+/* arma que parte carregada: o carregador vai dentro dela (insígnia «20/20» na mão, nada no cinto) */
+.inv-equip .inv-it.big.inweapon .inv-badge.ammo { box-shadow: 0 0 0 1px rgba(255, 181, 61, 0.55); }
 .inv-unk { position: absolute; right: 3px; bottom: 3px; padding: 0 4px; border-radius: 2px; font: 800 9.5px/14px var(--sans); letter-spacing: 0.3px; color: #fff; background: #8f2a22; pointer-events: none; }
 .inv-it.row .inv-unk { position: static; grid-column: 2; grid-row: 2; justify-self: end; text-transform: uppercase; }
 body.bs-cvd .inv-unk, .inv-equip .inv-unk { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25); }
@@ -685,8 +691,46 @@ body.bs-cvd .inv-unk, .inv-equip .inv-unk { box-shadow: inset 0 0 0 1px rgba(255
   .inv-equip .eq-grid .eq-main { overflow-y: auto; touch-action: pan-y; }
   .inv-equip .eq-grid .eq-main .inv-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto; align-content: start; flex: 0 0 auto; }
   .inv-equip .eq-grid .eq-main .inv-doll { overflow: visible; }
-  .inv-equip .eq-grid .eq-main .eq-stores-list { max-height: 260px; }
-  .inv-equip .eq-grid .eq-main .inv-info { display: none; }
+  /* coluna única: o armazém fica com a altura que sobra (pelo menos 260 px), sem caixa pequena nem vazio por baixo */
+  .inv-equip .eq-grid .eq-main .inv-body { display: flex; flex-direction: column; flex: 1 0 auto; }
+  .inv-equip .eq-grid .eq-main .inv-doll { flex: 0 0 auto; }
+  .inv-equip .eq-grid .eq-main .eq-stores { flex: 1 1 260px; min-height: 260px; }
+  .inv-equip .eq-grid .eq-main .eq-stores-list { flex: 1; min-height: 0; max-height: none; }
+  .inv-equip .eq-grid .eq-main .inv-info { display: none !important; }
+}
+/* toque: os botões do cabeçalho nunca abaixo de 32 px, mesmo com o arranjo compacto (@container eq ≤ 1060 px) */
+@media (hover: none) {
+  .inv-equip .eq-grid .eq-main .inv-head.eq .eq-btns .btn { min-height: 36px; }
+}
+/* pouca altura (1280×800 a 125 %, 1024×560…): boneco mais baixo e a ajuda numa linha, para as mãos, o cinto e a
+   mochila caberem logo ao abrir */
+@media (max-height: 640px) {
+  .inv-equip .eq-grid .eq-main { gap: 6px; }
+  /* ajuda / descrição numa só linha de altura fixa (o rodapé do ecrã repete as teclas) */
+  .inv-equip .eq-grid .eq-main > .inv-info { height: 30px; min-height: 0; padding-top: 5px; overflow: hidden; }
+  .inv-equip .inv-info .inv-hint { flex-direction: row; align-items: baseline; gap: 10px; }
+  .inv-equip .inv-info .inv-hint span, .inv-equip .inv-info .inv-desc li { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .inv-equip .inv-info .inv-desc { align-items: baseline; }
+  .inv-equip .inv-info .inv-desc > .inv-ic, .inv-equip .inv-info .inv-acts { display: none; }
+  .inv-equip .inv-info .inv-desc-txt { display: flex; align-items: baseline; gap: 12px; min-width: 0; }
+  .inv-equip .inv-info .inv-desc-name { flex: 0 0 auto; }
+  .inv-equip .inv-info .inv-desc ul { display: flex; gap: 12px; margin: 0; columns: auto; min-width: 0; overflow: hidden; }
+  /* cabeçalho numa linha: retrato, nome, carga e os 4 botões em 2 × 2 */
+  .inv-equip .inv-doll { gap: 5px; }
+  .inv-equip .eq-grid .eq-main .inv-head.eq { grid-template-columns: 40px minmax(0, 1fr) minmax(130px, 1fr) max-content; padding-bottom: 5px; row-gap: 4px; }
+  .inv-equip .eq-grid .eq-main .inv-head.eq .eq-btns { grid-column: auto; grid-row: auto; grid-template-columns: repeat(2, max-content); gap: 3px; }
+  .inv-equip .inv-head.eq .inv-port, .inv-equip .inv-head.eq .inv-port canvas { width: 40px !important; height: 40px !important; }
+  .inv-equip .inv-handsrow { height: 100px; grid-template-columns: 1fr 72px 1fr; gap: 8px; }
+  .inv-equip .inv-fig canvas { height: 92px !important; width: auto !important; }
+  .inv-equip .inv-hand { gap: 2px; padding: 4px 6px 5px; }
+  .inv-equip .inv-it.big { padding-bottom: 16px; }
+  .inv-equip .inv-it.big canvas.inv-ic { width: 52px !important; height: 52px !important; }
+  .inv-equip .inv-strip { padding: 4px 6px 5px; }
+  .inv-equip .inv-cells { grid-auto-rows: 40px; margin-top: 3px; }
+  .inv-equip .inv-it.cell canvas.inv-ic { width: 34px !important; height: 34px !important; }
+}
+@media (max-height: 640px) and (hover: hover) {
+  .inv-equip .eq-grid .eq-main .inv-head.eq .eq-btns .btn { min-height: 26px; padding: 0 8px; font-size: 10px; letter-spacing: 0.4px; }
 }
 
 /* ecrãs mais pequenos */

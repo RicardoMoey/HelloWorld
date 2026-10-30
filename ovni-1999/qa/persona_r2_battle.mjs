@@ -454,9 +454,11 @@ try {
     if (h.info && h.info.b > h.info.t + 4) log(h.doll.b <= h.info.t + 1, tag + ': o boneco não passa por cima do cartão de informação (' + Math.round(h.doll.b) + ' ≤ ' + Math.round(h.info.t) + ')');
     const eq = await page.evaluate(() => ({
       badge: (document.querySelector('#eqhost [data-drop="slot:R"] .inv-badge.ammo') || {}).textContent || '',
-      inw: Array.from(document.querySelectorAll('#eqhost .inv-strip.belt .inv-it.inweapon')).map((n) => n.dataset.src + ':' + n.textContent),
+      // ronda 3: o carregador «na arma» está na mão (dados) e não ocupa uma casa do cinto
+      inw: (document.querySelector('#eqhost [data-drop="slot:R"] .inv-it.inweapon') || { dataset: {} }).dataset.clip || '',
+      belt: Array.from(document.querySelectorAll('#eqhost .inv-strip.belt .inv-it')).map((n) => n.dataset.src),
     }));
-    log(eq.badge === '28/28' && eq.inw.length === 1 && /lo:belt:0/.test(eq.inw[0]) && /Na arma/i.test(eq.inw[0]), tag + ': arma na mão «' + eq.badge + '» e carregador «Na arma» ' + JSON.stringify(eq.inw));
+    log(eq.badge === '28/28' && eq.inw === 'plasma_rifle_clip' && eq.belt.indexOf('lo:belt:0') < 0 && eq.belt.length === 3, tag + ': arma na mão «' + eq.badge + '» com ' + eq.inw + ', cinto ' + JSON.stringify(eq.belt));
     await shot('equip_' + tag);
     if (vp[0] === 1440) {
       // lançador vazio: munição do armazém largada na arma carrega-a
