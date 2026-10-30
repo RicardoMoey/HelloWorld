@@ -1308,3 +1308,28 @@ Scope (25k lines) vs one session; iso art legibility of procedural sprites; LOS/
   aborting on turn 1 (≈ −240) beat ignoring the site; now it is equal at best, and a real attempt still keeps its kills.
 - **Captures need a containment place to score**: a stunned alien that dies for lack of containment counts as killed
   (value), not captured (2 × value). OpenXcom gives the live-alien points only with containment.
+
+**Persona round 3 deviations (ours; sim/data fixer, numbers in `docs/CAMPAIGN_API.md` §11.10)**:
+- **Aborting no longer resets a UFO or alien base**: after a battle without a win the site keeps its garrison
+  (`garrison` = the surviving aliens with their rank, weapon tier and placement, plus the items left on the ground).
+  The next visit deploys only those survivors (no second crash roll) and a win there also recovers what was left on
+  the ground. In the original (and OpenXcom) the site was regenerated with a full crew, so «abort and fly back» farmed
+  kills, plasma pistols, experience and promotions at no cost. A Supply Ship landing at an alien base refills its
+  garrison.
+- **Alien bases yield their artefacts**: a won alien-base assault recovers 2 Alien Food, 2 Alien Entertainment and one
+  each of Alien Surgery, Examination Room and Alien Reproduction (`dep_alien_base.artefacts`), in proportion to the
+  intact alien devices ('u') on the map, with the usual unresearched-artefact points. In the original these came from the
+  base's tiles; before, only UFOs gave artefacts.
+- **Night landings in months 0–1 wait for daylight**: a UFO that lands at night in the first two months stays on the
+  ground until 1 h after daylight at the site (at most 16 h; `TUNE.NIGHT_LANDING_*`), so «Esperar pelo dia» is a real
+  choice. The original ground time (trajectory `groundTimer`) applies by day and from month 2. The headless sweep shows
+  that landed Large Scouts in month 0 are hard by day and by night alike (Veterano, 10 soldiers, 24 seeds: 92 % / 3.2
+  losses by day, 92 % / 3.5 at night), so the alien crew and night vision stay as they were (a shorter alien night sight
+  of 14 tiles changed nothing measurable: X-COM is lit by its own very-lights and muzzle flashes).
+- **Recruits never share a name with a living soldier**: the name is re-drawn (up to 8 times, 2 draws each) and only
+  then gets « II», « III»… The original allowed duplicates.
+- **Hiring scientists and engineers costs one month's salary** (`TUNE.SCIENTIST_HIRE` $30 000, `ENGINEER_HIRE` $25 000;
+  the original charged two salaries, $60 000 / $50 000; soldiers keep the original $40 000 / $20 000). It was marked
+  «orig» by mistake; it is a pacing compression that goes with research ×0.25 (§14). Measured with the original costs
+  (campaign bot, Veterano, seeds 1–24): 7/24 victories and 2 council defeats against 12/24 and none with the cheaper
+  hire. A strong player is not constrained either way (≈ $9 M at the end of January), a weak one is.

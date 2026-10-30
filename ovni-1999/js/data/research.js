@@ -489,6 +489,7 @@
       if (blocksReady && !blocks[u.block]) errs.push('ufo.' + id + ': bloco desconhecido ' + u.block);
       for (const it in u.artefacts) if (!itemOk(it)) errs.push('ufo.' + id + ': artefacto desconhecido ' + it);
     }
+    for (const id in deps) for (const it in deps[id].artefacts || {}) if (!itemOk(it)) errs.push('deployment.' + id + ': artefacto desconhecido ' + it);
 
     const sb = D.startingBase;
     if (sb) {

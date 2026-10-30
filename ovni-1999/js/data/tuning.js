@@ -104,9 +104,11 @@
     AI_GRENADE_FUSE: [1, 0, 0], // ours: espoleta das granadas alienígenas por dificuldade (Recruta: rebenta no fim do turno X-COM)
     AI_BURNING_PATH_COST: 32,
 
-    // ---- soldados (orig; quotas ours)
+    // ---- soldados e pessoal (orig; quotas ours)
     PROMO_SGT_DIV: 4, PROMO_CPT_DIV: 8, PROMO_COL_DIV: 15, PROMO_CMD_MIN: 20,
     SOLDIER_HIRE: 40000, SOLDIER_SALARY: 20000,
+    // ours (ritmo, DESIGN §22): contratar cientistas/engenheiros custa um salário (orig 60 000 / 50 000 $ = 2 salários);
+    // com os custos orig o bot de Veterano ganhou 7/24 campanhas contra 12/24 e perdeu 2 no Conselho (CAMPAIGN_API §11.10)
     SCIENTIST_HIRE: 30000, SCIENTIST_SALARY: 30000,
     ENGINEER_HIRE: 25000, ENGINEER_SALARY: 25000,
     MANUFACTURE_PROFIT_CAP_H: 100, // $ por hora-engenheiro: teto do lucro de fabricar para vender (data/research.js)
@@ -126,6 +128,8 @@
     RATING_THRESHOLD: [-900, -700, -500], // por dificuldade 0/1/2
     TERROR_SITE_HOURS: [8, 16], // ours
     CRASH_SITE_HOURS: [24, 72], // ours
+    NIGHT_LANDING_MONTHS: 2, // ours: nos meses 0–1, um OVNI que aterra de noite fica no chão até ao dia (+ margem)…
+    NIGHT_LANDING_DAY_MARGIN_S: 3600, NIGHT_LANDING_MAX_S: 57600, // …1 h depois de amanhecer, no máximo 16 h no chão
     DELIVERY_PERSONNEL_H: 48, // ours
     DELIVERY_ITEMS_H: 24,
     CRAFT_REPAIR_HP_H: 5, // ours

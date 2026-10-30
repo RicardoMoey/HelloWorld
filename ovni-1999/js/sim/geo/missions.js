@@ -486,14 +486,27 @@
     ufo.alt = 0;
     ufo.speed = 0;
     ufo.dest = null;
-    ufo.groundLeftS = onGround ? trajOf(ufo).groundS : 5;
+    ufo.groundLeftS = onGround ? Math.max(trajOf(ufo).groundS, nightLandingS(G, ufo)) : 5;
     if (ufo.detected) ev(G, 'ufoLanded', { ufoId: ufo.id, stop: true });
+  }
+  /* ours (meses de aprendizagem, §11.10): um OVNI que aterra de noite nos primeiros NIGHT_LANDING_MONTHS meses fica no
+     chão até NIGHT_LANDING_DAY_MARGIN_S depois de amanhecer no local (máx. NIGHT_LANDING_MAX_S) — «Esperar pelo dia»
+     é uma escolha real. → segundos mínimos no chão (0 = regra normal) */
+  function nightLandingS(G, ufo) {
+    if ((G.month | 0) >= tune('NIGHT_LANDING_MONTHS', 0) || GM().dayPhase(G, ufo.lon, ufo.lat) !== 'night') return 0;
+    const max = tune('NIGHT_LANDING_MAX_S', 57600), step = 1800;
+    for (let s = step; s <= max; s += step) {
+      if (GM().dayPhase({ t: (G.t | 0) + s }, ufo.lon, ufo.lat) === 'day') return Math.min(max, s + tune('NIGHT_LANDING_DAY_MARGIN_S', 3600));
+    }
+    return max;
   }
   // Nave de Abastecimento na base alienígena: abastece-a; se estiver a ser seguida, revela a base
   function supplyAt(G, ufo, m) {
     const ab = m ? Camp().findAlienBase(G, m.alienBaseId) : null;
     if (!ab || GM().distNm(ab, ufo) > 1) return;
     ab.supplyT = G.t | 0;
+    // reabastecida: a guarnição volta a estar completa (§11.10)
+    delete ab.garrison;
     if (ufo.detected && D().missionRules.supplyLandingRevealsBase) revealAlienBase(G, ab, 'supply');
   }
 

@@ -4,13 +4,16 @@
 
    OV.Battle.create(mission) | create(G, mission) → B
      mission = {kind:'crash'|'landed'|'terror'|'alienBase'|'cydonia', ufoType, terrain, shade|night, race, month,
-                difficulty, seed, deploymentId, craftType, squad:[soldado], craftItems:{itemId:n}}
+                difficulty, seed, deploymentId, craftType, squad:[soldado], craftItems:{itemId:n},
+                garrison?:{crew:[{type, rank, tier, outside}], leftovers:{itemId:n}, crashed} (local revisitado)}
    OV.Battle.quickMission({ufoType, terrain, night, difficulty, month, squadSize, seed, race, kind}) → mission
    OV.Battle.rebuildDerived(B) → B._ (não enumerável: {unitAt:Int32Array(n), unitById, itemById, dirty, light, visTiles, caches})
    OV.Battle.serialize(B) → objeto JSON ; deserialize(obj) → B ; hash(B) → uint32
    OV.Battle.unitAt(B,i) ; unitsOf(B, side, all) ; outcome(B) → null|'win'|'loss'|'abort' ; objectiveDestroyed(B)
    OV.Battle.beginBattle(B) → Generator ; beginPlayerTurn(B) → Generator ; endPlayerTurn(B) → Generator (devolvem {outcome})
    OV.Battle.abort(B) → {survivors, mia, craftLost} ; debrief(B, ctx?) → relatório da missão (§3.17)
+   OV.Battle.crewRange(mission) → {min, max} efetivo alienígena esperado (guarnição de um local revisitado, senão a tabela)
+   OV.Battle.garrisonAfter(B, debrief) → {crew, leftovers, crashed}|null — o que fica no local sem vitória (mission.garrison)
      ctx = {researched?, interrogated?, captureRoom? (lugares livres na contenção), terrorFloor? (pontos de um terror
      ignorado: um terror perdido/abortado custa pelo menos isto em civis + linha TERROR_ABANDONED_KEY)} */
 (function (OV) {
@@ -47,13 +50,39 @@
       else if (kind === 'cydonia') shade = tune('SHADE_MARS', 8);
       else shade = m.night ? tune('SHADE_NIGHT', 13) : tune('SHADE_DAY', 0);
     }
-    return {
+    const out = {
       kind, ufoType, terrain, shade: U.clamp(shade | 0, 0, 15), night: (shade | 0) > tune('DARK_SHADE', 9),
       race: dep.race || (m.race && Data.races[m.race] ? m.race : 'sectoid'), month: Math.max(0, m.month | 0),
       difficulty: U.clamp(m.difficulty | 0, 0, 2), seed: (m.seed === undefined ? 1 : m.seed) >>> 0, deploymentId,
       craftType: m.craftType && Data.crafts[m.craftType] && Data.crafts[m.craftType].block ? m.craftType : kind === 'cydonia' ? 'avenger' : 'skyranger',
       crashed: kind === 'crash', siteId: m.siteId === undefined ? null : m.siteId, craftId: m.craftId === undefined ? null : m.craftId,
     };
+    const gar = normalizeGarrison(m.garrison);
+    if (gar) out.garrison = gar;
+    return out;
+  }
+
+  // efetivo alienígena esperado de uma missão → {min, max}: a guarnição exata de um local revisitado, senão a tabela
+  // do destacamento para a dificuldade e o mês (Data.deploymentRange)
+  function crewRange(mission) {
+    const M = normalizeMission(mission);
+    if (M.garrison) return { min: M.garrison.crew.length, max: M.garrison.crew.length };
+    return D().deploymentRange(M.deploymentId, M.difficulty, M.month);
+  }
+
+  /* Guarnição de um local já visitado (campanha, contrato §11.10): os alienígenas que ficaram depois de um abandono e o
+     material deixado no terreno. {crew:[{type, rank, tier, outside}], leftovers:{tipo:n}, crashed} | null */
+  function normalizeGarrison(g) {
+    const Data = D();
+    if (!g || typeof g !== 'object' || !Array.isArray(g.crew)) return null;
+    const crew = [];
+    for (const c of g.crew) {
+      if (!c || !Data.units[c.type]) continue;
+      crew.push({ type: c.type, rank: typeof c.rank === 'string' ? c.rank : 'soldier', tier: U.clamp(c.tier | 0, 0, 2), outside: U.clamp(c.outside | 0, 0, 100) });
+    }
+    const leftovers = {};
+    for (const k of Object.keys(g.leftovers || {}).sort()) if (Data.items[k] && (g.leftovers[k] | 0) > 0) leftovers[k] = g.leftovers[k] | 0;
+    return { crew, leftovers, crashed: !!g.crashed };
   }
 
   // ---- índices derivados ----------------------------------------------------------------------------------
@@ -262,7 +291,7 @@
       rng: { map: streams.map, combat: streams.combat, ai: streams.ai },
       units: [], items: [],
       stats: { civSaved: 0, civKilledByAliens: 0, civKilledByXcom: 0, aliensKilled: 0, aliensStunned: 0, xcomKilled: 0, crashDead: 0 },
-      log: [], pendingExplosions: [], flashes: [], nextId: 1,
+      log: [], pendingExplosions: [], flashes: [], nextId: 1, crew: [],
       // opções da batalha (Granadas instantâneas) e tópicos investigados (equipamento alienígena utilizável)
       settings: Object.assign({ instantGrenades: !!tune('INSTANT_GRENADES_DEFAULT', true) }, mission.settings || {}),
       researched: Array.isArray(mission.researched) ? mission.researched.slice() : null,
@@ -321,18 +350,33 @@
     };
     const ufoMission = dep.kind === 'ufo' && ctx.insideNodes.length > 0;
     const dead = [];
-    const crewDiff = Data.crewDifficulty ? Data.crewDifficulty(M.deploymentId, M.difficulty, M.month) : M.difficulty;
-    for (const row of dep.rows) {
-      const q = Data.rowQty(row, crewDiff);
-      const n = rng.int(q[0], q[1]);
-      for (let k = 0; k < n; k++) {
-        const type = Data.rowUnit(dep, row, M.race, rng.int(0, 1));
-        const tier = Data.rollItemTier(M.month, rng);
-        const u = BU().fromAlien(B, type, tier, rng, M.deploymentId);
-        const inside = ufoMission && !rng.pct(row.outside);
-        spawnAlien(B, u, row.rank, inside, ctx);
-        alienFacing(B, u, rect, rng);
-        if (M.crashed && rng.pct(Data.ufoRules.crashCrewDeathPct)) dead.push(u);
+    // B.crew guarda patente da linha, nível de armamento e % fora do OVNI de cada alienígena (guarnição após abandono)
+    const spawnOne = (type, rank, tier, outside) => {
+      const u = BU().fromAlien(B, type, tier, rng, M.deploymentId);
+      const inside = ufoMission && !rng.pct(outside);
+      spawnAlien(B, u, rank, inside, ctx);
+      alienFacing(B, u, rect, rng);
+      B.crew.push({ id: u.id, type, rank, tier, outside: outside | 0 });
+      return u;
+    };
+    const gar = M.garrison;
+    if (gar) {
+      // local revisitado: só os sobreviventes da visita anterior (a queda só mata se o OVNI caiu desde então)
+      for (const c of gar.crew) {
+        const u = spawnOne(c.type, c.rank, c.tier, c.outside);
+        if (M.crashed && !gar.crashed && rng.pct(Data.ufoRules.crashCrewDeathPct)) dead.push(u);
+      }
+    } else {
+      const crewDiff = Data.crewDifficulty ? Data.crewDifficulty(M.deploymentId, M.difficulty, M.month) : M.difficulty;
+      for (const row of dep.rows) {
+        const q = Data.rowQty(row, crewDiff);
+        const n = rng.int(q[0], q[1]);
+        for (let k = 0; k < n; k++) {
+          const type = Data.rowUnit(dep, row, M.race, rng.int(0, 1));
+          const tier = Data.rollItemTier(M.month, rng);
+          const u = spawnOne(type, row.rank, tier, row.outside);
+          if (M.crashed && rng.pct(Data.ufoRules.crashCrewDeathPct)) dead.push(u);
+        }
       }
     }
     // a queda nunca mata toda a tripulação (a missão não acaba antes de começar)
@@ -426,7 +470,7 @@
     for (let k = 0; k < squadSize; k++) {
       const nat = Data.pickNationality(rng);
       const female = rng.pct(gen.femalePct);
-      const name = Data.soldierName(rng, nat, female);
+      const name = Data.soldierName(rng, nat, female, Data.soldierNamesTaken(squad));
       const stats = Data.rollSoldierStats(rng);
       squad.push({
         soldierId: 'q' + (k + 1), name, nat, female, rank: k === 0 ? 2 : k < 3 ? 1 : 0, stats, armour,
@@ -764,7 +808,9 @@
      → {result, score, lines:[{key, n, points, itemId?}], kills, captured:[{unitType, unitId}], recovered:{tipo:n},
         returned:{tipo:n}, equipmentLost:{tipo:n}, lost:[soldierId], dead:[…], mia:[…], wounded:{soldierId:hp},
         exp:{soldierId:{…}}, soldiers:[{soldierId, unitId, status, hpLost, kills, exp}], civilians:{saved, killedByAliens,
-        killedByXcom}, craftLost, turns} */
+        killedByXcom}, craftLost, turns, aliensLeft:[unitId] (sem vitória: alienígenas que ficam no local),
+        leftOnField:{tipo:n} (sem vitória: material que fica no terreno)}
+     Vitória numa base alienígena: dep.artefacts × dispositivos intactos; num local revisitado: + mission.garrison.leftovers. */
   function debrief(B, ctx) {
     const Data = D();
     const c = ctx || {};
@@ -815,20 +861,28 @@
     }
     // componentes do OVNI tomado (fontes de energia e navegação intactas, ligas, Elerium, artefactos)
     const M = B.mission;
+    // local revisitado: o que ficou no terreno numa visita anterior é recolhido com a vitória
+    if (result === 'win' && M.garrison) for (const k of Object.keys(M.garrison.leftovers || {})) add(k, M.garrison.leftovers[k] | 0);
+    // peças intactas de um tipo especial: base × intactos / total (round = true arredonda a meio)
+    const intact = (special, base, round) => {
+      const tiles = (B.specials && B.specials[special]) || [];
+      if (!tiles.length) return base;
+      let n = 0;
+      for (const i of tiles) {
+        for (let p = 0; p < 4; p++) {
+          const d = BM().def(B.map, i, p);
+          if (d && d.special === special) { n++; break; }
+        }
+      }
+      return round ? U.idiv(2 * base * n + tiles.length, 2 * tiles.length) : U.idiv(base * n, tiles.length);
+    };
+    // artefactos de uma instalação alienígena tomada (dep.artefacts), na proporção dos dispositivos intactos
+    const dep = Data.deployments[M.deploymentId];
+    if (result === 'win' && dep && dep.artefacts) {
+      for (const k of Object.keys(dep.artefacts)) add(k, intact('DEVICE', dep.artefacts[k] | 0, true));
+    }
     if (result === 'win' && M.ufoType && (M.kind === 'crash' || M.kind === 'landed') && Data.ufos[M.ufoType]) {
       const ufo = Data.ufos[M.ufoType];
-      const intact = (special, base) => {
-        const tiles = (B.specials && B.specials[special]) || [];
-        if (!tiles.length) return base;
-        let n = 0;
-        for (const i of tiles) {
-          for (let p = 0; p < 4; p++) {
-            const d = BM().def(B.map, i, p);
-            if (d && d.special === special) { n++; break; }
-          }
-        }
-        return U.idiv(base * n, tiles.length);
-      };
       const rec = Data.ufoRecovery(M.ufoType, {
         crashed: !!M.crashed, powerSources: intact('POWER_SOURCE', ufo.powerSources | 0), navigation: intact('NAVIGATION', ufo.navigation | 0),
       });
@@ -914,16 +968,55 @@
       const pts = U.idiv(recovered[type], def.recoveryPer || 1) * rp;
       if (pts > 0) line(def.nameKey, recovered[type], pts, { itemId: type });
     }
+    // sem vitória: alienígenas que continuam no local (nem mortos, nem capturados, nem levados atordoados) e material
+    // que ficou no terreno (não recuperado e não transportado por eles)
+    const aliensLeft = [], leftOnField = {};
+    if (result !== 'win') {
+      const gone = new Set(captured.map((cp) => cp.unitId).concat(stunKills.map((u) => u.id)));
+      for (const u of aliens) if (u.status !== 'dead' && !gone.has(u.id)) aliensLeft.push(u.id);
+      const stay = new Set(aliensLeft);
+      for (const it of B.items) {
+        const def = Data.items[it.type];
+        if (!def || def.fixed || def.recover === false || def.battle === false || recoverable(it)) continue;
+        if ((it.owner !== null && it.owner !== undefined && stay.has(it.owner)) || (it.unitId !== null && it.unitId !== undefined && stay.has(it.unitId))) continue;
+        leftOnField[it.type] = (leftOnField[it.type] | 0) + 1;
+        if (it.ammo && it.ammo.rounds > 0 && Data.items[it.ammo.type]) leftOnField[it.ammo.type] = (leftOnField[it.ammo.type] | 0) + 1;
+      }
+    }
     const score = lines.reduce((s, l) => s + l.points, 0);
     return {
       result, score, lines, kills: killed.length, captured, recovered, returned, equipmentLost, lost, dead, mia, wounded, exp, soldiers,
-      civilians: { saved, killedByAliens: byAliens, killedByXcom: byXcom }, craftLost, turns: B.turn,
+      civilians: { saved, killedByAliens: byAliens, killedByXcom: byXcom }, craftLost, turns: B.turn, aliensLeft, leftOnField,
     };
   }
 
+  /* Guarnição que fica num local depois de uma batalha sem vitória (campanha, contrato §11.10): os sobreviventes com a
+     patente, o nível de armamento e a % fora do OVNI com que foram gerados, mais o material deixado no terreno (soma
+     com o de visitas anteriores). deb = debrief(B). → {crew, leftovers, crashed} | null (vitória). crew vazia = só
+     falta recolher o material (a próxima batalha acaba logo em vitória) */
+  function garrisonAfter(B, deb) {
+    const Data = D();
+    if (!deb || deb.result === 'win') return null;
+    const M = B.mission;
+    const byId = new Map((B.crew || []).map((c) => [c.id, c]));
+    const crew = [];
+    for (const id of deb.aliensLeft || []) {
+      const u = BU().findUnit(B, id);
+      if (!u || !Data.units[u.type]) continue;
+      const c = byId.get(id);
+      crew.push(c ? { type: c.type, rank: c.rank, tier: c.tier | 0, outside: c.outside | 0 }
+        : { type: u.type, rank: Data.units[u.type].rank || 'terrorist', tier: 0, outside: 0 });
+    }
+    const leftovers = Object.assign({}, (M.garrison && M.garrison.leftovers) || {});
+    for (const k of Object.keys(deb.leftOnField || {})) leftovers[k] = (leftovers[k] | 0) + deb.leftOnField[k];
+    const sorted = {};
+    for (const k of Object.keys(leftovers).sort()) sorted[k] = leftovers[k];
+    return { crew, leftovers: sorted, crashed: !!M.crashed };
+  }
+
   OV.Battle = Object.assign(OV.Battle || {}, {
-    SCHEMA, SIDES, create, normalizeMission, quickMission, quickLoadout, rebuildDerived, serialize, deserialize, hash,
+    SCHEMA, SIDES, create, normalizeMission, crewRange, quickMission, quickLoadout, rebuildDerived, serialize, deserialize, hash,
     unitAt, unitsOf, outcome, objectiveDestroyed, spawnAlien, nearestFree,
-    beginBattle, beginPlayerTurn, endPlayerTurn, abort, debrief, recordBrought, TERROR_ABANDONED_KEY,
+    beginBattle, beginPlayerTurn, endPlayerTurn, abort, debrief, garrisonAfter, recordBrought, TERROR_ABANDONED_KEY,
   });
 })(globalThis.OV || (globalThis.OV = {}));

@@ -177,8 +177,9 @@ dead[k] = { id, name, nat, female, rank, portraitSeed, missions, kills, armour, 
           // cause 'kia'|'mia'|'craft'|'base'; where = {kind, lon, lat}|null
 ```
 - Recruit generation (`Soldiers.generate`, identical to the reference `Campaign.makeSoldier`) draws from `geo` in this
-  order: `Data.pickNationality` (1), female `pct(soldierGen.femalePct)` (1), `Data.soldierName` (2),
-  `Data.rollSoldierStats` (11), `portraitSeed = int(0, 0x7fffffff)` (1). The recruit gets armour
+  order: `Data.pickNationality` (1), female `pct(soldierGen.femalePct)` (1), `Data.soldierName` (2, plus 2
+  per re-roll: a name already worn by a living soldier in `G.soldiers` is re-drawn up to 8 times, then gets the suffix
+  « II», « III»…; §11.10), `Data.rollSoldierStats` (11), `portraitSeed = int(0, 0x7fffffff)` (1). The recruit gets armour
   `soldierGen.armour`, an empty loadout, `rank 0` and `initial = clone(stats)`.
 - A soldier with `woundDays > 0` cannot have a `craftId`. Making a soldier wounded also removes them from the craft.
 - Seats: a craft holds at most `Data.crafts[type].seatsUI` soldiers (Skyranger 10, Avenger 12).
@@ -218,10 +219,15 @@ ufo = { id, type, missionId, race, region,      // region = mission region
   groundLeftS:int /* landed: seconds left on the ground */, crashLeftS:int /* crashed: seconds before the site vanishes */,
   lastSeen:{lon, lat, t}|null, objective:bool /* this UFO completes the mission objective */,
   targetBaseId:string|null /* retaliation assault run */, siteCity:string|null /* terror objective city */,
-  siege:null|{baseId, shots:[{type, hit, dmg}]} /* assault run at the base: defences already fired (§5.9) */ }
+  siege:null|{baseId, shots:[{type, hit, dmg}]} /* assault run at the base: defences already fired (§5.9) */,
+  garrison?:{crew:[{type, rank, tier, outside}], leftovers:{itemId:n}, crashed:bool, visits:int}
+            /* only after a battle here without a win (§11.10): the aliens still on site and the items left on the ground */ }
 ```
 - Crash and landed sites are UFO records with status `crashed` or `landed`. They are not in `G.sites`.
 - A `crashed` UFO never moves. A `landed` UFO lifts off when `groundLeftS ≤ 0`.
+- `garrison` (optional; absent on a site never fought) is written by `finishMission` after a battle that was not a win
+  and read by `startMission` (§5.9). A UFO that lifts off and crashes again keeps it (`crashed` says whether the
+  survivors already went through a crash).
 - A destroyed UFO, or one that left Earth, is removed from `G.ufos`, and its id is removed from its mission's
   `liveUfos`.
 
@@ -247,7 +253,9 @@ civilian losses, so there is no `terrorSiteExpired` on top. Ours (§11.8): a los
 `OV.Battle.TERROR_ABANDONED_KEY` with the shortfall (`−(floor − civilians killed by aliens × value)`, only when positive).
 
 ### 1.14 Alien bases
-`alienBase = {id, lon, lat, race, region, country, missionId, discovered:bool, foundT:int|null, supplyT:int|null}`.
+`alienBase = {id, lon, lat, race, region, country, missionId, discovered:bool, foundT:int|null, supplyT:int|null,
+garrison?}` (`garrison` as in §1.11, after an assault that was not a win; a Supply Ship landing there deletes it: the base
+is back to full strength).
 Writers: Missions creates, supplies, reveals by agents or supply sighting, and removes after a won assault. World
 reveals by patrol (§3.1, 10-min step).
 
@@ -513,7 +521,8 @@ think30m(G)                                    countdowns, spawns, site/crash ti
 scan10m(G) ; daily(G) ; monthEnd(G)            §3.1 steps 6, 15, 17
 spawnMission(G, type, {region?, race?, cityId?, delayMin?, targetBaseId?, alienBaseId?, script?}) → alienMission
 spawnUfo(G, missionId) → ufo                   next UFO of the current wave at a zone-5 entry point
-onUfoWaypoint(G, ufoId)                        next leg, landing (status 'landed', groundLeftS = traj.groundS or 5 at sea),
+onUfoWaypoint(G, ufoId)                        next leg, landing (status 'landed', groundLeftS = traj.groundS or 5 at sea;
+                                               months < NIGHT_LANDING_MONTHS, night on land: until 1 h after daylight, §11.10),
                                                objective (terror site / alien base / supply / assault run) or exit
 onUfoLiftOff(G, ufoId)                         mission points (Data.scoring.missionPoints) for 'score' missions, next leg
 onUfoDown(G, ufoId, how:'crashed'|'destroyed', craftId)
@@ -739,6 +748,9 @@ mission = {
   researched: G.researched.slice(),
   settings: opts.settings || {}            // {instantGrenades} from OV.Game.settings, passed by CampaignUI
   meta: briefingMeta(G, mission)           // ignored by Battle; used by the briefing scene
+  garrison: clone(obj.garrison)            // only when the UFO / alien base has one (§11.10): Battle deploys exactly
+                                           // garrison.crew (no crew table, no crash roll if garrison.crashed) and a win
+                                           // adds garrison.leftovers to the recovered items
 }
 ```
 - `funded(template)`: copy `craft.equipment` into `pool`. Go through slots R, L, belt…, pack… in order. Take each item
@@ -773,7 +785,8 @@ map and alien layout, not a perfect-information replay. Throws `campaign.err.noG
    Then run `Soldiers.promotions(G)`.
 6. Craft: if `deb.craftLost`, `World.loseCraft(G, craftId, 'mission')`. Otherwise `dest = {kind:'base', id}` and status
    `returning`. A craft on a Cydonia mission is at base already, so it goes through checkup instead.
-7. `Missions.onSiteCleared(G, siteRef, deb.result)`.
+7. Not a win at a UFO or alien base: `site.garrison = Battle.garrisonAfter(B, deb)` with `visits + 1` (§11.10). Then
+   `Missions.onSiteCleared(G, siteRef, deb.result)`.
 8. Stats: `missionsWon` / `missionsLost` / `missionsAborted`; `aliensKilled += deb.kills`; `aliensCaptured` +=
    stored captures; `civiliansSaved += deb.civilians.saved`. Add the mission race to `G.seen.races`, and the UFO type
    to `G.seen.ufoTypes`.
@@ -964,7 +977,7 @@ The overlay ticks every open dogfight once per 30 ms of real time (`Data.dogfigh
 | `CRAFT_REPAIR_HP_H`, `MAX_DOGFIGHTS`, `RETALIATION_PCT` | tuning.js | 5, 2, [4,12,20] | craft turnaround, dogfights |
 | `LOW_FUEL_MARGIN_10M` | tuning.js (**new**) | 1 | low-fuel return margin (10-min steps) |
 | `WOUND_RECOVERY_MIN/MAX`, `PROMO_*` | tuning.js | 25/75, 4/8/15/20 | soldier turnaround and ranks |
-| `SOLDIER_/SCIENTIST_/ENGINEER_HIRE/SALARY` | tuning.js | orig | personnel economy |
+| `SOLDIER_/SCIENTIST_/ENGINEER_HIRE/SALARY` | tuning.js | orig, except **ours** `SCIENTIST_HIRE` 30 000 and `ENGINEER_HIRE` 25 000 (orig 60 000 / 50 000; §11.10) | personnel economy |
 | `BASE_DEFENCE_BASE`, `BASE_DEFENCE_PER_COEF`, `BASE_DEFENCE_FACILITY_PCT` | tuning.js | 850, 100, 100 (§11) | retaliation auto-resolve |
 | `RETALIATION_WARNING_MIN` | tuning.js (**new**) | 1440 (§11.5) | minimum time from `baseSpotted` to the assault Battleship's launch |
 | `MISSION_ARRIVE_NM` | tuning.js | 5 | a patrolling transport this close to a site counts as arrived (`startMission`) |
@@ -1294,3 +1307,35 @@ Twelve seeds per difficulty are still noisy (any change re-rolls every later bat
   of that slot is attempt n (kept in the save as `preMission.retries`) and the map stream is salted with n. Loading the
   same slot state with the same attempt number still gives the same map (deterministic, tested in
   `tools/tests/integration_r2.test.js`); other saves (manual slots, autosaves) are untouched.
+
+### 11.10 Persona round 3 (sim/data fixer)
+Verified persona findings, fixed at the root. Tests: `tools/tests/sim_persona_r3.test.js`. New: `ufo.garrison` /
+`alienBase.garrison` (§1.11, §1.14), `mission.garrison` (§5.9), `B.crew` (`[{id, type, rank, tier, outside}]`, every
+spawned alien), `debrief.aliensLeft` / `debrief.leftOnField`, `OV.Battle.garrisonAfter(B, deb)`, `OV.Battle.crewRange(mission)`,
+`Data.deployments.dep_alien_base.artefacts`, `Data.soldierNamesTaken(soldiers, extra?)` and the 4th argument `taken(name)`
+of `Data.soldierName`, `TUNE.NIGHT_LANDING_MONTHS` / `NIGHT_LANDING_DAY_MARGIN_S` / `NIGHT_LANDING_MAX_S`.
+
+| Change | Where | Before → after | Why / measured |
+|---|---|---|---|
+| **rule** Garrison after an abort | `Campaign.finishMission` step 7, `startMission`, `Battle.create` / `debrief` / `garrisonAfter` | a site left without a win was regenerated from the crew table on the next visit: «abort and fly back» farmed kills, loot carried to the ramp, artefact points, experience and promotions (persona script, Medium Scout crashed next to the base: 25 / 26 / 35 / 30 points and 186–319 k$ of loot per visit, the UFO never left) | the UFO / alien base keeps `garrison = {crew, leftovers, crashed, visits}`: the survivors (type, row rank, weapon tier, % outside) and the items left on the ground (corpses, dropped weapons, X-COM gear left behind). The next battle deploys exactly the crew (no crash roll again unless the UFO crashed since) and a win adds the leftovers to the recovery. Same script now: 25 points on visit 1, then 0 (one survivor left, nothing new to carry). An empty crew is a site with only loot left: the next battle is won at once. A Supply Ship landing at the alien base deletes its garrison |
+| **rule** Alien-base artefacts | `Data.deployments.dep_alien_base.artefacts`, `Battle.debrief` | an alien-base victory gave no artefacts (only UFOs had a table) | 2 Alien Food, 2 Alien Entertainment, 1 Alien Surgery, 1 Examination Room, 1 Alien Reproduction × intact DEVICE tiles / all DEVICE tiles (rounded half up), points while unresearched (7 items × 2 = 14). Validated in `strategy.validate` |
+| **rule** Night landings, months 0–1 | `Missions` `land()` | a UFO landing at night stayed `traj.groundS` (2.8–12.5 h), so «Esperar pelo dia» (UI: «cerca de 9 h») usually found the UFO gone | on land, at night, while `G.month < NIGHT_LANDING_MONTHS` (2): `groundLeftS = max(groundS, first daylight (30-min steps) + NIGHT_LANDING_DAY_MARGIN_S (1 h))`, at most `NIGHT_LANDING_MAX_S` (16 h). The UI's hourly dawn check always finds it still on the ground. Day landings and month ≥ 2 are unchanged |
+| Unique recruit names | `Data.soldierName(rng, nat, female, taken)`, `Soldiers.generate`, `Campaign.makeSoldier`, `Battle.quickMission` | duplicates allowed (two «Richard Moore» in one starting squad: the US pool is 12 × 15 male names) | re-drawn up to 8 times (2 draws each) while a living soldier has the name, then « II», « III»…; 60 new campaigns and 30 quick squads checked |
+| Hiring costs labelled | `TUNE.SCIENTIST_HIRE` / `ENGINEER_HIRE` (comment), §8 table, DESIGN §22 | 30 000 / 25 000 $ marked «orig» (orig 60 000 / 50 000) | kept as **ours** (pacing). With the original costs the bot (Veterano, seeds 1–24) won 7/24 with 2 council defeats, against 12/24 and none |
+
+Night battles (persona claim: landed Large Scout at night, month 0, Veterano, 75 % / 4.50). With the Skyranger full (10)
+and 24 seeds (`--squad 10`), the bot does as well by night as by day on a landed Large Scout (92 % / 3.5 losses against
+92 % / 3.2); crashed ones are 92 % / 3.2 at night against 96 % / 1.8 by day. Almost every alien shot (116 of 117) targets
+a soldier lit by the bot's own very-lights or muzzle flashes, so a shorter alien sight in the dark (14 tiles, tried)
+changed nothing measurable and was not kept; the crew tables are unchanged (month 0 already uses the next easier one,
+§11.6). The fix is to make waiting for daylight a real option in the learning months (above).
+
+Campaign bot, 240 days, final code (`tools/campaign_bot.js` `run({seed, difficulty, days: 240})` per seed, as
+`sim.js campaign` does; `node ovni-1999/tools/sim.js campaign --seeds 2 --diff 1 --days 150 --det --save-mid` exit 0),
+against §11.8:
+
+| | Recruta §11.8 | Recruta now | Veterano §11.8 | Veterano now |
+|---|---|---|---|---|
+| Victories, seeds 1–12 | 11/12 | 10/12 (2 timeouts) | 6/12 | 7/12 (4 timeouts, 1 Cydonia lost) |
+| Victories, seeds 13–24 | – | – | – | 5/12 |
+| Council defeats | 0 | 0 | 0 | 0 |

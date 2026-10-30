@@ -167,7 +167,7 @@
 
   // ---- soldados ---------------------------------------------------------------------------------------------
   /* Recruta novo (contrato §1.7). Ordem de consumo fixa da stream (geo por omissão): nacionalidade (1), sexo (1),
-     nome (2), atributos (11, pela ordem de soldierGen.statKeys), semente do retrato (1). */
+     nome (2, +2 por cada repetição de um nome vivo), atributos (11, pela ordem de soldierGen.statKeys), semente do retrato (1). */
   function makeSoldier(G, opts) {
     const o = opts || {};
     const Data = D();
@@ -175,7 +175,7 @@
     const gen = Data.soldierGen;
     const nat = Data.pickNationality(r);
     const female = r.pct(gen.femalePct);
-    const name = Data.soldierName(r, nat, female);
+    const name = Data.soldierName(r, nat, female, Data.soldierNamesTaken(G.soldiers));
     const stats = Data.rollSoldierStats(r);
     const portraitSeed = r.int(0, 0x7fffffff);
     return {
@@ -658,6 +658,8 @@
       meta: metaFor(G, ref, craft.id, site, phase),
     };
     if (surface) mission.shade = OV.GMath.missionShade(G, site.lon, site.lat);
+    // local já visitado sem vitória: só os sobreviventes e o material deixado no terreno (contrato §11.10)
+    if (obj && obj.garrison && (ref.kind === 'ufo' || ref.kind === 'alienBase')) mission.garrison = U.clone(obj.garrison);
     G.activeMission = { siteRef: ref, craftId: craft.id, startedT: G.t };
     return mission;
   }
@@ -785,7 +787,12 @@
       craft.speed = D().crafts[craft.type].speed;
     }
 
-    // 7) o local desaparece numa vitória
+    // 7) o local desaparece numa vitória; sem vitória, um OVNI ou base guarda os sobreviventes e o material no terreno
+    // (ours, §11.10: abortar e voltar já não repõe a tripulação inteira)
+    if (deb.result !== 'win' && site.obj && (ref.kind === 'ufo' || ref.kind === 'alienBase')) {
+      const gar = OV.Battle.garrisonAfter(B, deb);
+      if (gar) site.obj.garrison = Object.assign(gar, { visits: ((site.obj.garrison && site.obj.garrison.visits) | 0) + 1 });
+    }
     if (ref.kind !== 'cydonia') OV.Missions.onSiteCleared(G, ref, deb.result);
 
     // 8) estatísticas e registos vistos

@@ -191,8 +191,8 @@ function create(OV, opts) {
     const wantSci = wantScientists();
     if (sci < wantSci && room > 0) {
       let n = Math.min(wantSci - sci, room, 20);
-      while (n > 0 && net() - n * 30000 < -400000) n -= 2;
-      if (n > 0 && G.funds - n * 30000 > reserve() && BS.hire(G, b.id, 'scientist', n).ok) {
+      while (n > 0 && net() - n * OV.TUNE.SCIENTIST_SALARY < -400000) n -= 2;
+      if (n > 0 && G.funds - n * OV.TUNE.SCIENTIST_HIRE > reserve() && BS.hire(G, b.id, 'scientist', n).ok) {
         room -= n;
         say('contrata ' + n + ' cientistas');
       }
@@ -202,8 +202,8 @@ function create(OV, opts) {
     const wantEng = Math.min(20, cap.workshops.cap);
     if (eng < wantEng && room > 0) {
       let n = Math.min(wantEng - eng, room, 10);
-      while (n > 0 && net() - n * 25000 < -400000) n -= 2;
-      if (n > 0 && G.funds - n * 25000 > reserve() && BS.hire(G, b.id, 'engineer', n).ok) say('contrata ' + n + ' engenheiros');
+      while (n > 0 && net() - n * OV.TUNE.ENGINEER_SALARY < -400000) n -= 2;
+      if (n > 0 && G.funds - n * OV.TUNE.ENGINEER_HIRE > reserve() && BS.hire(G, b.id, 'engineer', n).ok) say('contrata ' + n + ' engenheiros');
     }
   }
 

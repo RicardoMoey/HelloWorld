@@ -192,8 +192,11 @@
       rows: [row('leader', same(1, 1)), row('soldier', [[2, 2], [2, 3], [3, 4]]), row('terrorist', [[2, 2], [2, 3], [3, 4]])],
     },
     // base alienígena (ours, afinada por varrimento): guarnição pequena — o assalto é com a Skyranger cheia (10)
+    // artefacts (ours, como no orig as bases eram a fonte dos dispositivos): recuperados numa vitória na proporção
+    // dos dispositivos 'u' (DEVICE) intactos no mapa
     dep_alien_base: {
       kind: 'alienBase', terrain: 'ALIENBASE', map: { w: 40, h: 40, d: 2 }, objective: 'base_control',
+      artefacts: { alien_food: 2, alien_entertainment: 2, alien_surgery: 1, examination_room: 1, alien_reproduction: 1 },
       rows: [
         row('commander', same(1, 1)), row('leader', [[1, 1], [1, 1], [2, 2]]), row('engineer', same(1, 1)), row('medic', same(1, 1)),
         row('navigator', same(1, 1)), row('soldier', [[2, 2], [2, 3], [3, 4]]), row('terrorist', [[1, 1], [1, 1], [2, 2]]),
@@ -467,13 +470,32 @@
   D.pickNationality = function (rng) {
     return rng.weighted(D.soldierGen.weights);
   };
-  // nome completo para a nacionalidade (consome 2 números do rng)
-  D.soldierName = function (rng, natId, female) {
-    const n = D.soldierGen.names[natId] || D.soldierGen.names.pt;
+  /* nome completo para a nacionalidade (consome 2 números do rng). taken(nome) → true se o nome já está em uso:
+     volta a sortear (2 números por tentativa, até NAME_REROLLS vezes); se ainda colidir, acrescenta « II», « III»… */
+  const NAME_REROLLS = 8;
+  const NAME_SUFFIX = ['II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'];
+  function rollName(rng, n, female) {
     const first = rng.pick(female ? n.f : n.m);
     const li = rng.int(0, n.last.length - 1);
     const last = female && n.lastF ? n.lastF[li] : n.last[li];
     return n.familyFirst ? last + ' ' + first : first + ' ' + last;
+  }
+  D.soldierName = function (rng, natId, female, taken) {
+    const n = D.soldierGen.names[natId] || D.soldierGen.names.pt;
+    let name = rollName(rng, n, female);
+    if (typeof taken !== 'function') return name;
+    for (let k = 0; k < NAME_REROLLS && taken(name); k++) name = rollName(rng, n, female);
+    if (!taken(name)) return name;
+    for (const suf of NAME_SUFFIX) if (!taken(name + ' ' + suf)) return name + ' ' + suf;
+    return name + ' ' + (NAME_SUFFIX.length + 2);
+  };
+  // predicado «nome em uso» para soldierName: nomes dos soldados vivos (objeto {id: soldado} ou lista) + extras
+  D.soldierNamesTaken = function (soldiers, extra) {
+    const set = new Set();
+    const list = Array.isArray(soldiers) ? soldiers : soldiers ? Object.values(soldiers) : [];
+    for (const s of list) if (s && typeof s.name === 'string') set.add(s.name);
+    if (extra) for (const nm of extra) set.add(nm);
+    return (nm) => set.has(nm);
   };
   // atributos iniciais de um recruta (consome 1 número por atributo, pela ordem de statKeys)
   D.rollSoldierStats = function (rng) {

@@ -19,7 +19,7 @@
   const RANK = { rookie: 0, squaddie: 1, sergeant: 2, captain: 3, colonel: 4, commander: 5 };
   const NAME_MAX = 24;
 
-  // recruta novo: nacionalidade (1), sexo (1), nome (2), atributos (11), semente do retrato (1) — contrato §1.9
+  // recruta novo: nacionalidade (1), sexo (1), nome (2, +2 por cada repetição de um nome vivo), atributos (11), semente do retrato (1) — contrato §1.9
   function generate(G, opts) {
     const o = opts || {};
     const Data = D();
@@ -27,7 +27,7 @@
     const gen = Data.soldierGen;
     const nat = Data.pickNationality(r);
     const female = r.pct(gen.femalePct);
-    const name = Data.soldierName(r, nat, female);
+    const name = Data.soldierName(r, nat, female, Data.soldierNamesTaken(G.soldiers));
     const stats = Data.rollSoldierStats(r);
     const portraitSeed = r.int(0, 0x7fffffff);
     return {
