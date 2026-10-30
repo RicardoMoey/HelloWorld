@@ -12,6 +12,7 @@
    API: OV.Screens = { VERSION, Backdrop, startBattle, buildQuickMission, quickFromURL, missionTitle, loadoutFor,
                        heavyPicks(squad, n) → Set de índices ; quickStore(mês, noite) → {item: n}
                        spareClip(soldado da missão) → bool (+1 carregador de reserva se a Força deixar)
+                       trimToStr(soldado da missão, armazém?) → [ids retirados] (extras para a nave até peso ≤ Força)
                        defaultQuick, openOptions, saves, resumeGame, missionRating, battleExit,
                        crewText({min,max}) → texto ; lossCauses(B) → {enemy, friendly, wounds, other, total, main, tip}
                        lossNotes(B, resultado, {campaign?}) → [nós DOM] (lossCauses também dá weak/race: armas fracas),
@@ -837,6 +838,42 @@
     }
     return false;
   }
+  /* Kit dentro da Força (a mesma regra do «Auto-equipar»): enquanto o peso passar a Força, os extras voltam para o
+     armazém da nave, por esta ordem — explosivo, granada de proximidade, 2.º sinalizador (mochila), fumo, detetor,
+     granadas além da 1.ª, munição além de 1 carregador, a última granada e por fim o sinalizador do cinto. A arma e um
+     carregador ficam sempre. store = {item: n} (muda). → lista dos objetos retirados */
+  const TRIM = [['high_explosive'], ['proximity_grenade'], ['electro_flare', ['pack']], ['smoke_grenade'], ['motion_scanner'],
+    ['grenade', null, 1], ['@ammo', null, 1], ['grenade'], ['electro_flare']];
+  function trimToStr(s, store) {
+    const lo = s && s.loadout;
+    const removed = [];
+    if (!lo) return removed;
+    lo.belt = lo.belt || [];
+    lo.pack = lo.pack || [];
+    const str = (s.stats && s.stats.str) | 0;
+    const gd = lo.R ? D().items[lo.R] : null;
+    const ammo = gd && Array.isArray(gd.ammo) ? gd.ammo : [];
+    const carried = () => lo.belt.concat(lo.pack);
+    const drop = (id, slots) => {
+      for (const sl of slots) {
+        const k = lo[sl].lastIndexOf(id);
+        if (k < 0) continue;
+        lo[sl].splice(k, 1);
+        if (store) store[id] = (store[id] | 0) + 1;
+        removed.push(id);
+        return true;
+      }
+      return false;
+    };
+    for (const [id, slots, keep] of TRIM) {
+      const ids = id === '@ammo' ? ammo : [id];
+      const left = () => carried().filter((t) => ids.indexOf(t) >= 0).length;
+      for (const t of ids) {
+        while (loWeight(lo) > str && left() > (keep | 0) && drop(t, slots || ['pack', 'belt'])) { /* continua */ }
+      }
+    }
+    return removed;
+  }
   // os n soldados com mais Força levam a arma pesada (empates: a ordem da equipa)
   function heavyPicks(squad, n) {
     const idx = squad.map((s, k) => k);
@@ -890,12 +927,14 @@
       difficulty: qs.diff, month: qs.month, squadSize: qs.squad, seed: qs.seed,
     });
     const heavy = heavyPicks(mission.squad, mission.squad.length >= 6 ? 2 : 1);
+    mission.craftItems = quickStore(qs.month, night);
     mission.squad.forEach((s, k) => {
       const { lo, armour } = loadoutFor(qs.month, k, night, heavy.has(k), false);
       s.loadout = lo;
       s.armour = armour;
+      // ninguém começa com excesso de peso: o que não aguenta fica no chão da nave (e no armazém do «Equipar»)
+      trimToStr(s, mission.craftItems);
     });
-    mission.craftItems = quickStore(qs.month, night);
     if (qs.month >= 2) {
       const want = mission.squad.length >= 6 ? 2 : 1;
       const meds = medPicks(mission.squad, mission.squad.map((s) => s.loadout), want);
@@ -910,17 +949,26 @@
   }
 
   /* Causas das baixas X-COM de uma batalha (para o relatório): inimigo, fogo amigo (incluindo os próprios explosivos),
-     ferimentos/fogo e outras; main = a causa com mais mortes; tip = chave da dica de uma frase para a causa principal. */
+     ferimentos/fogo e outras; main = a causa com mais mortes; tip = chave da dica de uma frase para a causa principal.
+     Também: ff = [{victim, killer, how: 'shot'|'blast'|'self', reaction}] (quem atingiu quem; reaction = morto no turno
+     do outro lado, quando o motor o regista em u.deathSide), squad/aliens = soldiers X-COM e alienígenas da missão,
+     tip2 = 2.ª dica (feridas com kit médico a bordo) e costly = vitória cara (metade da equipa, ou 3 em Recruta). */
   function lossCauses(B) {
-    const out = { enemy: 0, friendly: 0, wounds: 0, other: 0, total: 0, main: null, tip: null };
+    const out = { enemy: 0, friendly: 0, wounds: 0, other: 0, total: 0, main: null, tip: null, tip2: null, ff: [], squad: 0, aliens: 0, costly: false };
     if (!B || !Array.isArray(B.units)) return out;
     const byId = new Map(B.units.map((u) => [u.id, u]));
     for (const u of B.units) {
-      if (u.origSide !== 'xcom' || u.type !== 'soldier' || u.status !== 'dead') continue;
+      if (u.origSide === 'alien') out.aliens++;
+      if (u.origSide !== 'xcom' || u.type !== 'soldier') continue;
+      out.squad++;
+      if (u.status !== 'dead') continue;
       out.total++;
       const k = u.killedBy !== null && u.killedBy !== undefined ? byId.get(u.killedBy) : null;
-      if (k && (k.origSide === 'xcom' || k === u)) out.friendly++;
-      else if (k && k.origSide === 'alien') out.enemy++;
+      if (k && (k.origSide === 'xcom' || k === u)) {
+        out.friendly++;
+        const how = k === u ? 'self' : friendlyHow(B, u, k);
+        out.ff.push({ victim: u.name || '', killer: k.name || '', how, reaction: how === 'shot' && !!u.deathSide && u.deathSide !== 'xcom' });
+      } else if (k && k.origSide === 'alien') out.enemy++;
       else if (u.deathCause === 'wounds' || u.deathCause === 'burn') out.wounds++;
       else out.other++;
     }
@@ -929,11 +977,40 @@
     for (const c of order) if (out[c] > 0 && (!best || out[c] > out[best])) best = c;
     out.main = best;
     out.tip = best ? 'scr.db.tip.' + best : null;
+    // fogo amigo sobretudo a tiro (não explosivos): a dica é a da linha de fogo e das reações
+    if (best === 'friendly' && out.ff.filter((f) => f.how === 'shot').length * 2 > out.ff.length) out.tip = 'scr.db.tip.friendly.shot';
     // mortos pelo inimigo com armas balísticas contra armaduras fortes (Muton, Homem-Serpente…) ou já no mês ≥ 2:
     // o problema é a tecnologia, não o ajoelhar
     out.weak = weakWeapons(B);
     if (best === 'enemy' && out.weak) { out.tip = 'scr.db.tip.weapons'; out.race = out.weak; }
+    // equipa pequena contra mais alienígenas (com lugares por ocupar): a 1.ª dica é levar mais soldados
+    if (out.total && out.squad < out.aliens && out.squad < 6) out.tip = 'scr.db.tip.outnumbered';
+    // mortes a sangrar com um kit médico a bordo: a dica das feridas também aparece
+    const kit = B.brought ? (B.brought.medikit | 0) > 0 : (B.items || []).some((it) => it.type === 'medikit');
+    if (out.wounds && kit && out.tip !== 'scr.db.tip.wounds') out.tip2 = 'scr.db.tip.wounds';
+    const diff = (B.mission && B.mission.difficulty) | 0;
+    out.costly = out.total > 0 && (out.total * 2 >= out.squad || (diff === 0 && out.total >= 3));
     return out;
+  }
+  /* como morreu um soldado às mãos de um colega: 'blast' (granada, foguete, Blaster, explosão em cadeia, fogo) ou
+     'shot' (bala, laser, plasma). O motor marca com 'shot' também os foguetes: decide a arma na mão do atirador (com
+     munição explosiva = 'blast'); sem arma conhecida, 'shot' fica tiro e outra causa fica explosão. */
+  function friendlyHow(B, u, k) {
+    const c = u.deathCause;
+    if (c && c !== 'shot') return 'blast';
+    const Data = D();
+    const items = new Map((B.items || []).map((it) => [it.id, it]));
+    for (const h of ['R', 'L']) {
+      const it = k.items && k.items[h] !== null && k.items[h] !== undefined ? items.get(k.items[h]) : null;
+      const gd = it && Data.items[it.type];
+      if (!gd || gd.kind !== 'firearm') continue;
+      const am = it.ammo && Data.items[it.ammo.type];
+      const boom = (id) => ((Data.items[id] && Data.items[id].radius) | 0) > 0;
+      // lança-foguetes já vazio (o único foguete saiu): todas as munições da arma explodem
+      const allBoom = !am && Array.isArray(gd.ammo) && gd.ammo.length > 0 && gd.ammo.every(boom);
+      if (((am && am.radius) | 0) > 0 || (gd.radius | 0) > 0 || allBoom) return 'blast';
+    }
+    return c === 'shot' ? 'shot' : 'blast';
   }
   // raça (id) quando a equipa só levou armas balísticas e o inimigo tem armadura ≥ 20 ou o mês é ≥ 2; senão null
   function weakWeapons(B) {
@@ -955,15 +1032,24 @@
     const front = (unit && unit.armour && unit.armour.front) | 0;
     return front >= 20 || (M.month | 0) >= 2 ? M.race : null;
   }
-  // linhas do relatório: «Soldados mortos por fogo amigo ×N» e a dica (só sem vitória); o.campaign: dica de investigação
+  /* linhas do relatório: «N soldados mortos por fogo amigo: vítima ← tiro de atirador (reação)» e a dica (sem vitória,
+     ou numa vitória cara com o título «Vitória cara — dica para a próxima:»); o.campaign: dica de investigação */
+  const FF_SHOW = 3;
   function lossNotes(B, result, o) {
     const c = lossCauses(B);
     const out = [];
-    if (c.friendly) out.push(el('p', { class: 'scr-cause bad', text: Tn('scr.db.friendly', c.friendly) }));
-    if (result !== 'win' && c.tip) {
+    if (c.friendly) {
+      const who = c.ff.slice(0, FF_SHOW).map((f) => T('scr.db.ff.' + f.how + (f.reaction ? '.r' : ''), { victim: f.victim, killer: f.killer }));
+      if (c.ff.length > FF_SHOW) who.push(T('scr.db.ff.more', { n: c.ff.length - FF_SHOW }));
+      out.push(el('p', { class: 'scr-cause bad', text: Tn('scr.db.friendly', c.friendly) + (who.length ? ' ' + who.join(' · ') : '') }));
+    }
+    const win = result === 'win';
+    if ((!win || c.costly) && c.tip) {
       const race = c.race && D().races[c.race];
       const key = c.tip === 'scr.db.tip.weapons' && o && o.campaign ? 'scr.db.tip.weapons.cp' : c.tip;
-      out.push(el('p', { class: 'scr-tip', role: 'note' }, el('b', { text: T('scr.db.tip') }), ' ', TT(key, { race: race ? T(race.pluralKey || race.nameKey) : '' })));
+      const tips = [TT(key, { race: race ? T(race.pluralKey || race.nameKey) : '', n: c.squad, aliens: c.aliens })];
+      if (c.tip2) tips.push(TT(c.tip2));
+      out.push(el('p', { class: 'scr-tip' + (win ? ' costly' : ''), role: 'note' }, el('b', { text: T(win ? 'scr.db.tip.costly' : 'scr.db.tip') }), ' ', tips.join(' ')));
     }
     return out;
   }
@@ -1151,7 +1237,7 @@
     let q = sanitizeQuick(lsGet('ovni1999.quick') || {});
     if (!q.seedLocked) q.seed = uiRng.int(1, 99999);
     const controls = [];
-    let summary = null, startBtn = null, seedInp = null, squadOut = null, squadInp = null, autoGo = !!urlQuick;
+    let summary = null, startBtn = null, reroll = null, seedInp = null, squadOut = null, squadInp = null, autoGo = !!urlQuick;
 
     function set(k, v) {
       q[k] = v;
@@ -1259,7 +1345,7 @@
         const typed = () => { q.seedLocked = true; set('seed', (+seedInp.value >>> 0) || 1); };
         seedInp.addEventListener('change', typed);
         seedInp.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); typed(); start(); } });
-        const reroll = el('button', { type: 'button', class: 'btn small ghost', text: T('scr.qb.seed.random'), onclick: () => { sfx('ui_click'); q.seedLocked = false; set('seed', uiRng.int(1, 99999)); } });
+        reroll = el('button', { type: 'button', class: 'btn small ghost', text: T('scr.qb.seed.random'), onclick: () => { sfx('ui_click'); q.seedLocked = false; set('seed', uiRng.int(1, 99999)); } });
         OV.Dom.tooltip(reroll, () => '<b>' + OV.U.esc(T('scr.qb.seed.random')) + '</b><br><span class="muted">' + OV.U.esc(T('scr.qb.seed.tip')) + '</span>');
 
         startBtn = el('button', { type: 'button', class: 'btn primary scr-big', text: T('scr.qb.start'), onclick: start });
@@ -1298,9 +1384,10 @@
       },
       keys(ev) {
         if (ev.key === 'Enter') {
-          // «Enter começa» também com o foco num segmento (esses mudam-se com as setas e o Espaço)
+          /* «Enter começa» com o foco em qualquer controlo do formulário (segmentos, «Aleatória»): esses mudam-se com
+             as setas e o Espaço. Só «Voltar» em foco mantém o Enter do próprio botão. */
           const a = document.activeElement;
-          if (!a || a === document.body || a === startBtn || (a.classList && a.classList.contains('scr-seg-b'))) { start(); return true; }
+          if (!a || a === document.body || a === startBtn || a === reroll || (a.classList && a.classList.contains('scr-seg-b'))) { start(); return true; }
         }
         return false;
       },
@@ -1909,7 +1996,7 @@
   };
 
   OV.Screens = Object.assign(OV.Screens || {}, {
-    VERSION, Backdrop, startBattle, buildQuickMission, quickFromURL, missionTitle, loadoutFor, heavyPicks, quickStore, spareClip, defaultQuick,
+    VERSION, Backdrop, startBattle, buildQuickMission, quickFromURL, missionTitle, loadoutFor, heavyPicks, quickStore, spareClip, trimToStr, defaultQuick,
     openOptions, saves, resumeGame, missionRating, battleExit, crewText, lossCauses, lossNotes, _urlUsed: false,
     ui: { makeScreen, header, panelSection, seg, goBack, portraitEl, itemIconEl, unitSpriteEl, canvasCopy, statLegend, scrollKeys },
   });
