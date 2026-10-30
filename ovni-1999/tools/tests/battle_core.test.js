@@ -190,7 +190,7 @@ module.exports = function (OV, t) {
     t.eq(count, occ.size, tag + ': unitAt sem lixo');
     // tripulação completa (vivos + mortos na queda) dentro dos limites das linhas
     const dep = D.deployments[B.mission.deploymentId];
-    const tot = D.deploymentRange(dep.id, B.mission.difficulty);
+    const tot = D.deploymentRange(dep.id, B.mission.difficulty, B.mission.month); // tabela do mês (crewRules)
     const aliens = B.units.filter((u) => u.origSide === 'alien').length;
     t.ok(aliens >= tot.min && aliens <= tot.max, tag + ': aliens ' + aliens + ' fora de ' + tot.min + '..' + tot.max);
     t.eq(BT.outcome(B), null, tag + ': sem resultado no início');

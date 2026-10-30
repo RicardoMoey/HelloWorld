@@ -272,7 +272,7 @@
   function guidedPath(B, shooter, tgt, rng, def) {
     const m = B.map;
     const from = tileOfUnit(B, shooter);
-    const route = OV.Path && OV.Path.flyRoute && from >= 0 && tgt.tile >= 0 ? OV.Path.flyRoute(B, from, tgt.tile) : null;
+    const route = OV.Path && OV.Path.flyRoute && from >= 0 && tgt.tile >= 0 ? OV.Path.flyRoute(B, from, tgt.tile, { side: shooter.side }) : null;
     const acc = shooter.side === 'alien' ? def.guided.alienAcc : def.guided.acc;
     if (!route || route.length < 3) return shotPath(B, shooter, tgt.aim, rng, acc);
     const way = [OV.LOS.originVoxel(B, shooter, tgt.aim)];
@@ -445,6 +445,15 @@
     return out;
   }
 
+  // ours (persona r5): % do dano de um atacante do lado alienígena contra uma unidade X-COM (TUNE.ALIEN_DAMAGE_PCT por
+  // dificuldade; Recruta 50 %); fogo amigo, civis e alienígenas recebem 100 %
+  function alienDamagePct(B, victim, atk) {
+    if (!victim || victim.origSide !== 'xcom' || !atk || atk.side !== 'alien') return 100;
+    const t = tune('ALIEN_DAMAGE_PCT', [50, 100, 100]);
+    const d = U.clamp(((B && B.mission && B.mission.difficulty) | 0), 0, 2);
+    return Math.max(0, (Array.isArray(t) ? t[Math.min(d, t.length - 1)] : t) | 0);
+  }
+
   /* Dano numa unidade (BattleUnit::damage). power é rolado 0–200 % (HE 50–150 %) salvo opts.roll === false;
      ×modificador da armadura do tipo original (SMOKE lê o de SMOKE e só depois conta como STUN); −armadura do lado
      (IN ignora). Se p > 0: STUN ⇒ atordoa; senão HP −p e, se não for IN: atordoamento RNG(0,p/4) (se atordoável),
@@ -469,7 +478,7 @@
     const pw = Math.max(0, power | 0);
     const rnd = o.roll === false ? pw : r.int(idiv(pw * (100 - R), 100), idiv(pw * (100 + R), 100));
     const mod = u.mods && u.mods[dmgType] !== undefined ? u.mods[dmgType] : 100;
-    let p = idiv(rnd * mod, 100);
+    let p = idiv(rnd * mod * alienDamagePct(B, u, findUnit(B, attackerId)), 10000);
     const ignore = !!(o.ignoreArmour || dt.ignoresArmour);
     if (!ignore) p -= u.armour[s] | 0;
     let hpLoss = 0, stunAdd = 0, wounds = 0;
@@ -575,6 +584,7 @@
     u.deathDmg = o.dmgType || null; // tipo de dano do golpe fatal (o relatório distingue tiro de explosão)
     u.deathTurn = B.turn | 0;
     u.deathSide = B.side || null; // lado em jogo na morte (≠ 'xcom' = tiro de reação/turno alienígena)
+    u.deathTile = tile; // onde caiu (o relatório deteta baixas em grupo)
     const dropped = tile >= 0 ? dropAll(B, u, tile, true) : [];
     const spawnType = u.spawnOnDeath && Data.units[u.spawnOnDeath] ? u.spawnOnDeath : null;
     if (!body && !spawnType && tile >= 0 && u.corpse && Data.items[u.corpse]) body = BU().newItem(B, u.corpse, { at: tile, unitId: u.id });

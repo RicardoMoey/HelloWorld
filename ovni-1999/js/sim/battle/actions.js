@@ -691,7 +691,7 @@
     // bomba guiada (Lançador Blaster): voa pela rota de Path.flyRoute, por isso só falha sem rota, não sem linha de tiro
     let route = null;
     if (def.guided) {
-      route = OV.Path && OV.Path.flyRoute ? OV.Path.flyRoute(B, tileOf(B, u), tg.i) : null;
+      route = OV.Path && OV.Path.flyRoute ? OV.Path.flyRoute(B, tileOf(B, u), tg.i, { side: u.side }) : null;
       if (!route && !a.force) return fail('noRoute', { tu });
     } else if (!a.force && !tg.voxel && OV.LOS && !OV.LOS.targetVoxel(B, u, tg.unit || tg.i)) return fail('noLOF', { tu });
     return {

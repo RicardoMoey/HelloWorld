@@ -1,7 +1,8 @@
 /* Persona ronda 4 (simulação/dados): moral por dificuldade e pausa no pânico em Recruta (+ contagem para o relatório);
    defesa da base pela tripulação do OVNI (raça, dificuldade, mês), defesas limitadas e baixas proporcionais; centro de
-   controlo da base alienígena ganha a missão; rendição limitada à tripulação e à parte no relatório; equipamento por mês
-   da ferramenta de equilíbrio alinhado com a campanha. Contrato: docs/CAMPAIGN_API.md §5.9, §11.11; DESIGN §22. */
+   controlo da base alienígena (r5: sair depois de o destruir é a vitória); rendição (r5: o posto de comando, só numa
+   vitória pela força) à parte no relatório; equipamento por mês da ferramenta de equilíbrio alinhado com a campanha.
+   Contrato: docs/CAMPAIGN_API.md §5.9, §11.11, §11.12; DESIGN §22. */
 'use strict';
 
 module.exports = function (OV, t) {
@@ -123,25 +124,27 @@ module.exports = function (OV, t) {
     t.ok(need(1, 3, 'ethereal') > need(1, 3, 'sectoid') * 1.5, 'Etéreos ≫ Sectoides');
     t.ok(need(2, 3, 'sectoid') > need(1, 3, 'sectoid') && need(1, 3, 'sectoid') > need(0, 3, 'sectoid'), 'dificuldade');
     t.ok(need(1, 4, 'sectoid') > need(1, 2, 'sectoid'), 'armamento do mês');
-    // 10 recrutas aguentam Sectoides em Veterano mas não Mutões
+    // 10 recrutas aguentam Sectoides em Veterano mas não Mutões (r5: probabilidades pelo rácio, §11.12)
     const G = baseG(4, 1, 3);
-    t.eq(C.baseDefence(G, 'b1', assault(G, 'sectoid').id).result, 'repelled');
+    const rs = C.baseDefence(G, 'b1', assault(G, 'sectoid').id);
+    t.eq([rs.result, rs.odds.lostPct], ['repelled', 0], JSON.stringify(rs.odds));
     const G2 = baseG(4, 1, 3);
-    t.eq(C.baseDefence(G2, 'b1', assault(G2, 'muton').id).result, 'lost');
-    // 3 soldados + 6 defesas: o bónus das defesas fica nos 66 % dos soldados (a salva ainda tira casco)
+    const rm = C.baseDefence(G2, 'b1', assault(G2, 'muton').id);
+    t.ok(rm.odds.ratio < T.BASE_DEFENCE_RATIO_MID && rm.odds.lostPct >= 30 && rm.odds.repelPct < 50, JSON.stringify(rm.odds));
+    // 3 soldados + 6 defesas: o bónus das defesas fica nos 66 % dos soldados
     for (let seed = 1; seed <= 6; seed++) {
       const G3 = baseG(seed, 1, 3);
-      const home = keepHome(G3, 3);
+      keepHome(G3, 3);
       t.eq(addDefences(G3, 6), 6);
-      const men = home.reduce((a, s) => a + C.defenderPower(s), 0);
       const u = assault(G3, 'sectoid');
+      const est = C.defenceOdds(G3, 'b1', { ufoId: u.id });
+      t.eq(est.garrison, 3);
+      t.eq(est.facilities, Math.min(6 * Math.floor((D.facilities.missile_defence.defence * T.BASE_DEFENCE_FACILITY_PCT) / 100), Math.floor((est.men * T.BASE_DEFENCE_FACILITY_CAP_PCT) / 100)), 'semente ' + seed);
+      t.ok(est.facilities < 6 * 125 && est.strength === est.men + est.facilities);
       const r = C.baseDefence(G3, 'b1', u.id);
-      const shot = r.shots.reduce((a, x) => a + x.dmg, 0);
       if (r.result === 'ufoDestroyed') continue;
-      const full = Math.floor((C.assaultForce(G3, u) * T.BASE_DEFENCE_CREW_PCT) / 100);
-      const needLeft = Math.floor((full * Math.max(0, D.ufos.battleship.hp - shot)) / D.ufos.battleship.hp);
-      const strength = men + Math.min(6 * Math.floor((D.facilities.missile_defence.defence * T.BASE_DEFENCE_FACILITY_PCT) / 100), Math.floor((men * T.BASE_DEFENCE_FACILITY_CAP_PCT) / 100));
-      t.eq(r.result, strength >= needLeft ? 'repelled' : 'lost', 'semente ' + seed);
+      // a salva tirou casco: a exigência só pode descer
+      t.ok(r.odds.ratio >= est.ratio, 'semente ' + seed + ': ' + r.odds.ratio + ' ≥ ' + est.ratio);
     }
   });
 
@@ -173,32 +176,35 @@ module.exports = function (OV, t) {
     }
   }
 
-  t.test('base alienígena: destruir o centro de controlo ganha a missão (como diz o briefing); o que os vivos levam fica', () => {
+  // r5 (regra orig): o centro destruído não acaba a batalha; sair (abortar) com alguém a bordo dá a vitória
+  t.test('base alienígena: centro de controlo destruído ⇒ sair é a vitória (r5); o que os vivos levam fica', () => {
     for (const seed of [1, 2]) {
       const B = BT.create(BT.quickMission({ kind: 'alienBase', month: 3, seed, difficulty: 1 }));
       drain(BT.beginBattle(B));
       t.ok(B.objectiveTiles.length > 0, 'tiles do objetivo');
-      t.eq(BT.outcome(B), null);
+      t.eq([BT.outcome(B), BT.exitWin(B)], [null, false]);
       clearObjective(B);
       t.ok(BT.objectiveDestroyed(B));
-      t.eq(BT.outcome(B), 'win', 'semente ' + seed);
+      t.eq([BT.outcome(B), BT.exitWin(B)], [null, true], 'semente ' + seed + ': a batalha continua');
       const alive = B.units.filter((u) => u.origSide === 'alien' && u.side === 'alien' && LIVE[u.status]);
       t.ok(alive.length > 0);
+      const ab = BT.abort(B);
+      t.eq([ab.result, BT.outcome(B), B.result], ['win', 'win', 'win']);
       const deb = BT.debrief(B);
       t.eq(deb.result, 'win');
       t.eq(deb.objective, true);
       t.eq(deb.kills, B.units.filter((u) => u.origSide === 'alien' && u.status === 'dead' && !u.crashDead).length, 'vivos não contam como abatidos');
       t.ok(deb.lines.some((l) => l.key === 'bs.debrief.alienBaseDestroyed'));
-      // armas: só as que não estão nas mãos de um alienígena de pé
-      const held = new Set(alive.map((u) => u.id));
-      const types = new Set(B.items.filter((it) => it.owner !== null && held.has(it.owner) && D.items[it.type].kind === 'firearm').map((it) => it.type));
-      t.ok(types.size > 0, 'há armas nas mãos dos vivos');
-      for (const ty of types) {
-        const free = B.items.filter((it) => it.type === ty && (it.unitId === null || it.unitId === undefined) && !(it.owner !== null && held.has(it.owner))).length;
-        t.eq((deb.recovered[ty] | 0) + (deb.returned[ty] | 0), free, ty);
-      }
+      // saída: nada do terreno nem os artefactos da base, só o que a equipa trouxe
+      t.eq(deb.recovered, {}, 'nada recuperado ao sair');
+      t.eq(deb.mia.length, ab.mia.length);
     }
-    // um OVNI não tem objetivo; Cidónia continua a ganhar pelo Cérebro
+    // sem o centro destruído, abortar continua a ser abortar
+    const B2 = BT.create(BT.quickMission({ kind: 'alienBase', month: 3, seed: 3, difficulty: 1 }));
+    drain(BT.beginBattle(B2));
+    t.eq(BT.abort(B2).result, 'abort');
+    t.eq(BT.debrief(B2).result, 'abort');
+    // um OVNI não tem objetivo; Cidónia continua a ganhar logo pelo Cérebro
     const mars = BT.create(BT.quickMission({ kind: 'cydonia', month: 6, seed: 1, difficulty: 1 }));
     drain(BT.beginBattle(mars));
     clearObjective(mars);
@@ -225,25 +231,46 @@ module.exports = function (OV, t) {
     return { G, B, model: C.finishMission(G, B) };
   }
 
-  t.test('rendição: no máximo as patentes da tripulação (1 líder ⇒ 1 líder), à parte no modelo; capturas na batalha contam', () => {
+  // r5: o posto de comando (pessoal à parte da tripulação da batalha) rende-se quando a base é tomada pela força
+  t.test('rendição (r5): o posto de comando rende-se só numa vitória pela força; os da batalha não contam (atordoar dá mais um)', () => {
     const { G, B, model } = alienBaseFight(1);
-    const leaders = B.crew.filter((c) => c.rank === 'leader').length;
-    t.eq(leaders, 1, 'Veterano: 1 líder na tripulação');
+    t.ok(B.crew.some((c) => c.rank === 'commander'), 'há um comandante na batalha (abatido)');
     t.eq(model.debrief.captured.length, 0);
     t.eq(model.surrendered, { floater_commander: 1, floater_leader: 1 });
     t.eq(model.capturedStored, { floater_commander: 1, floater_leader: 1 });
     t.eq(G.bases[0].aliens, { floater_commander: 1, floater_leader: 1 });
-    // comandante atordoado na batalha: vai como captura, só o líder se rende
+    // comandante atordoado na batalha: captura + o do posto de comando
     const st = alienBaseFight(1, (B2) => {
       const cmd = B2.units.find((u) => u.type === 'floater_commander');
       OV.Combat.knockOut(B2, cmd, null);
     });
     t.eq(st.model.debrief.captured.map((c) => c.unitType), ['floater_commander']);
-    t.eq(st.model.surrendered, { floater_leader: 1 });
-    t.eq(st.model.capturedStored, { floater_commander: 1, floater_leader: 1 });
-    // Super-humano: 2 líderes na tripulação ⇒ 2 rendem-se
-    const sup = alienBaseFight(2);
-    t.eq(sup.model.surrendered, { floater_commander: 1, floater_leader: 2 });
+    t.eq(st.model.surrendered, { floater_commander: 1, floater_leader: 1 });
+    t.eq(st.model.capturedStored, { floater_commander: 2, floater_leader: 1 });
+    // Super-humano: o posto de comando é o mesmo (não depende da tripulação)
+    t.eq(alienBaseFight(2).model.surrendered, { floater_commander: 1, floater_leader: 1 });
+  });
+
+  t.test('rendição (r5): sem rendição numa vitória pelo centro de controlo (sair com alienígenas de pé)', () => {
+    const G = C.newCampaign({ seed: 17, difficulty: 1 });
+    G.alienMissions = [];
+    G.bases[0].grid.push({ type: 'alien_containment', x: 5, y: 3, daysLeft: 0 });
+    const a = {
+      id: C.nextId(G, 'a'), lon: 10, lat: 50, race: 'floater', region: OV.GMath.regionAt(10, 50), country: OV.GMath.countryAt(10, 50),
+      missionId: null, discovered: true, foundT: 0, supplyT: null,
+    };
+    G.alienBases.push(a);
+    const sky = Object.values(G.crafts).find((c) => c.type === 'skyranger');
+    Object.assign(sky, { status: 'patrol', dest: { kind: 'alienBase', id: a.id }, lon: a.lon, lat: a.lat, speed: 0 });
+    const B = BT.create(C.startMission(G, { kind: 'alienBase', id: a.id }, sky.id));
+    drain(BT.beginBattle(B));
+    clearObjective(B);
+    const model = C.abortMission(G, B);
+    t.eq([model.debrief.result, model.debrief.objective], ['win', true]);
+    t.eq(model.surrendered, {});
+    t.eq(G.bases[0].aliens, {});
+    t.eq(G.alienBases.length, 0, 'a base caiu');
+    t.ok(model.debrief.lines.some((l) => l.key === 'bs.debrief.alienBaseDestroyed'));
   });
 
   // ---- 5. equipamento da ferramenta de equilíbrio ---------------------------------------------------------

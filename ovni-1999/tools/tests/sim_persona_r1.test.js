@@ -91,6 +91,7 @@ module.exports = function (OV, t) {
     t.ok(A.REASONS.indexOf('noRoute') >= 0);
     // abre-se uma brecha na parede: a bomba contorna-a
     B.map.parts[I(B, 8, 14) * 4 + 1] = 0;
+    B.map.disc.fill(7); // r5: a rota só passa por casas já descobertas pela X-COM
     BT.rebuildDerived(B);
     OV.LOS.refreshAll(B);
     const v = A.validate(B, shot);

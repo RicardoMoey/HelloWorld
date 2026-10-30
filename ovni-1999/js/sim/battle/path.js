@@ -11,7 +11,8 @@
        origin, unitId, tuBudget, energyBudget}   Dijkstra; orçamentos por omissão = budget(unit)
    OV.Path.pathTo(reach, toI) → {steps:[dir], tiles:[i] (sem a origem), tus:[UT acumuladas], tu, energy} | null
    OV.Path.find(B, unit, toI, maxTU?, opts) → igual a pathTo | null   A* (linha reta primeiro, no mesmo nível)
-   OV.Path.flyRoute(B, fromI, toI, opts?) → [fromI … toI] | null   rota da bomba do Blaster (ignora UT)
+   OV.Path.flyRoute(B, fromI, toI, opts?) → [fromI … toI] | null   rota da bomba do Blaster (ignora UT);
+     opts.side 'xcom' ⇒ só por casas vistas/descobertas pela X-COM (o alvo pode ser escuro)
    OV.Path.dirBetween(m, a, b) → 0..7 | 8 subir | 9 descer | −1 ; OV.Path.budget(unit) → {tu, energy}
    opts = {run, ai, sneaky:Uint8Array(n), units:'plan'|'all'|'none', seen:fn(u)|Set|[ids], energy (só find)}
      units 'plan' (omissão): bloqueiam as unidades do mesmo lado e os inimigos vistos pelo lado da unidade;
@@ -149,7 +150,7 @@
       B, m, T: tables(), S, gen: S.gen, w: m.w, h: m.h, d: m.d, plane: m.w * m.h, n: m.n,
       parts: m.parts, uo: m.ufoDoorOpen, fire: m.fire, unitAt: B._ ? B._.unitAt : null,
       size, fly: !!unit.canFly, uid: unit.id, run: !!o.run, ai: !!o.ai, sneaky: o.sneaky || null,
-      doors: size === 1, ufoDoors: true, ceiling: !!m.ceiling, target: -1, bomb: false,
+      doors: size === 1, ufoDoors: true, ceiling: !!m.ceiling, target: -1, bomb: false, known: null,
       TU_WALK: tune('TU_WALK', 4), TU_DOOR: tune('TU_DOOR', 4), TU_LIFT: tune('TU_GRAVLIFT', 8),
       TU_STAIRS: tune('TU_STAIRS', 6), EN_STAIRS: tune('EN_STAIRS', 3), FIRE_PEN: tune('AI_BURNING_PATH_COST', 32),
       RTN: tune('RUN_TU_NUM', 3), RTD: tune('RUN_TU_DEN', 4), REN: tune('RUN_EN_NUM', 3), RED: tune('RUN_EN_DEN', 2),
@@ -692,6 +693,7 @@
         if (!step(c, x, y, z, d, out)) continue;
         const t = out.to;
         if (done[t] === gen) continue;
+        if (c.known && t !== toI && !c.known(t)) continue;
         const nt = tv + out.tu, ne = ev + out.en;
         if (nt > maxT || ne > maxE) continue;
         const ng = gv + (c.bomb ? bombCost(d) : out.tu + out.pen);
@@ -737,7 +739,10 @@
     return astar(c, origin, toI, maxT, maxE) ? collect(c, origin, toI) : null;
   }
 
-  // rota da bomba do Blaster: voo 1×1 sem UT, evita objetos sólidos, paredes e (se possível) unidades
+  /* rota da bomba do Blaster: voo 1×1 sem UT, evita objetos sólidos, paredes e (se possível) unidades.
+     opts.side 'xcom' (ours, persona r5, como os pontos de passagem do orig): só atravessa casas que a X-COM vê ou já
+     descobriu (map.disc bit 0); o alvo pode ser a casa escura seguinte. Sem isto a bomba voava às cegas da rampa até
+     ao centro de controlo de uma base alienígena por explorar. */
   function flyRoute(B, fromI, toI, opts) {
     const m = B.map;
     if (!(fromI >= 0) || !(toI >= 0) || fromI >= m.n || toI >= m.n) return null;
@@ -745,12 +750,15 @@
     const o = opts || {};
     const modes = o.units ? [o.units] : ['all', 'none'];
     const probe = { id: -1, side: null, size: 1, canFly: true };
+    const vis = B._ && B._.visTiles;
+    const known = o.side === 'xcom' ? (i) => !!((vis && vis[i]) || (m.disc[i] & 1)) : null;
     for (const mode of modes) {
       const c = makeCtx(B, probe, { units: mode });
       c.bomb = true;
       c.doors = false;
       c.ufoDoors = false;
       c.target = toI;
+      c.known = known;
       c.S.block[fromI] = 0;
       if (astar(c, fromI, toI, Infinity, Infinity)) return [fromI].concat(collect(c, fromI, toI).tiles);
     }

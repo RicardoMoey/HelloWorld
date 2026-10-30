@@ -86,6 +86,10 @@
     MORALE_LOSS_PCT: [50, 100, 100],
     // ours: turnos X-COM seguintes a um episódio de pânico/berserk em que o mesmo soldado não volta a entrar em pânico
     PANIC_COOLDOWN_TURNS: [1, 0, 0],
+    // ours (persona r5, DESIGN §22): % do dano que as armas alienígenas fazem às unidades X-COM, por dificuldade 0/1/2 —
+    // em Recruta um tiro de pistola de plasma (52 → 26, máx. 52 − 12 de armadura) raramente mata um recruta de fato
+    // (28–40 de Saúde): ≈ 11 % em vez de 55 %; principiante (--novice) no Batedor Grande 2,3 → 1,6 baixas (16 sementes)
+    ALIEN_DAMAGE_PCT: [50, 100, 100],
 
     // ---- granadas (ours)
     GRENADE_FUSE_MAX: 5,
@@ -154,8 +158,17 @@
     BASE_DEFENCE_FACILITY_PCT: 25, // …+25 % do poder de cada defesa concluída (que já atirou ao casco na salva)…
     BASE_DEFENCE_FACILITY_CAP_PCT: 66, // …mas no máximo 66 % da força dos soldados (≥ 60 % da força vem deles)
     BASE_DEFENCE_CASUALTY_PCT: 40, // baixas da vitória = round(guarnição × exigência / força × 40 %), 1..guarnição
+    // ours (persona r5, contrato §11.12): a arma conta — força += (poder da arma − 30) × 50 % (espingarda 0, laser +15,
+    // plasma pesado +42, desarmado −15; poder até 120); os desarmados pegam nas melhores armas do armazém
+    BASE_DEFENCE_WEAPON_PCT: 50, BASE_DEFENCE_GUN_BASE: 30, BASE_DEFENCE_GUN_CAP: 120,
+    // …e o resultado é sorteado pelo rácio r = 100 × força / exigência: perdida (MID − r)/(MID − LO), repelida
+    // (r − LO)/(HI − LO), senão aguentada a custo (≥ 60 % da guarnição morre, alguém fica; 2 instalações destruídas)
+    BASE_DEFENCE_RATIO_LO: 50, BASE_DEFENCE_RATIO_MID: 100, BASE_DEFENCE_RATIO_HI: 150,
+    BASE_DEFENCE_HOLD_CASUALTY_PCT: 60, BASE_DEFENCE_HOLD_FACILITIES: 2,
     MISSION_ARRIVE_NM: 5, // nave em patrulha a ≤ 5 mn de um local conta como chegada (startMission)
-    ALIEN_BASE_SURRENDER: ['commander', 'leader', 'leader'], // ours: base alienígena tomada entrega estes vivos (contenção)
+    // ours (persona r5): o posto de comando de uma base alienígena tomada pela força (todos os alienígenas da batalha
+    // neutralizados) rende-se e vai vivo para a contenção — pessoal à parte da tripulação da batalha (contrato §11.12)
+    ALIEN_BASE_SURRENDER: ['commander', 'leader'],
     GEO_IDLE_COALESCE: true, // ours: sem nada no ar, o relógio salta até à fronteira seguinte (hash idêntico)
     UFO_BASE_SIGHT_NM: 268, // OVNI de retaliação vê a base X-COM (orig)
     ALIEN_BASE_SUPPLY_PCT: 6, // abastecimento diário de cada base alienígena (orig)

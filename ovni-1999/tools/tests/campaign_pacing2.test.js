@@ -76,7 +76,7 @@ module.exports = function (OV, t) {
     t.eq([0, 1, 2, 7].map((month) => Mi.expiredPoints({ month })), [500, 500, 1000, 1000], 'Missions.expiredPoints (texto da UI)');
   });
 
-  t.test('tripulações do mês 0: tabela de uma dificuldade abaixo nos OVNIs (atributos iguais); terror e mês 1 sem mudança', () => {
+  t.test('tripulações do mês 0: tabela de uma dificuldade abaixo nos OVNIs e no terror (persona r5; atributos iguais); mês 1 sem mudança', () => {
     const range = (dep, diff, month) => {
       const r = D.deploymentRange(dep, diff, month);
       return [r.min, r.max];
@@ -86,7 +86,9 @@ module.exports = function (OV, t) {
     t.eq(range('dep_large_scout', 2, 0), range('dep_large_scout', 1));
     t.eq(range('dep_large_scout', 0, 0), range('dep_large_scout', 0));
     t.eq(range('dep_large_scout', 1), range('dep_large_scout', 1), 'sem mês: tabela da dificuldade');
-    t.eq(range('dep_terror_site', 1, 0), range('dep_terror_site', 1), 'terror sem redução');
+    t.eq(range('dep_terror_site', 1, 0), [range('dep_terror_site', 0)[0] - 1, range('dep_terror_site', 0)[1] - 1], 'terror do mês 0 também reduzido (persona r5: e −1 terrorista)');
+    t.eq(range('dep_terror_site', 1, 1), range('dep_terror_site', 1), 'terror do mês 1 sem redução');
+    t.eq(range('dep_alien_base', 1, 0), range('dep_alien_base', 1), 'base alienígena sem redução');
     t.eq(D.crewDifficulty('dep_medium_scout', 1, 0), 0);
     // na batalha: Batedor Grande de Veterano no mês 0 dentro da tabela de Recruta
     const max = D.deploymentRange('dep_large_scout', 0).max;

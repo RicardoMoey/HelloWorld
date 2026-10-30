@@ -434,7 +434,7 @@ function campaignSummary(label, rows) {
       ', terror ganhos ' + rows.reduce((s, r) => s + r.terror.won, 0) + '/' + rows.reduce((s, r) => s + r.terror.fought, 0) +
       ' (expirados ' + rows.reduce((s, r) => s + r.terror.expired, 0) + '), pactos ' + rows.reduce((s, r) => s + r.pacts.length, 0) +
       ', avaliação mês 0 mediana ' + median(rows.map((r) => (r.ratings.length ? r.ratings[0] : 0))),
-    '  ataques à base ' + rows.reduce((s, r) => s + r.retaliations.length, 0) + ' (' + ['ufoDestroyed', 'repelled', 'lost'].map((k) => k + ' ' +
+    '  ataques à base ' + rows.reduce((s, r) => s + r.retaliations.length, 0) + ' (' + ['ufoDestroyed', 'repelled', 'held', 'lost'].map((k) => k + ' ' +
       rows.reduce((s, r) => s + r.retaliations.filter((x) => x.result === k).length, 0)).join(', ') + '), bases localizadas ' +
       rows.reduce((s, r) => s + (r.spotted || []).length, 0) + ', bases perdidas ' + rows.filter((r) => r.reason === 'baseLost').length,
   ].join('\n');

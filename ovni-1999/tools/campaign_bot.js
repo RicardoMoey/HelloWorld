@@ -1041,8 +1041,8 @@ function create(OV, opts) {
         say('a base foi localizada pelos alienígenas — a equipa fica em casa');
         break;
       case 'baseDefence':
-        bot.mem.retaliations.push({ day: +(G.t / DAY).toFixed(1), result: ev.result, lost: ev.soldiersLost.length });
-        say('ataque à base → ' + ev.result);
+        bot.mem.retaliations.push({ day: +(G.t / DAY).toFixed(1), result: ev.held ? 'held' : ev.result, lost: ev.soldiersLost.length, ratio: ev.odds ? ev.odds.ratio : null });
+        say('ataque à base → ' + ev.result + (ev.held ? ' a custo' : '') + (ev.odds ? ' (força/exigência ' + ev.odds.ratio + ' %)' : '') + ', baixas ' + ev.soldiersLost.length);
         break;
       case 'alienBaseFound': {
         const ab = C.findAlienBase(G, ev.alienBaseId);

@@ -44,7 +44,7 @@ module.exports = function (OV, t) {
   t.test('afinação: chaves novas do contrato em OV.TUNE (§8)', () => {
     t.eq(T.MISSION_ARRIVE_NM, 5);
     t.eq([T.BASE_DEFENCE_CREW_PCT, T.BASE_DEFENCE_TIER_PCT, T.BASE_DEFENCE_FACILITY_PCT, T.BASE_DEFENCE_FACILITY_CAP_PCT, T.BASE_DEFENCE_CASUALTY_PCT, T.RETALIATION_WARNING_MIN], [50, 20, 25, 66, 40, 1440]);
-    t.eq(T.ALIEN_BASE_SURRENDER, ['commander', 'leader', 'leader']);
+    t.eq(T.ALIEN_BASE_SURRENDER, ['commander', 'leader']);
     t.eq(D.missionRules.terrorNearBaseWeightMul, 4);
     t.eq(D.missionRules.crashCoastNm, 180);
   });
@@ -94,16 +94,17 @@ module.exports = function (OV, t) {
   });
 
   t.test('defesa da base: guarnição inicial repele um Couraçado em Recruta; o casco perdido e as defesas contam (até 66 % dos soldados)', () => {
-    // exigência = BASE_DEFENCE_CREW_PCT % da tripulação esperada × casco que resta (contrato §5.9, persona r4)
+    // exigência = BASE_DEFENCE_CREW_PCT % da tripulação esperada × casco que resta (contrato §5.9, persona r4); o
+    // resultado é sorteado pelo rácio força/exigência (persona r5, §11.12): ≥ 150 % repele sempre, ≤ 50 % cai sempre
     const powerOf = (list) => list.reduce((s, x) => s + C.defenderPower(x), 0);
     for (const seed of [3, 4, 5, 6]) {
       const G = freshG(seed, 0);
       G.month = 3;
       const u = placeUfo(G, 'flying', 'battleship', G.bases[0].lon, G.bases[0].lat);
       const need = Math.floor((C.assaultForce(G, u) * T.BASE_DEFENCE_CREW_PCT) / 100);
-      t.ok(powerOf(Object.values(G.soldiers)) >= need, 'guarnição inicial ≥ ' + need);
+      t.ok(powerOf(Object.values(G.soldiers)) >= 1.5 * need, 'guarnição inicial ≥ 150 % de ' + need);
       const r = C.baseDefence(G, 'b1', u.id);
-      t.eq(r.result, 'repelled', 'semente ' + seed);
+      t.eq([r.result, r.held, r.odds.repelPct], ['repelled', false, 100], 'semente ' + seed);
       t.ok(r.soldiersLost.length >= 1 && r.soldiersLost.length <= 3);
     }
     // Veterano, mês 3: 5 soldados em casa não chegam, nem com duas Defesas de Mísseis; os 10 iniciais sim
@@ -122,23 +123,21 @@ module.exports = function (OV, t) {
         sky.soldiers.push(s.id);
       }
       if (withDefences) G.bases[0].grid.push({ type: 'missile_defence', x: 5, y: 0, daysLeft: 0 }, { type: 'missile_defence', x: 5, y: 1, daysLeft: 0 });
-      const strength = powerOf(all.slice(0, atHome));
       const u = placeUfo(G, 'flying', 'battleship', G.bases[0].lon, G.bases[0].lat);
       const r = C.baseDefence(G, 'b1', u.id);
-      const shot = r.shots.reduce((s, x) => s + x.dmg, 0);
-      const full = Math.floor((C.assaultForce(G, u) * T.BASE_DEFENCE_CREW_PCT) / 100);
-      const need = Math.floor((full * (D.ufos.battleship.hp - shot)) / D.ufos.battleship.hp);
-      return { r, strength, need };
+      return { r, G };
     };
     const bare = vet(5, false);
-    t.ok(bare.strength < bare.need, 'só 5 soldados: ' + bare.strength + ' < ' + bare.need);
-    t.eq(bare.r.result, 'lost');
+    t.ok(bare.r.odds.ratio < 65 && bare.r.odds.lostPct >= 70 && bare.r.odds.repelPct <= 15, 'só 5 soldados: ' + JSON.stringify(bare.r.odds));
     const def = vet(5, true);
-    const bonus = Math.min(2 * Math.floor((D.facilities.missile_defence.defence * T.BASE_DEFENCE_FACILITY_PCT) / 100), Math.floor((def.strength * T.BASE_DEFENCE_FACILITY_CAP_PCT) / 100));
-    t.eq(def.r.result, def.strength + bonus >= def.need ? 'repelled' : 'lost');
-    t.eq(def.r.result, 'lost', 'as defesas não substituem a guarnição: ' + (def.strength + bonus) + ' vs ' + def.need);
+    t.ok(def.r.odds.ratio > bare.r.odds.ratio && def.r.odds.ratio < T.BASE_DEFENCE_RATIO_MID && def.r.odds.lostPct > 0,
+      'as defesas ajudam mas não substituem a guarnição: ' + JSON.stringify(def.r.odds));
+    // 1 soldado com 3 Defesas de Mísseis (exploit da ronda 4) cai sempre
+    const one = vet(1, true);
+    t.eq([one.r.result, one.r.odds.lostPct], ['lost', 100], JSON.stringify(one.r.odds));
     const full = vet(10, false);
-    t.eq(full.r.result, 'repelled', 'os 10 iniciais: ' + full.strength + ' vs ' + full.need);
+    t.ok(full.r.odds.ratio >= T.BASE_DEFENCE_RATIO_MID && full.r.odds.lostPct === 0, 'os 10 iniciais: ' + JSON.stringify(full.r.odds));
+    t.eq(full.r.result, 'repelled');
   });
 
   t.test('queda no mar a ≤ 180 mn da costa cai em terra; no alto mar o OVNI é destruído', () => {
@@ -157,7 +156,7 @@ module.exports = function (OV, t) {
     t.ok(G.events.some((e) => e.t === 'ufoDestroyed' && e.ufoId === v.id));
   });
 
-  t.test('base alienígena tomada: comandante e líderes (até aos da tripulação) rendem-se se houver contenção; sem contenção, nada', () => {
+  t.test('base alienígena tomada: o posto de comando (comandante e líder) rende-se se houver contenção; sem contenção, nada', () => {
     const mk = (withContainment) => {
       const G = freshG(17, 1);
       if (withContainment) G.bases[0].grid.push({ type: 'alien_containment', x: 5, y: 3, daysLeft: 0 });
@@ -170,7 +169,7 @@ module.exports = function (OV, t) {
     };
     const { G, model } = mk(true);
     t.eq(model.debrief.result, 'win');
-    // Veterano: a tripulação da base tem 1 comandante e 1 líder (persona r4: não 2 líderes de uma tripulação com 1)
+    // o posto de comando rende-se: 1 comandante e 1 líder (persona r5: à parte da tripulação da batalha)
     t.eq(G.bases[0].aliens, { sectoid_commander: 1, sectoid_leader: 1 });
     t.eq(model.capturedStored, { sectoid_commander: 1, sectoid_leader: 1 });
     t.eq(model.surrendered, { sectoid_commander: 1, sectoid_leader: 1 }, 'rendição à parte no modelo do relatório');

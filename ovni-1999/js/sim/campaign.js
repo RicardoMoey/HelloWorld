@@ -727,27 +727,22 @@
           if (corpse && Data.items[corpse]) { bagAdd(base.stores, corpse, 1); bagAdd(stored, corpse, 1); }
         }
       }
-      // ours (ritmo, contrato §11): a base alienígena tomada entrega vivas as patentes de TUNE.ALIEN_BASE_SURRENDER
-      // (os restantes ocupantes da base rendem-se): de cada patente no máximo tantas como as da tripulação da batalha
-      // (B.crew), menos as já capturadas nela, enquanto houver lugar na contenção; surrendered = as que vieram assim
-      if (ref.kind === 'alienBase' && deb.result === 'win') {
+      /* ours (ritmo, contrato §11.12, persona r5): o posto de comando da base — pessoal que não entra na batalha, à
+         parte da tripulação B.crew — rende-se quando a base é tomada pela força: vitória sem nenhum alienígena consciente
+         (nem pelo centro de controlo com alienígenas de pé, nem ao sair). Entrega vivas as patentes de
+         TUNE.ALIEN_BASE_SURRENDER da raça enquanto houver lugar na contenção; os da batalha (mortos ou atordoados) não
+         contam, por isso atordoar o comandante dá um segundo. surrendered = os que vieram assim */
+      if (ref.kind === 'alienBase' && deb.result === 'win' && !deb.objective && !B.aborted) {
         const race = (site.obj && site.obj.race) || B.mission.race;
         const members = Data.races[race] && Data.races[race].members;
-        const inCrew = {};
-        for (const c of B.crew || []) inCrew[c.rank] = (inCrew[c.rank] | 0) + 1;
-        const want = {};
-        for (const rank of tune('ALIEN_BASE_SURRENDER', ['commander', 'leader', 'leader'])) want[rank] = (want[rank] | 0) + 1;
-        for (const rank of Object.keys(want)) {
+        for (const rank of tune('ALIEN_BASE_SURRENDER', ['commander', 'leader'])) {
           const unit = members && members[rank];
           const rr = typeof unit === 'string' && Data.units[unit] ? Data.unitRankRace(unit) : null;
-          if (!rr || rr.rank !== rank) continue;
-          const cap = (B.crew || []).length ? Math.min(want[rank], inCrew[rank] | 0) : want[rank];
-          const n = Math.min(room, cap - (capturedStored[unit] | 0));
-          if (n <= 0) continue;
-          room -= n;
-          bagAdd(base.aliens, unit, n);
-          bagAdd(capturedStored, unit, n);
-          bagAdd(surrendered, unit, n);
+          if (!rr || rr.rank !== rank || room <= 0) continue;
+          room--;
+          bagAdd(base.aliens, unit, 1);
+          bagAdd(capturedStored, unit, 1);
+          bagAdd(surrendered, unit, 1);
         }
       }
     }
@@ -894,16 +889,165 @@
     }
     return U.idiv(U.idiv(sum4, 4) * (100 + U.idiv(tune('BASE_DEFENCE_TIER_PCT', 20) * tier100, 100)), 100);
   }
-  // força de um soldado na defesa: UT + Pontaria + Saúde + armadura frontal do que veste
-  function defenderPower(s) {
+  /* Poder de tiro de uma arma de infantaria (o da arma ou o da melhor munição), até TUNE.BASE_DEFENCE_GUN_CAP; armas de
+     atordoar e por investigar (researched = lista de G) não contam → 0 */
+  function gunPower(id, researched, stores) {
+    const Data = D();
+    const it = Data.items[id];
+    if (!it || it.kind !== 'firearm' || it.battle === false) return 0;
+    if (researched && it.research && researched.indexOf(it.research) < 0) return 0;
+    let p = it.power | 0, dmg = it.dmg;
+    if (Array.isArray(it.ammo)) {
+      for (const a of it.ammo) {
+        const am = Data.items[a];
+        // stores (armazém): só a munição que lá há e se pode usar
+        if (stores && (!((stores[a] | 0) > 0) || (researched && am && am.research && researched.indexOf(am.research) < 0))) continue;
+        if (am && (am.power | 0) > p && am.dmg !== 'STUN') { p = am.power | 0; dmg = am.dmg; }
+      }
+    }
+    if (dmg === 'STUN') return 0;
+    return Math.min(p, tune('BASE_DEFENCE_GUN_CAP', 120));
+  }
+  /* Ordem das armas para o equipamento automático (persona r5; a UI escolhe a 1.ª que a Força aguenta com munição):
+     espingardas da melhor para a pior, depois as armas pesadas com munição no pool (Lança-Foguetes, Canhões, Laser
+     Pesado) pela potência, e só então as pistolas — 11 Lança-Foguetes no armazém já não deixam um recruta de pistola.
+     Ficam de fora as de atordoar, a guiada (Blaster) e as por investigar. stores = {itemId: n} → [itemId] */
+  const KIT_RIFLES = ['heavy_plasma', 'plasma_rifle', 'laser_rifle', 'rifle'];
+  function kitGuns(G, stores) {
+    const Data = D();
+    const st = stores || {};
+    const res = G.researched;
+    const ok = (id) => (st[id] | 0) > 0 && gunPower(id, res, Array.isArray(Data.items[id].ammo) && Data.items[id].ammo.length ? st : null) > 0
+      && !Data.items[id].guided;
+    const ids = Object.keys(st).filter((id) => Data.items[id] && Data.items[id].kind === 'firearm' && ok(id));
+    const pow = (id) => gunPower(id, res, st);
+    const wt = (id) => Data.items[id].weight | 0;
+    const rifles = KIT_RIFLES.filter((id) => ids.indexOf(id) >= 0);
+    const hand = (id) => !Data.items[id].twoHanded;
+    const rest = ids.filter((id) => rifles.indexOf(id) < 0).sort((a, b) => pow(b) - pow(a) || wt(a) - wt(b) || (a < b ? -1 : 1));
+    return rifles.concat(rest.filter((id) => !hand(id)), rest.filter(hand));
+  }
+  // melhor arma nas mãos de um soldado → poder (0 desarmado)
+  const handGun = (s, researched) => Math.max(gunPower(s.loadout && s.loadout.R, researched), gunPower(s.loadout && s.loadout.L, researched));
+  /* força de um soldado na defesa: UT + Pontaria + Saúde + armadura frontal do que veste + (poder da arma − espingarda)
+     × BASE_DEFENCE_WEAPON_PCT % (persona r5: espingarda 0, laser +15, plasma pesado +42, desarmado −15). gun = poder da
+     arma (omissão: a melhor que leva nas mãos). */
+  function defenderPower(s, gun) {
     const a = D().armours[s.armour];
-    return (s.stats.tu | 0) + (s.stats.fire | 0) + (s.stats.hp | 0) + ((a && a.front) | 0);
+    const g = gun === undefined || gun === null ? handGun(s, null) : gun | 0;
+    const w = U.idiv((g - tune('BASE_DEFENCE_GUN_BASE', 30)) * tune('BASE_DEFENCE_WEAPON_PCT', 50), 100);
+    return Math.max(0, (s.stats.tu | 0) + (s.stats.fire | 0) + (s.stats.hp | 0) + ((a && a.front) | 0) + w);
+  }
+  // soldados que defendem a base: aptos, de casa, e não numa nave no ar
+  function garrisonOf(G, baseId) {
+    return Object.keys(G.soldiers).map((id) => G.soldiers[id]).filter((s) => {
+      if (s.baseId !== baseId || s.woundDays > 0) return false;
+      const c = s.craftId ? C.findCraft(G, s.craftId) : null;
+      return !c || !AIRBORNE[c.status];
+    });
+  }
+  /* Força da guarnição: cada soldado com a arma que leva; os desarmados (ou com arma pior) vão buscar ao armazém as
+     melhores armas com munição (uma por soldado). → {men, list:[{id, power}]} */
+  function garrisonPower(G, base, garrison) {
+    const res = G.researched;
+    const spare = [];
+    const st = base.stores || {};
+    for (const id of Object.keys(st).sort()) {
+      const p = gunPower(id, res, st);
+      if (p <= 0) continue;
+      const it = D().items[id];
+      const needsAmmo = Array.isArray(it.ammo) && it.ammo.length > 0;
+      const clips = needsAmmo ? it.ammo.reduce((n, a) => n + ((st[a] | 0) > 0 && (!D().items[a].research || res.indexOf(D().items[a].research) >= 0) ? st[a] | 0 : 0), 0) : Infinity;
+      for (let k = 0; k < Math.min(st[id] | 0, clips); k++) spare.push(p);
+    }
+    spare.sort((a, b) => b - a);
+    const rows = garrison.map((s) => ({ s, own: handGun(s, res) })).sort((a, b) => a.own - b.own || (a.s.id < b.s.id ? -1 : 1));
+    const list = [];
+    let men = 0;
+    for (const r of rows) {
+      const gun = spare.length && spare[0] > r.own ? spare.shift() : r.own;
+      const p = defenderPower(r.s, gun);
+      list.push({ id: r.s.id, power: p });
+      men += p;
+    }
+    return { men, list };
+  }
+  /* Probabilidades do assalto (persona r5: suave em vez de um limiar) para r = 100 × força / exigência:
+     perdida = clamp(100 × (MID − r) / (MID − LO)), repelida = clamp(100 × (r − LO) / (HI − LO)), o resto = aguentada a
+     custo (baixas pesadas e instalações destruídas). LO 50 / MID 100 / HI 150: r ≤ 50 cai sempre, r ≥ 150 aguenta sempre. */
+  function defenceOddsOf(strength, need, garrisonN) {
+    if (!garrisonN) return { ratio: 0, lostPct: 100, repelPct: 0, holdPct: 0 };
+    const lo = tune('BASE_DEFENCE_RATIO_LO', 50), mid = tune('BASE_DEFENCE_RATIO_MID', 100), hi = tune('BASE_DEFENCE_RATIO_HI', 150);
+    const ratio = need > 0 ? U.idiv(100 * strength, need) : 1000;
+    const lostPct = U.clamp(U.idiv(100 * (mid - ratio), Math.max(1, mid - lo)), 0, 100);
+    const repelPct = U.clamp(U.idiv(100 * (ratio - lo), Math.max(1, hi - lo)), 0, 100 - lostPct);
+    return { ratio, lostPct, repelPct, holdPct: 100 - lostPct - repelPct };
+  }
+  // força (soldados + defesas com teto) e exigência de um assalto do OVNI ufo (casco que resta) contra a base
+  function defenceBalance(G, base, ufo) {
+    const garrison = garrisonOf(G, base.id);
+    const gp = garrisonPower(G, base, garrison);
+    let fac = 0;
+    const defences = OV.BaseSim.capacities(G, base.id).defences;
+    for (const d of defences) fac += U.idiv((d.power | 0) * tune('BASE_DEFENCE_FACILITY_PCT', 25), 100);
+    const facUsed = Math.min(fac, U.idiv(gp.men * tune('BASE_DEFENCE_FACILITY_CAP_PCT', 66), 100));
+    const hp = Math.max(1, D().ufos[ufo.type].hp);
+    const full = U.idiv(assaultForce(G, ufo) * tune('BASE_DEFENCE_CREW_PCT', 50), 100);
+    const need = U.idiv(full * Math.max(0, hp - (ufo.dmg | 0)), hp);
+    return { garrison, men: gp.men, list: gp.list, facilities: facUsed, facilitiesRaw: fac, defences: defences.length, strength: gp.men + facUsed, need };
+  }
+  // raça mais forte das que podem atacar este mês (ou a da retaliação que já visa a base)
+  function attackerRace(G, baseId) {
+    const m = G.alienMissions.find((x) => x.targetBaseId === baseId && D().alienMissions[x.type] && D().alienMissions[x.type].objective === 'retaliation');
+    if (m && D().races[m.race]) return m.race;
+    const w = D().raceWeights('alien_retaliation', G.month | 0);
+    let best = null, bestF = -1;
+    for (const race of Object.keys(w).sort()) {
+      if (!(w[race] > 0) || !D().races[race]) continue;
+      const f = assaultForce(G, { type: 'battleship', race, dmg: 0 });
+      if (f > bestF) { bestF = f; best = race; }
+    }
+    return best || 'sectoid';
+  }
+  /* Estimativa para a interface (persona r5): a guarnição de hoje contra um assalto. opts.ufoId = o OVNI que ataca (com o
+     casco que lhe resta); senão um Couraçado intacto da raça opts.race (omissão: a da retaliação que visa a base, ou a
+     mais forte do mês). → {garrison, strength, need, ratio, lostPct, repelPct, holdPct, race, ufoType, men, facilities,
+     defences, soldiersShort, defencesShort} — soldiersShort: soldiers de força média a mais até ratio ≥ MID (0 se
+     chega); defencesShort: Defesas de Mísseis a mais que bastam, ou −1 se só defesas não chegam (teto). Puro. */
+  function defenceOdds(G, baseId, opts) {
+    const o = opts || {};
+    const base = C.findBase(G, baseId);
+    if (!base) throw fail('noTarget');
+    const real = o.ufoId ? C.findUfo(G, o.ufoId) : null;
+    const race = real ? real.race : D().races[o.race] ? o.race : attackerRace(G, baseId);
+    const ufo = real || { type: 'battleship', race, dmg: 0 };
+    const b = defenceBalance(G, base, ufo);
+    const odds = defenceOddsOf(b.strength, b.need, b.garrison.length);
+    const mid = tune('BASE_DEFENCE_RATIO_MID', 100);
+    const target = U.idiv(b.need * mid + 99, 100);
+    const short = Math.max(0, target - b.strength);
+    // soldado médio: a média da guarnição, ou um recruta de fato com espingarda (≈ 140)
+    const avg = b.garrison.length ? Math.max(1, U.idiv(b.men, b.garrison.length)) : 140;
+    const capPct = tune('BASE_DEFENCE_FACILITY_CAP_PCT', 66);
+    const perSoldier = avg + U.idiv(avg * capPct, 100) * (b.facilitiesRaw > b.facilities ? 1 : 0);
+    const soldiersShort = short > 0 ? Math.ceil(short / Math.max(1, perSoldier)) : 0;
+    const mdPow = U.idiv(((D().facilities.missile_defence && D().facilities.missile_defence.defence) | 0) * tune('BASE_DEFENCE_FACILITY_PCT', 25), 100);
+    const room = Math.max(0, U.idiv(b.men * capPct, 100) - b.facilities);
+    const defencesShort = short <= 0 ? 0 : short <= room && mdPow > 0 ? Math.ceil(short / mdPow) : -1;
+    return {
+      garrison: b.garrison.length, strength: b.strength, need: b.need, ratio: odds.ratio, lostPct: odds.lostPct, repelPct: odds.repelPct,
+      holdPct: odds.holdPct, race, ufoType: ufo.type, men: b.men, facilities: b.facilities, defences: b.defences, soldiersShort, defencesShort,
+    };
   }
 
   /* Ataque a uma base X-COM, resolvido automaticamente (MVP; contrato §5.9 baseDefence; stream combat): salva das
-     defesas (se ainda não houve), depois a guarnição contra a tripulação esperada do OVNI no casco que resta. As
-     defesas só ajudam a guarnição até TUNE.BASE_DEFENCE_FACILITY_CAP_PCT da força dos soldados; as baixas crescem
-     com o rácio exigência / força. */
+     defesas (se ainda não houve), depois a guarnição (com as armas que leva ou que encontra no armazém) contra a
+     tripulação esperada do OVNI no casco que resta. As defesas só ajudam até TUNE.BASE_DEFENCE_FACILITY_CAP_PCT da força
+     dos soldados. Resultado sorteado com defenceOddsOf (persona r5): 'repelled' (baixas pelo rácio), 'repelled' com
+     held:true (aguentada a custo: ≥ HOLD_CASUALTY_PCT % da guarnição morre, mas fica 1, sem pontos, e até
+     HOLD_FACILITIES radares/defesas voltam a obra — facilitiesDamaged) ou 'lost' (a base cai). */
+  const CAP_KEYS = ['personnel', 'labs', 'workshops', 'storage', 'aliens', 'crafts'];
+  const WRECKABLE = (def) => !!def && !def.lift && CAP_KEYS.every((k) => !(def[k] > 0));
   function baseDefence(G, baseId, ufoId) {
     const Data = D();
     const base = C.findBase(G, baseId);
@@ -912,49 +1056,61 @@
     const ufoDef = Data.ufos[ufo.type];
     const shots = baseVolley(G, baseId, ufoId).shots;
     const r = C.rng(G, 'combat');
-    const soldiersLost = [];
-    let result;
+    const soldiersLost = [], facilitiesDamaged = [];
+    let result, held = false, odds = null;
+    const killAll = (list) => {
+      for (const s of list) {
+        soldiersLost.push(s.id);
+        OV.Soldiers.kill(G, s.id, 'base', { kind: 'base', lon: base.lon, lat: base.lat });
+      }
+    };
+    const pickDead = (garrison, n) => {
+      const pool = garrison.slice();
+      const out = [];
+      for (let k = 0; k < n && pool.length; k++) out.push(pool.splice(r.int(0, pool.length - 1), 1)[0]);
+      return out;
+    };
     if ((ufo.dmg | 0) >= ufoDef.hp) {
       result = 'ufoDestroyed';
       OV.Missions.onUfoDown(G, ufoId, 'destroyed', null);
     } else {
-      const garrison = Object.keys(G.soldiers).map((id) => G.soldiers[id]).filter((s) => {
-        if (s.baseId !== baseId || s.woundDays > 0) return false;
-        const c = s.craftId ? C.findCraft(G, s.craftId) : null;
-        return !c || !AIRBORNE[c.status];
-      });
-      // força = Σ soldados + defesas (FACILITY_PCT do poder, no máximo FACILITY_CAP_PCT dos soldados: ≥ 60 % vem deles);
-      // exigência = CREW_PCT da tripulação esperada × casco que resta (afinação: docs/CAMPAIGN_API.md §11.11)
-      const men = garrison.reduce((sum, s) => sum + defenderPower(s), 0);
-      let fac = 0;
-      for (const d of OV.BaseSim.capacities(G, baseId).defences) fac += U.idiv((d.power | 0) * tune('BASE_DEFENCE_FACILITY_PCT', 25), 100);
-      const strength = men + Math.min(fac, U.idiv(men * tune('BASE_DEFENCE_FACILITY_CAP_PCT', 66), 100));
-      const full = U.idiv(assaultForce(G, ufo) * tune('BASE_DEFENCE_CREW_PCT', 50), 100);
-      const need = U.idiv(full * Math.max(0, ufoDef.hp - (ufo.dmg | 0)), Math.max(1, ufoDef.hp));
-      if (garrison.length && strength >= need) {
+      const b = defenceBalance(G, base, ufo);
+      const garrison = b.garrison;
+      odds = defenceOddsOf(b.strength, b.need, garrison.length);
+      const roll = garrison.length ? r.int(0, 99) : 0;
+      if (!garrison.length || roll < odds.lostPct) {
+        result = 'lost';
+        killAll(garrison);
+      } else {
         result = 'repelled';
+        held = roll >= odds.lostPct + odds.repelPct;
         // baixas = round(guarnição × exigência / força × CASUALTY_PCT %), entre 1 e a guarnição
         const pct = tune('BASE_DEFENCE_CASUALTY_PCT', 40);
-        const n = U.clamp(U.idiv(2 * garrison.length * need * pct + 100 * strength, 200 * Math.max(1, strength)), 1, garrison.length);
-        const pool = garrison.slice();
-        for (let k = 0; k < n; k++) {
-          const s = pool.splice(r.int(0, pool.length - 1), 1)[0];
-          soldiersLost.push(s.id);
-          OV.Soldiers.kill(G, s.id, 'base', { kind: 'base', lon: base.lon, lat: base.lat });
+        let n = U.clamp(U.idiv(2 * garrison.length * b.need * pct + 100 * b.strength, 200 * Math.max(1, b.strength)), 1, garrison.length);
+        // aguentada a custo: a maior parte da guarnição cai (mas alguém fica) e o assalto destrói instalações
+        if (held) n = U.clamp(Math.max(n, U.idiv(garrison.length * tune('BASE_DEFENCE_HOLD_CASUALTY_PCT', 60) + 99, 100)), 0, garrison.length - 1);
+        killAll(pickDead(garrison, n));
+        if (held) {
+          // instalações sem capacidades (radares, defesas, descodificador) ficam desfeitas: voltam a obra (dias de
+          // construção) e não contam até estarem prontas — as de alojamento/hangar/armazém não se mexem
+          for (let k = 0; k < tune('BASE_DEFENCE_HOLD_FACILITIES', 2); k++) {
+            const cand = base.grid.filter((f) => !(f.daysLeft > 0) && WRECKABLE(Data.facilities[f.type]));
+            if (!cand.length) break;
+            const f = cand[r.int(0, cand.length - 1)];
+            f.daysLeft = Math.max(1, Data.facilities[f.type].days | 0);
+            facilitiesDamaged.push(f.type);
+          }
         }
-        OV.Economy.addScore(G, 'xcom', ufoDef.score | 0, base.lon, base.lat);
+        if (!held) OV.Economy.addScore(G, 'xcom', ufoDef.score | 0, base.lon, base.lat);
         OV.Missions.onSiteCleared(G, { kind: 'ufo', id: ufoId }, 'win');
-      } else {
-        result = 'lost';
-        for (const s of garrison) {
-          soldiersLost.push(s.id);
-          OV.Soldiers.kill(G, s.id, 'base', { kind: 'base', lon: base.lon, lat: base.lat });
-        }
       }
     }
-    C.event(G, 'baseDefence', { baseId, ufoId, shots, result, soldiersLost });
+    const ev = { baseId, ufoId, shots, result, soldiersLost };
+    if (held) Object.assign(ev, { held: true, facilitiesDamaged });
+    if (odds) ev.odds = { ratio: odds.ratio, lostPct: odds.lostPct, repelPct: odds.repelPct, holdPct: odds.holdPct };
+    C.event(G, 'baseDefence', ev);
     if (result === 'lost') destroyBase(G, baseId);
-    return { result, shots, soldiersLost };
+    return { result, shots, soldiersLost, held, facilitiesDamaged, odds };
   }
 
   // base perdida: naves e pessoal desaparecem; sem bases o jogo acaba ('baseLost')
@@ -970,5 +1126,6 @@
   Object.assign(OV.Campaign, {
     availableResearch, availableManufacture, equipPool, applyEquip, siteRefOf, briefingMeta,
     startMission, cancelMission, reseedMap, abortMission, finishMission, baseVolley, baseDefence, assaultForce, defenderPower,
+    defenceOdds, kitGuns,
   });
 })(globalThis.OV || (globalThis.OV = {}));

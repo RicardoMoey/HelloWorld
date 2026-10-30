@@ -1369,3 +1369,27 @@ Scope (25k lines) vs one session; iso art legibility of procedural sprites; LOS/
   bases 78 % won. The gap to the ≥ 55 % target is the bot's Cydonia battle (9/24 campaigns end there) and 4 timeouts
   where the bot never gathers the armour it waits for (alloys short, stores full), not this round's rules, so no tuning
   knob was changed.
+
+**Persona round 5 deviations (ours; sim/data fixer, numbers in `docs/CAMPAIGN_API.md` §11.12)**:
+- **Alien weapons do half damage to X-COM on Recruta** (`TUNE.ALIEN_DAMAGE_PCT` [50, 100, 100]). Veterano and
+  Super-humano keep the original damage. On Recruta a plasma pistol shot killed a healthy rookie more than half the
+  time; a kid lost 7 of 10 soldiers on the first mission. Friendly fire is not reduced (spreading out still matters), and
+  the engine now records where each soldier fell so the debriefing can say «they were all together» (`debrief.clustered`).
+- **The Blaster bomb only flies through tiles the squad has seen** (as the original's waypoints had to be placed by the
+  player). A route through unexplored rooms let one shot from the ramp destroy an alien base's control centre on turn 1.
+- **The alien base's control centre follows the original rule again**: destroying it does not end the battle; leaving
+  (Abortar) with someone aboard afterwards wins (base destroyed), with the abort's recovery rules (only what is aboard).
+  This replaces round 4's «ends at once» (which made the turn-1 Blaster shot a full victory).
+- **The alien-base surrender is the base's command post**, not the battle crew: when the base is taken by force (no
+  conscious alien left; never on the control-centre exit) one commander and one leader of the base race surrender to
+  containment. It stays because the story chain needs a live commander and leader and without it the campaign bot
+  wins 1/6 Veterano campaigns instead of 3/6; killing the battle commander no longer «resurrects» him (he was never the
+  one who surrendered), and stunning him gives a second one.
+- **Base defence is a soft roll, weapons count, and a near miss is not the end**: the garrison's guns add to its
+  strength (the unarmed take the best guns in the stores); the odds come from strength / need (≤ 50 % always lost,
+  ≥ 150 % always repelled, in between lost / repelled / held at a cost). Held at a cost kills most of the garrison
+  (someone survives) and sends up to two radars/defences back to construction. `Campaign.defenceOdds` gives the UI
+  the numbers to show before an attack.
+- **January terror is smaller**: month-0 terror sites use the crew table one difficulty lower and one terrorist fewer
+  (Veterano 4 aliens). With the starting kit Veterano won 60 % of them with 5 dead per battle, so ignoring the terror
+  (−500) was the best move.

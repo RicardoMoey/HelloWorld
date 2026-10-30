@@ -452,7 +452,7 @@ and stays paused while the popup is open (only the top scene thinks). **stop:fal
 | `retaliation` | – | `missionId, region` | Missions | nothing (hidden) unless `G.debug` | — |
 | `baseSpotted` | ✔ | `baseId, missionId, etaS` | Missions.scan10m | red popup «Os alienígenas localizaram a base — ataque iminente» with the earliest attack time (`etaS` seconds from now, ≥ 24 h) and advice: bring the squad home, keep soldiers and interceptors at the base, build defences; «Centrar»/«Ir para a base» | `ev.baseSpotted` |
 | `baseAttack` | ✔ | `baseId, ufoId` | World.contacts | popup «A base está a ser atacada!» (defences have fired; ready armed crafts are taking off), then the dogfights, then the result | `ev.baseAttack` |
-| `baseDefence` | ✔ | `baseId, ufoId, shots:[{type, hit, dmg}], result:'ufoDestroyed'\|'repelled'\|'lost', soldiersLost:[ids]` | Campaign.baseDefence | result popup (CampaignUI) | `ev.baseDefence.<result>` |
+| `baseDefence` | ✔ | `baseId, ufoId, shots:[{type, hit, dmg}], result:'ufoDestroyed'\|'repelled'\|'lost', soldiersLost:[ids]`, `odds:{ratio, lostPct, repelPct, holdPct}` (not on `ufoDestroyed`), `held:true, facilitiesDamaged:[type]` (repelled at a cost, §11.12) | Campaign.baseDefence | result popup (CampaignUI) | `ev.baseDefence.<result>` |
 | `pactSigned` | – | `countryId` | Missions.monthEnd | listed in the month report | `ev.pactSigned` |
 | `monthEnd` | ✔ | `report` (§5.7) | World (step 18) | `CampaignUI.monthReport(G, report)` | `mr.*` |
 | `gameOver` | ✔ | `reason` | Campaign.endGame | `CampaignUI.gameOver(G, reason)` | `go.<reason>` |
@@ -719,9 +719,12 @@ startMission(G, siteRef, craftId, {settings}?) → mission       (mutates: map d
 cancelMission(G) → bool                                        (leaves the briefing: G.activeMission = null)
 reseedMap(G, salt) → G.rng.map                                 (mutates only G.rng.map; retry with a fresh map, below)
 finishMission(G, B) → model                                    (mutates: everything after a battle)
-baseDefence(G, baseId, ufoId) → {result, shots, soldiersLost}
+baseDefence(G, baseId, ufoId) → {result, shots, soldiersLost, held, facilitiesDamaged, odds}
 assaultForce(G, ufo) → int          expected crew strength of an assault UFO (step 3 of baseDefence)
-defenderPower(soldier) → int        tu + fire + hp + front armour of the worn suit
+defenderPower(soldier, gunPower?) → int   tu + fire + hp + front armour of the worn suit + weapon term (§11.12)
+defenceOdds(G, baseId, {ufoId?|race?}?) → {garrison, strength, need, ratio, lostPct, repelPct, holdPct, race, ufoType,
+  men, facilities, defences, soldiersShort, defencesShort}   pure estimate for the UI (same maths as baseDefence)
+kitGuns(G, stores) → [itemId]       order in which the auto-kit should try guns (rifles, heavies with ammo, pistols)
 ```
 
 **`siteRef`** is `{kind:'ufo', id}` (status `landed`/`crashed`), `{kind:'site', id}` (terror),
@@ -776,9 +779,10 @@ map and alien layout, not a perfect-information replay. Throws `campaign.err.noG
 2. `Economy.addScore(G, 'xcom', deb.score, lon, lat)` at the site point (for Cydonia: the base's point).
 3. `deb.recovered` → `base.stores`. `deb.captured` → `base.aliens` while containment has room (`capacities.aliens`).
    The rest go to `model.capturedLost` (they die; orig) and their corpse to the stores; step 1 already scored them as
-   kills. Won alien base (ours, §11.11): for each rank of `TUNE.ALIEN_BASE_SURRENDER`, at most as many as that rank
-   has in `B.crew` (all of them if `B.crew` is empty), minus the same unit type already in `capturedStored`, go to
-   containment while there is room; they are in `capturedStored` and also in `model.surrendered` (shown apart).
+   kills. Alien base taken by force (ours, §11.12; `deb.result 'win'`, not `deb.objective`, not `B.aborted`): the base's
+   command post — staff apart from the battle crew — surrenders: one unit of the base race per rank of
+   `TUNE.ALIEN_BASE_SURRENDER` (`['commander','leader']`) goes to containment while there is room; they are in
+   `capturedStored` and also in `model.surrendered` (shown apart). Crew killed or stunned in the battle do not change it.
 4. `craft.equipment −= deb.equipmentLost`, clamped at 0 and with no zero keys.
 5. Soldiers, from `deb.soldiers`:
    - `ok` → `Soldiers.applyMission(G, id, {exp, hpLost, kills}, rng(G,'combat'))`;
@@ -801,7 +805,7 @@ map and alien layout, not a perfect-information replay. Throws `campaign.err.noG
 model = { debrief: deb, mission: B.mission, meta, outcome: 'continue'|'victory'|'gameOver',
   progression: [{soldierId, gains, promoted: rankIdx|null, kills}],   // exactly the debrief scene's p.progression
   stored: {itemId:n}, capturedStored: {unitType:n} /* includes surrendered */, capturedLost: {unitType:n},
-  surrendered: {unitType:n} /* alien-base surrender (§11.11) */, craftLost: bool, scoreAdded: int }
+  surrendered: {unitType:n} /* alien-base command post (§11.12) */, craftLost: bool, scoreAdded: int }
 ```
 
 **Equip pool rules** (needed because `equipScreen` works on one pool):
@@ -825,9 +829,14 @@ scrambles the base's ready armed crafts (§3.1 step 3), then calls `baseDefence`
 **`baseDefence`** (MVP auto-resolve, DESIGN §4; combat stream):
 1. `baseVolley` (no-op if the defences already fired).
 2. If `ufo.dmg ≥ hp`: `result 'ufoDestroyed'`, `Missions.onUfoDown(…, 'destroyed', null)`.
-3. Otherwise compare the garrison against the assault crew (ours, §11.11):
-   - `men = Σ defenderPower(s)` (`tu + fire + hp + armours[s.armour].front`) over the fit soldiers in the base (not on a
-     craft that is out; soldiers away do not defend, as in the original).
+3. Otherwise compare the garrison against the assault crew (ours, §11.11; weapons and odds §11.12):
+   - Garrison: the fit soldiers in the base (not on a craft that is out; soldiers away do not defend, as in the
+     original). Each keeps the best gun in his hands; those with none (or a worse one) take the best guns with usable
+     ammo from `base.stores`, one each (`garrisonPower`).
+   - `men = Σ defenderPower(s, gun)` = `tu + fire + hp + armours[s.armour].front + floor((gunPower − 30) ×
+     BASE_DEFENCE_WEAPON_PCT / 100)`; `gunPower` = the weapon's or its best usable ammo's `power`, capped at
+     `BASE_DEFENCE_GUN_CAP` 120, 0 for stun weapons, unresearched guns and no gun (rifle 0, laser rifle +15, heavy
+     plasma +42, unarmed −15).
    - `strength = men + min(Σ floor(power × BASE_DEFENCE_FACILITY_PCT / 100), floor(men × BASE_DEFENCE_FACILITY_CAP_PCT / 100))`
      over the completed defence facilities (25 %, capped at 66 % of `men`: at least 60 % of the strength comes from
      soldiers; the defences already fired in step 1).
@@ -837,12 +846,19 @@ scrambles the base's ready armed crafts (§3.1 step 3), then calls `baseDefence`
      (`alienItemTiers.raceTier[race]`, else `Σ k × byMonth[month][k]` %).
    - `need = floor(floor(assaultForce × BASE_DEFENCE_CREW_PCT / 100) × (hp − ufo.dmg) / hp)` (the hull the defences and
      interceptors left). Sectoid Battleship, month 3: 830 / 1 352 / 1 702 on Recruta / Veterano / Super-humano; Mutons
-     1 418 / 2 039 / 2 440; Ethereals 1 461 / 2 475 / 3 051. The 10 starting rookies (1 462–1 591) hold against
-     Sectoids on Veterano; Super-humano (8 rookies, 1 178–1 287) needs more or better soldiers.
-   - Win (`garrison ≥ 1` and `strength ≥ need`): `'repelled'`. `n = clamp(round(garrison × need / strength ×
-     BASE_DEFENCE_CASUALTY_PCT / 100), 1, garrison)` random fit soldiers die (cause `'base'`), the UFO is removed with
-     `+ufo.score`, the retaliation mission ends.
-   - Loss: `'lost'` → the base is destroyed → `endGame(G, 'lost', 'baseLost')`.
+     1 418 / 2 039 / 2 440; Ethereals 1 461 / 2 475 / 3 051.
+   - Odds from `r = floor(100 × strength / need)` with LO/MID/HI = `BASE_DEFENCE_RATIO_LO/MID/HI` 50/100/150:
+     `lostPct = clamp(100 × (MID − r) / (MID − LO), 0, 100)`, `repelPct = clamp(100 × (r − LO) / (HI − LO), 0, 100 − lostPct)`,
+     `holdPct` = the rest. No garrison ⇒ `lostPct 100`. One `int(0, 99)` roll (combat stream) picks the result.
+   - Repelled (`roll ≥ lostPct`): `n = clamp(round(garrison × need / strength × BASE_DEFENCE_CASUALTY_PCT / 100), 1,
+     garrison)` random fit soldiers die (cause `'base'`), the UFO is removed (`onSiteCleared … 'win'`), the retaliation
+     mission ends, `+ufo.score`.
+   - Held at a cost (`roll ≥ lostPct + repelPct`): result `'repelled'` with `held: true`: `n = clamp(max(n,
+     ceil(garrison × BASE_DEFENCE_HOLD_CASUALTY_PCT / 100)), 0, garrison − 1)` die (someone survives), up to
+     `BASE_DEFENCE_HOLD_FACILITIES` (2) random completed facilities without capacities (radars, defences, decoder; never
+     the lift, quarters, hangars, stores, labs, workshops or containment) go back to construction (`daysLeft = days`,
+     `facilitiesDamaged`), no score; the UFO is removed as above.
+   - Lost: `'lost'` → the whole garrison dies, the base is destroyed → `endGame(G, 'lost', 'baseLost')` if it was the last.
 4. Push `baseDefence`.
 
 ### 5.10 `OV.Save` (save.js; the only sim file that touches `localStorage`, guarded by `typeof localStorage`)
@@ -993,10 +1009,12 @@ The overlay ticks every open dogfight once per 30 ms of real time (`Data.dogfigh
 | `WOUND_RECOVERY_MIN/MAX`, `PROMO_*` | tuning.js | 25/75, 4/8/15/20 | soldier turnaround and ranks |
 | `SOLDIER_/SCIENTIST_/ENGINEER_HIRE/SALARY` | tuning.js | orig, except **ours** `SCIENTIST_HIRE` 30 000 and `ENGINEER_HIRE` 25 000 (orig 60 000 / 50 000; §11.10) | personnel economy |
 | `BASE_DEFENCE_CREW_PCT`, `_TIER_PCT`, `_FACILITY_PCT`, `_FACILITY_CAP_PCT`, `_CASUALTY_PCT` | tuning.js | 50, 20, 25, 66, 40 (§11.11; replaced `BASE_DEFENCE_BASE` / `_PER_COEF`) | retaliation auto-resolve |
+| `BASE_DEFENCE_WEAPON_PCT`, `_GUN_BASE`, `_GUN_CAP`, `_RATIO_LO/MID/HI`, `_HOLD_CASUALTY_PCT`, `_HOLD_FACILITIES` | tuning.js (**new**) | 50, 30, 120, 50/100/150, 60, 2 (§11.12) | weapons in the defence, soft odds, held at a cost |
 | `MORALE_LOSS_PCT`, `PANIC_COOLDOWN_TURNS` | tuning.js | [50,100,100], [1,0,0] (§11.11) | battle morale by difficulty |
+| `ALIEN_DAMAGE_PCT` | tuning.js (**new**) | [50,100,100] (§11.12) | damage alien-side attackers deal to X-COM units, by difficulty |
 | `RETALIATION_WARNING_MIN` | tuning.js (**new**) | 1440 (§11.5) | minimum time from `baseSpotted` to the assault Battleship's launch |
 | `MISSION_ARRIVE_NM` | tuning.js | 5 | a patrolling transport this close to a site counts as arrived (`startMission`) |
-| `ALIEN_BASE_SURRENDER` | tuning.js | `['commander','leader','leader']` (§11) | ranks handed over alive when an alien base falls |
+| `ALIEN_BASE_SURRENDER` | tuning.js | `['commander','leader']` (§11.12; was `['commander','leader','leader']`) | the command post that surrenders when an alien base is taken by force |
 | `TU_ALIEN_MELEE` | tuning.js | 22 (§11; orig 15) | Chryssalid/Reaper/Zombie attack cost |
 | `SHADE_DAY/DUSK/NIGHT`, `CHEAT_TURN`, `SQUAD_MAX_UI` | tuning.js | 0/6/13, [12,10,8], 10 | battle feel |
 | facility `cost`, `days`, `upkeep`, radar `radarChance`/`radarRange` | data/base.js `FAC` | §3.14 | build pace, detection |
@@ -1014,7 +1032,7 @@ The overlay ticks every open dogfight once per 30 ms of real time (`Data.dogfigh
 | `scoring` (`ufoActivity` incl. `everyMin`, `alienBasePerDay`, `terrorSiteExpired`, `terrorSiteExpiredByMonth`, `alienBaseDestroyed`, `rating`) | data/geo.js | §3.17, §11 (expired terror 500 in months 0–1) | council pressure |
 | `geoConst.entryRingDeg`, `geoConst.sun` | data/geo.js | [25,35], no seasons | UFO entry, day and night |
 | country `fundingBase`, `fundingCap` | data/geo.js | orig + Portugal 120 / 2 500 k$ (§11.6) | funding |
-| `alienItemTiers`, deployments `rows[*].qty`, `crewRules` (`earlyMonths` 1, `earlyDiffStep` 1) | data/units.js | §3.12; month-0 UFO crews one difficulty lower (§11.6) | battle difficulty |
+| `alienItemTiers`, deployments `rows[*].qty`, `crewRules` (`earlyMonths` 1, `earlyDiffStep` 1, `kinds` {ufo, terror}, `earlyRowDelta` {terror: {terrorist: −1}}) | data/units.js | §3.12; month-0 UFO and terror crews one difficulty lower (§11.6, §11.12), month-0 terror −1 terrorist (`Data.crewQty`) | battle difficulty |
 | manufacture `avenger.materials` | data/research.js | 25 alloys, 2 power sources, 1 navigation (§11.6) | ending gate |
 | starting Skyranger extras (1 Medi-Kit, 4 flares) and `defaultLoadouts` roles | campaign.js section A | ours | first-mission teaching |
 
@@ -1374,3 +1392,29 @@ Verified persona findings, fixed at the root. Tests: `tools/tests/sim_persona_r4
 Campaign bot after the change: Veterano seeds 1–6 (240 days) 3 victories, 2 Cydonia lost, 1 timeout (before: 4, 1, 1;
 the difference is seed 3, whose Cydonia battle came out differently after an earlier change in the RNG path), council
 0 %, base attacks 5/5 repelled. `sim.js campaign --seeds 2 --diff 0 --days 120 --det --save-mid` exit 0.
+
+### 11.12 Persona round 5 (sim/data fixer)
+Verified persona findings, fixed at the root. Tests: `tools/tests/sim_persona_r5.test.js` (plus the updated
+`sim_persona_r4`, `sim_persona_r1`, `campaign_pacing`, `campaign_pacing2`). New: `TUNE.ALIEN_DAMAGE_PCT`,
+`BASE_DEFENCE_WEAPON_PCT` / `_GUN_BASE` / `_GUN_CAP` / `_RATIO_LO` / `_RATIO_MID` / `_RATIO_HI` / `_HOLD_CASUALTY_PCT` /
+`_HOLD_FACILITIES`, `Data.crewRules.kinds` / `.earlyRowDelta`, `Data.crewQty(depId, row, diff, month)`,
+`Battle.exitWin(B)`, `Battle.clusteredDeaths(B)`, `debrief.clustered`, `abort(B).result`, `unit.deathTile`,
+`Path.flyRoute(…, {side})`, `Campaign.defenceOdds`, `Campaign.kitGuns`, `defenderPower(soldier, gunPower?)`,
+`baseDefence` → `held` / `facilitiesDamaged` / `odds`. Supersedes the §11.11 rows «Alien-base control centre» and
+«Surrender capped by the crew».
+
+| Change | Where | Before → after | Why / measured |
+|---|---|---|---|
+| **rule** Alien damage on Recruta | `Combat.damageUnit`, `TUNE.ALIEN_DAMAGE_PCT` [50,100,100] | alien weapons did full damage on every difficulty | an attacker on the alien side (`atk.side`) hitting an X-COM unit (`origSide`) deals 50 % on Recruta (after the 0–200 % roll, before armour); friendly fire, civilians and aliens take 100 %; no RNG consumed. A plasma pistol (52) kills a healthy rookie in coveralls (35 HP, 12 armour) with 11 % of its shots instead of 55 %. Novice bot (`--novice`), landed Large Scout, Recruta month 0, 30 seeds: 93 % / 2.37 X-COM dead per battle → 97 % / 1.73 |
+| Clustered deaths for the debriefing | `Battle.clusteredDeaths(B)`, `debrief.clustered`, `unit.deathTile` | — | number of X-COM dead killed outside the X-COM turn with another X-COM death of the same turn ≤ 2 tiles away (same level); the UI can show «they were all together» instead of the generic tip |
+| **rule** Blaster route only through known tiles | `Path.flyRoute(B, from, to, {side:'xcom'})`, `Act.validate` (shoot, guided), `Combat` guided path | the bomb flew 23–27 tiles through unexplored rooms from the ramp to the control centre on turn 1 | for an X-COM shooter every route tile except the target must be visible or discovered (`map.disc` bit 0), like the original's waypoints; otherwise `noRoute`. Aliens are unchanged. Persona script (alien base, Super-humano, month 6, seeds 1–10): 10/10 «win on turn 1» → `noRoute` on turn 1; with the map discovered the route exists again |
+| **rule** Alien-base control centre (orig) | `Battle.outcome`, `Battle.abort`, `Battle.exitWin`, `Battle.debrief` | destroying it ended the battle at once as a win (§11.11) | the battle goes on; aborting with someone conscious aboard while `exitWin(B)` (alien base, every `OBJECTIVE` tile gone) gives `result 'win'`: the base is destroyed (+500 line), aliens standing are neither killed nor captured, and the recovery follows the abort rules (only what is aboard or carried; no base artefacts, no field leftovers); soldiers outside the craft are MIA. Cydonia still ends on the Brain |
+| **rule** Alien-base surrender = command post | `finishMission` step 3, `TUNE.ALIEN_BASE_SURRENDER` `['commander','leader']` | per rank min(want, crew of that rank) − captured, so a commander killed in battle still «surrendered» | the base's command post (staff apart from the battle crew) surrenders only when the base is taken by force: a win with no conscious alien left (`!deb.objective`, not on the exit win). It gives one commander and one leader of the base race (room permitting) whatever happened to the battle crew; a commander stunned in the battle is an extra one. Without any surrender (tested, Veterano seeds 1–6) the bot wins 1/6 campaigns instead of 3/6 (it almost never stuns a commander), so the persona's «killed ⇒ nothing» was not applied; the debriefing text should name the command post (open issue for the UI) |
+| **rule** Base defence: weapons, soft odds, held at a cost | `Campaign.baseDefence`, `defenderPower`, `defenceOdds` (§5.9) | strength ignored weapons; `strength ≥ need` won, else the base and everything in it was lost | the gun counts (rifle 0, laser +15, heavy plasma +42, unarmed −15; the unarmed take the best guns with ammo from the stores); the result is rolled from `r = 100 × strength / need`: lost `(100 − r) × 2 %`, repelled `(r − 50) %`, else held at a cost (≥ 60 % of the garrison dead but one, 2 radars/defences back to construction, no score). r ≤ 50 always loses, r ≥ 150 always holds. Persona tables (Veterano month 3, Mutons, 10 rookies): r 74–80 → 40–52 % lost, 24–30 % repelled, 24–30 % held (was lost 20/20). 1 soldier + 3 Missile Defences still always lose. `defenceOdds` gives the UI strength / need / odds and how many soldiers or Missile Defences are short |
+| **rule** Month-0 terror crews | `Data.crewRules.kinds` {ufo, terror}, `earlyRowDelta` {terror: {terrorist: −1}}, `Data.crewQty`, `Battle.create`, `deploymentRange` | month-0 reduction only for UFO crews; January terror 5–7 aliens on Veterano | month-0 terror uses the table one difficulty lower and one terrorist fewer (min 1): Veterano 4, Super-humano 4–6 (briefing estimates follow). `sim.js battle --kind terror --month 0`, 30 seeds: Veterano 60 % / 5.07 dead → 77 % / 3.8 (table only: 63 % / 4.3); Super-humano 33 % / 6.9 → 57 % / 5.5 |
+| Auto-kit gun order | `Campaign.kitGuns(G, stores)` | the UI's `autoKit` tried pistols before the Rocket Launcher, so 11 launchers and 14 rockets in the stores left recruits with pistols | rifles best first, then the two-handed heavies with usable ammo in the pool by power (Rocket Launcher, cannons, Heavy Laser), then pistols; no stun weapons, no Blaster, nothing unresearched. The UI patch to use it is an open issue (`campaign_ui.js` belongs to the shell fixer) |
+
+Campaign bot (240 days) after the change: Veterano seeds 1–12 7/12 victories (before 5/12; 3 Cydonia lost, 2 timeouts),
+no council defeat, 21 base attacks all repelled (the bot keeps the squad home: strength 3–8 × need, so no roll
+mattered), alien bases won 55–62 % (was 73 %: the control centre no longer ends the battle). Recruta seeds 1–6 6/6.
+Super-humano seeds 1–6 1/6 (before 0/6). Without any alien-base surrender the Veterano bot won 1/6 (seeds 1–6).

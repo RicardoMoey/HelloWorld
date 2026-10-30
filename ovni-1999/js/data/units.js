@@ -394,24 +394,35 @@
   D.rowQty = function (row, diff) {
     return row.qty[diffIdx(diff)];
   };
-  // ours (ritmo, mês de aprendizagem): nos primeiros earlyMonths meses as tripulações dos OVNIs usam a tabela da
+  // ours (ritmo, mês de aprendizagem): nos primeiros earlyMonths meses as tripulações dos OVNIs e dos locais de terror
+  // (persona r5: o terror de janeiro com o equipamento inicial ficava em 60 % de vitórias em Veterano) usam a tabela da
   // dificuldade earlyDiffStep abaixo (Veterano → Recruta, Super-humano → Veterano); atributos e armas não mudam
-  D.crewRules = { earlyMonths: 1, earlyDiffStep: 1 };
+  // earlyRowDelta: no terror desses meses, −1 terrorista por linha (mín. 1): com a tabela de Recruta o terror de
+  // janeiro em Veterano ficava em 63 % / 4,3 baixas; com 1 Ceifador em vez de 2, 77 % / 3,8 (30 sementes)
+  D.crewRules = { earlyMonths: 1, earlyDiffStep: 1, kinds: { ufo: 1, terror: 1 }, earlyRowDelta: { terror: { terrorist: -1 } } };
   // dificuldade que dá as quantidades da tripulação (month null/undefined ⇒ sem redução: tabela da dificuldade)
   D.crewDifficulty = function (depId, diff, month) {
     const d = diffIdx(diff);
     const dep = D.deployments[depId];
-    if (month === undefined || month === null || !dep || dep.kind !== 'ufo') return d;
+    if (month === undefined || month === null || !dep || !D.crewRules.kinds[dep.kind]) return d;
     return (month | 0) < D.crewRules.earlyMonths ? Math.max(0, d - D.crewRules.earlyDiffStep) : d;
   };
-  // total de alienígenas de uma missão (sem civis) → {min, max}; month opcional aplica crewDifficulty
+  // quantidades [min, max] de uma linha da tripulação na dificuldade e no mês (crewDifficulty + earlyRowDelta)
+  D.crewQty = function (depId, row, diff, month) {
+    const dep = D.deployments[depId];
+    const q = D.rowQty(row, D.crewDifficulty(depId, diff, month));
+    const delta = dep && month !== undefined && month !== null && (month | 0) < D.crewRules.earlyMonths
+      ? ((D.crewRules.earlyRowDelta[dep.kind] || {})[row.rank] | 0) : 0;
+    if (!delta) return q;
+    return [Math.max(1, q[0] + delta), Math.max(1, q[1] + delta)];
+  };
+  // total de alienígenas de uma missão (sem civis) → {min, max}; month opcional aplica crewDifficulty/earlyRowDelta
   D.deploymentRange = function (depId, diff, month) {
     const dep = D.deployments[depId];
     if (!dep) return null;
-    const cd = D.crewDifficulty(depId, diff, month);
     let min = 0, max = 0;
     for (const r of dep.rows) {
-      const q = D.rowQty(r, cd);
+      const q = D.crewQty(depId, r, diff, month);
       min += q[0];
       max += q[1];
     }

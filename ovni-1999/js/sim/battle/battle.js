@@ -10,8 +10,10 @@
    OV.Battle.rebuildDerived(B) → B._ (não enumerável: {unitAt:Int32Array(n), unitById, itemById, dirty, light, visTiles, caches})
    OV.Battle.serialize(B) → objeto JSON ; deserialize(obj) → B ; hash(B) → uint32
    OV.Battle.unitAt(B,i) ; unitsOf(B, side, all) ; outcome(B) → null|'win'|'loss'|'abort' ; objectiveDestroyed(B)
+   OV.Battle.exitWin(B) → bool: base alienígena com o centro de controlo destruído — abortar (sair) dá a vitória
+   OV.Battle.clusteredDeaths(B) → n.º de mortos X-COM do turno alienígena com outro morto do mesmo turno a ≤ 2 casas
    OV.Battle.beginBattle(B) → Generator ; beginPlayerTurn(B) → Generator ; endPlayerTurn(B) → Generator (devolvem {outcome})
-   OV.Battle.abort(B) → {survivors, mia, craftLost} ; debrief(B, ctx?) → relatório da missão (§3.17)
+   OV.Battle.abort(B) → {survivors, mia, craftLost, result} ; debrief(B, ctx?) → relatório da missão (§3.17)
    OV.Battle.crewRange(mission) → {min, max} efetivo alienígena esperado (guarnição de um local revisitado, senão a tabela)
    OV.Battle.garrisonAfter(B, debrief) → {crew, leftovers, crashed}|null — o que fica no local sem vitória (mission.garrison)
      ctx = {researched?, interrogated?, captureRoom? (lugares livres na contenção), terrorFloor? (pontos de um terror
@@ -124,14 +126,17 @@
     return true;
   }
 
-  // vitória: nenhum alienígena consciente (atordoados contam como neutralizados), o Cérebro ou o centro de controlo da
-  // base alienígena destruídos (OBJECTIVE_KINDS; ours para a base, como diz o briefing); derrota: nenhuma unidade X-COM
-  // consciente no mapa (tem prioridade); 'abort' quando B.aborted
+  /* vitória: nenhum alienígena consciente (atordoados contam como neutralizados) ou o Cérebro de Cidónia destruído;
+     derrota: nenhuma unidade X-COM consciente no mapa (tem prioridade); 'abort' quando B.aborted.
+     Base alienígena (regra orig, persona r5): o centro de controlo destruído não acaba a batalha — a base cai quando a
+     equipa sai (abortar com objectiveDestroyed ⇒ 'win', com as regras de recolha de um abandono). */
   const OBJECTIVE_KINDS = { cydonia: 1, alienBase: 1 };
+  const END_ON_OBJECTIVE = { cydonia: 1 };
+  const exitWin = (B) => B.mission.kind === 'alienBase' && objectiveDestroyed(B);
   function outcome(B) {
-    if (B.aborted) return 'abort';
+    if (B.aborted) return B.result === 'win' ? 'win' : 'abort';
     if (!B.units.some((u) => u.side === 'xcom' && LIVE[u.status] && u.onMap)) return 'loss';
-    if (OBJECTIVE_KINDS[B.mission.kind] === 1 && objectiveDestroyed(B)) return 'win';
+    if (END_ON_OBJECTIVE[B.mission.kind] === 1 && objectiveDestroyed(B)) return 'win';
     if (!B.units.some((u) => u.side === 'alien' && LIVE[u.status])) return 'win';
     return null;
   }
@@ -369,9 +374,8 @@
         if (M.crashed && !gar.crashed && rng.pct(Data.ufoRules.crashCrewDeathPct)) dead.push(u);
       }
     } else {
-      const crewDiff = Data.crewDifficulty ? Data.crewDifficulty(M.deploymentId, M.difficulty, M.month) : M.difficulty;
       for (const row of dep.rows) {
-        const q = Data.rowQty(row, crewDiff);
+        const q = Data.crewQty(M.deploymentId, row, M.difficulty, M.month);
         const n = rng.int(q[0], q[1]);
         for (let k = 0; k < n; k++) {
           const type = Data.rowUnit(dep, row, M.race, rng.int(0, 1));
@@ -754,7 +758,8 @@
   }
 
   /* Abortar (REA §14): sobrevivem as unidades X-COM conscientes nos tiles da nave e os inconscientes cujo corpo lá
-     está (no chão ou ao colo de um sobrevivente); as restantes ficam desaparecidas em combate (u.mia). */
+     está (no chão ou ao colo de um sobrevivente); as restantes ficam desaparecidas em combate (u.mia).
+     → {survivors, mia, craftLost, result: 'win' (base alienígena sem centro de controlo, alguém a bordo) | 'abort'} */
   function abort(B) {
     if (!B._) rebuildDerived(B);
     const craft = new Set(B.craftTiles || []);
@@ -777,11 +782,12 @@
         mia.push(u.id);
       }
     }
+    const conscious = survivors.filter((id) => LIVE[(BU().findUnit(B, id) || {}).status]);
     B.aborted = true;
     B.phase = 'over';
-    B.result = 'abort';
-    const conscious = survivors.filter((id) => LIVE[(BU().findUnit(B, id) || {}).status]);
-    return { survivors, mia, craftLost: conscious.length === 0 };
+    // base alienígena com o centro de controlo destruído: sair com alguém a bordo é a vitória (a base cai)
+    B.result = conscious.length && exitWin(B) ? 'win' : 'abort';
+    return { survivors, mia, craftLost: conscious.length === 0, result: B.result };
   }
 
   // ---- debriefing (DESIGN §3.17; REA §14) -------------------------------------------------------------
@@ -808,6 +814,25 @@
     return fates;
   }
 
+  /* Baixas X-COM em grupo (persona r5): mortos no turno alienígena (ou de outro lado) com outro morto do mesmo turno a
+     ≤ 2 casas (Chebyshev, mesmo nível) — a equipa estava junta e um tiro/explosão apanhou vários → n.º desses mortos */
+  function clusteredDeaths(B) {
+    const m = B.map;
+    const dead = B.units.filter((u) => u.origSide === 'xcom' && u.status === 'dead' && u.deathSide && u.deathSide !== 'xcom'
+      && u.deathTile >= 0 && u.deathTile < m.n);
+    let n = 0;
+    for (const u of dead) {
+      const [x, y, z] = BM().xyz(m, u.deathTile);
+      const near = dead.some((v) => {
+        if (v === u || v.deathTurn !== u.deathTurn) return false;
+        const [vx, vy, vz] = BM().xyz(m, v.deathTile);
+        return vz === z && Math.max(Math.abs(vx - x), Math.abs(vy - y)) <= 2;
+      });
+      if (near) n++;
+    }
+    return n;
+  }
+
   /* Relatório da missão. ctx (opcional) = {researched: [tópico]|Set, interrogated: [tipo]|Set|fn(tipo)}: os pontos de
      artefactos só contam enquanto não investigados; captura vale 2×valor até a patente/raça ser interrogada (+10 depois).
      → {result, score, lines:[{key, n, points, itemId?}], kills, captured:[{unitType, unitId}], recovered:{tipo:n},
@@ -815,7 +840,8 @@
         exp:{soldierId:{…}}, soldiers:[{soldierId, unitId, status, hpLost, kills, exp}], civilians:{saved, killedByAliens,
         killedByXcom}, craftLost, turns, aliensLeft:[unitId] (sem vitória: alienígenas que ficam no local),
         leftOnField:{tipo:n} (sem vitória: material que fica no terreno), objective (vitória pelo objetivo com alienígenas
-        ainda de pé: não contam como abatidos e o que levam não é recuperado), panics (episódios de pânico X-COM)}
+        ainda de pé: não contam como abatidos e o que levam não é recuperado), panics (episódios de pânico X-COM),
+        clustered (mortos X-COM em grupo no turno alienígena, clusteredDeaths)}
      Vitória numa base alienígena: dep.artefacts × dispositivos intactos; num local revisitado: + mission.garrison.leftovers. */
   function debrief(B, ctx) {
     const Data = D();
@@ -829,8 +855,9 @@
     const find = (id) => BU().findUnit(B, id);
     // vitória pelo objetivo (centro de controlo / Cérebro): os alienígenas ainda de pé fogem com o que levam
     const holder = (it) => (it.owner !== null && it.owner !== undefined ? find(it.owner) : null);
+    // vitória ao sair (base alienígena, abort): só se recolhe o que está na nave ou com quem embarcou
     const recoverable = (it) => {
-      if (result === 'win') {
+      if (result === 'win' && !B.aborted) {
         const h = holder(it);
         return !(h && h.origSide === 'alien' && h.side === 'alien' && LIVE[h.status]);
       }
@@ -862,10 +889,12 @@
       add(it.type, 1);
       if (it.ammo && it.ammo.rounds > 0) add(it.ammo.type, 1);
     }
-    // alienígenas sob Controlo Mental X-COM no fim de uma vitória: recuperados vivos (como os atordoados)
+    // alienígenas sob Controlo Mental X-COM no fim de uma vitória: recuperados vivos (como os atordoados); ao sair,
+    // só os que estão a bordo
     if (result === 'win') {
       for (const u of B.units) {
         if (u.origSide !== 'alien' || u.side === 'alien' || !LIVE[u.status]) continue;
+        if (B.aborted && !(u.onMap && BU().unitTiles(u, B.map).some((i) => craft.has(i)))) continue;
         if (u.capturable) captured.push({ unitType: u.type, unitId: u.id });
         else stunKills.push(u);
       }
@@ -873,7 +902,7 @@
     // componentes do OVNI tomado (fontes de energia e navegação intactas, ligas, Elerium, artefactos)
     const M = B.mission;
     // local revisitado: o que ficou no terreno numa visita anterior é recolhido com a vitória
-    if (result === 'win' && M.garrison) for (const k of Object.keys(M.garrison.leftovers || {})) add(k, M.garrison.leftovers[k] | 0);
+    if (result === 'win' && !B.aborted && M.garrison) for (const k of Object.keys(M.garrison.leftovers || {})) add(k, M.garrison.leftovers[k] | 0);
     // peças intactas de um tipo especial: base × intactos / total (round = true arredonda a meio)
     const intact = (special, base, round) => {
       const tiles = (B.specials && B.specials[special]) || [];
@@ -889,7 +918,7 @@
     };
     // artefactos de uma instalação alienígena tomada (dep.artefacts), na proporção dos dispositivos intactos
     const dep = Data.deployments[M.deploymentId];
-    if (result === 'win' && dep && dep.artefacts) {
+    if (result === 'win' && !B.aborted && dep && dep.artefacts) {
       for (const k of Object.keys(dep.artefacts)) add(k, intact('DEVICE', dep.artefacts[k] | 0, true));
     }
     if (result === 'win' && M.ufoType && (M.kind === 'crash' || M.kind === 'landed') && Data.ufos[M.ufoType]) {
@@ -1001,7 +1030,7 @@
     return {
       result, score, lines, kills: killed.length, captured, recovered, returned, equipmentLost, lost, dead, mia, wounded, exp, soldiers,
       civilians: { saved, killedByAliens: byAliens, killedByXcom: byXcom }, craftLost, turns: B.turn, aliensLeft, leftOnField,
-      objective, panics: (B.stats && B.stats.xcomPanics) | 0,
+      objective, panics: (B.stats && B.stats.xcomPanics) | 0, clustered: clusteredDeaths(B),
     };
   }
 
@@ -1031,7 +1060,7 @@
 
   OV.Battle = Object.assign(OV.Battle || {}, {
     SCHEMA, SIDES, create, normalizeMission, crewRange, quickMission, quickLoadout, rebuildDerived, serialize, deserialize, hash,
-    unitAt, unitsOf, outcome, objectiveDestroyed, spawnAlien, nearestFree,
+    unitAt, unitsOf, outcome, objectiveDestroyed, exitWin, clusteredDeaths, spawnAlien, nearestFree,
     beginBattle, beginPlayerTurn, endPlayerTurn, abort, debrief, garrisonAfter, recordBrought, TERROR_ABANDONED_KEY,
   });
 })(globalThis.OV || (globalThis.OV = {}));
