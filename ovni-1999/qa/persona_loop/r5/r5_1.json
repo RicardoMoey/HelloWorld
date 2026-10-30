@@ -1,0 +1,122 @@
+{
+ "round": 5,
+ "results": [
+  {
+   "persona": "Rui, 49 anos, jogou o X-COM original em 1994 (Veterano/Super-humano, Batalhas Rápidas do mês 3–4, táticas clássicas, muito teclado)",
+   "rating": 7,
+   "wouldContinue": true,
+   "summary": "Joguei cerca de 64 minutos reais, sempre com teclado e trackpad. Comecei por uma Batalha Rápida noturna em Super-humano: Couraçado aterrado na selva, mês 3, 10 soldados. Equipei a equipa com bastões, fumo e o lançador pequeno. Fiz o assalto como em 1994: sinalizadores, avanço ajoelhado com reserva de tiro rápido e de ajoelhar, granada de fumo escorvada a 0 diante da porta, abrir as portas com ⌥ + clique e recuar, detetor de movimento. Abati 12 dos 15 alienígenas e um Ciberdisco rebentou e levou dois Sectoides com ele. Num só turno alienígena perdi 6 homens, um deles abatido por um colega enlouquecido. Abortei com o sargento sozinho na nave. Depois fiz uma Base Alienígena do mês 4: pânico psiónico em todos os turnos e o Lançador Blaster a dar a volta aos cantos («rota 24 casas»). A seguir comecei uma campanha em Super-humano em Lisboa: Armas Laser, 10 cientistas, Contenção, Laboratório e compras de bastões, fumo e sinalizadores. Abati um Batedor Médio e ganhei a missão em Espanha. Abati um Batedor Grande, esperei pelo dia, equipei a nave no hangar e atordoei um Sectoide com o bastão ao primeiro golpe. Mesmo assim a equipa de 5 foi dizimada e o Skyranger perdeu-se a 10 de janeiro. O que reportei na ronda 4 está corrigido: o rótulo da reserva com o Lançador Blaster («Tiro apontado (a arma não tem tiro rápido) + ajoelhar»), o texto do arco das granadas («as casas marcadas a tracejado têm arco»), o pop-up noturno sem frases repetidas e o aviso «Ficaram em Base…», que agora põe à frente o fumo e os bastões e acaba com «e mais 3 tipos». A dica de corpo a corpo existe no código, mas não a vi em jogo porque não houve Crisálidas. A fidelidade continua muito boa: escorvar a 50 % das UT, lançar a 25 %, detetor a 25 %, 8 UT para levantar, porta a 4–5 UT, preços (fumo $150, sinalizador $60, bastão $1 260), granada de proximidade só por investigação, munição de canhão em caixas de 50, e o Skyranger perdido quando a equipa morre. Os desvios que notei (contratar cientistas por um salário, investigação ×0,25, guarnição pequena na base alienígena) estão justificados no DESIGN.md. Os problemas novos são pequenos e de interface. Uma dica do ecrã Equipar fica colada no campo de batalha. Os 12 sinalizadores que comprei ficaram na base sem aviso, numa missão noturna com só 4 a bordo. E o Enter, com o painel do turno alienígena aberto, só fecha o painel em vez de terminar o turno. Super-humano é brutal (13 mortos em 2 missões de janeiro), mas é o X-COM que eu conheço. Continuaria.",
+   "findings": [
+    {
+     "file": "ovni-1999/js/ui/scenes.js",
+     "area": "ui",
+     "severity": "minor",
+     "claim": "A dica de um objeto do ecrã «Equipar» (por exemplo «Granada de Fumo · Peso 3 · Dano 60 · Fumo · raio 5 · Por ativar…») fica por cima do campo de batalha quando se conclui o Equipar e se inicia a missão com o teclado (Enter, Enter). A dica não desaparece ao mover o rato sobre o mapa. Só some quando se passa o ponteiro por outro elemento que tenha dica.",
+     "evidence": "Batalha Rápida (Couraçado, noite, Super-humano, mês 3). No Equipar dei uma Granada de Fumo a 3 soldados (clique no armazém e clique na mochila) e carreguei em Enter (concluir) e Enter (iniciar missão). No turno 1, #tooltip (role=tooltip, sem a classe «hidden») mostra a ficha da Granada de Fumo a meio do mapa. O rato andou a (900,300) e a (600,500) e a dica continuou lá. Só mudou ao passar sobre o botão de Zhou Jun na lista da equipa. Capturas: r5/veterano/shots/009_bs_start.png e 010_tooltip_check.png. Causa: OV.Scenes.push/pop/replace/set (js/ui/scenes.js) nunca chamam OV.Dom.hideTooltip(), e a dica só se esconde com mouseleave ou pointerdown no próprio nó, que deixa de existir quando a cena muda.",
+     "fix": "Em OV.Scenes.push, pop, replace e set, chamar OV.Dom.hideTooltip() (e hideLongPress) antes de trocar de cena, junto ao clearToasts que já existe. Em alternativa, chamá-lo no exit() dos ecrãs de equipamento (inventory_ui / qequip / equip)."
+    },
+    {
+     "file": "ovni-1999/js/ui/campaign_ui.js",
+     "area": "ui",
+     "severity": "minor",
+     "claim": "O aviso «Ficaram em Base…» do Equipar no briefing (longe da base) ignora os tipos que já vão a bordo, mesmo quando na base fica muito mais. Numa missão noturna com 8 soldados e só 4 sinalizadores a bordo, os 12 sinalizadores que comprei de propósito ficaram na base sem nenhuma menção. O mesmo aconteceu com 15 granadas, 2 kits médicos e 6 munições explosivas de Canhão Pesado.",
+     "evidence": "Campanha Super-humano, 1 de janeiro: comprei 10 sinalizadores, 10 granadas e 6 munições explosivas de Canhão Pesado. O Skyranger ficou com a carga de origem. OVNI-2 abatido em Espanha, de noite, com «Atacar já» e depois E. O aviso diz só «15 × Granada de Fumo, 2 × Bastão Atordoador, 1 × Canhão Automático, 6 × Canhão Automático: munição perfurante e mais 3 tipos: …». O armazém da base tinha electro_flare 12, grenade 15, medikit 2, hc_he 6, hc_ap 6. A nave levava electro_flare 4, grenade 8, medikit 1. Captura: r5/veterano/shots/081_camp_equip.png. Causa: leftAtBaseAll exclui qualquer tipo com (aboard[id] | 0) > 0.",
+     "fix": "Em leftAtBaseAll, não excluir um tipo só por já haver algum a bordo. Incluí-lo com a quantidade que fica na base quando há menos a bordo do que soldados (sinalizadores à noite, granadas, kits médicos) ou quando fica na base mais do que vai a bordo. Por exemplo: «12 × Sinalizador (4 a bordo)». De noite, pôr o electro_flare logo a seguir ao material de captura."
+    },
+    {
+     "file": "ovni-1999/js/ui/battle_ui.js",
+     "area": "ui",
+     "severity": "minor",
+     "claim": "Depois do turno alienígena, o painel «Durante o turno alienígena» abre com o foco no botão FECHAR. Carregar em Enter (a tecla que o botão FIM DO TURNO mostra, «↵») só fecha o painel e o turno não acaba. Quem termina os turnos ao teclado tem de carregar duas vezes, e com a equipa em pânico ficava à espera sem perceber porquê.",
+     "evidence": "Couraçado, turno 12, com 2 soldados vivos (um em pânico) e o painel aberto («Mark Thomas enlouqueceu!», FECHAR com o anel de foco). Carregar em Enter fechou o painel e o turno continuou no 12 durante mais de 5 minutos. Capturas: r5/veterano/shots/042_t.png (painel com o foco em FECHAR) e 043_hang.png (painel fechado, ainda «TURNO 12 FORÇAS X-COM»). Aconteceu o mesmo na Base Alienígena: num turno sem cliques em soldados, o Enter não terminou o turno e esperei 411 s. Com ⌫ ou com o clique em FIM DO TURNO funciona à primeira.",
+     "fix": "Não pôr o foco do teclado em FECHAR quando o painel abre; deixar o foco no campo de batalha, porque Esc já fecha o painel. Em alternativa, tratar o Enter no painel como «fechar e terminar turno». Se a escolha for mantê-lo, mudar a dica do botão para «⌫».",
+     "verdict": "PLAUSIBLE"
+    }
+   ],
+   "delights": [
+    "Abrir a porta do Couraçado com ⌥ + clique («Abrir a porta sem entrar · 4 UT»), ver a sala, recuar e ajoelhar. Com o soldado longe da porta, a recusa explica «Porta: fique ao lado dela para a abrir sem entrar».",
+    "A granada de fumo funciona como em 1994: passa da mochila para a mão por 8 UT, escorva-se a 0 por 50 % das UT («Espoleta: rebenta ao aterrar») e lança-se por 25 %. Uma nuvem de fumo bem visível cobriu a aproximação à porta do OVNI.",
+    "Um tiro rápido de Espingarda de Plasma abateu o Ciberdisco e a explosão matou o Sectoide Médico e o Sectoide Soldado que estavam ao lado. O registo de mensagens (N) mostra tudo por turno.",
+    "O Lançador Blaster com bomba guiada a dar a volta aos cantos da base alienígena («Bomba guiada · rota 24 casas») e o rótulo da reserva já correto: «Tiro apontado (a arma não tem tiro rápido) + ajoelhar».",
+    "Captura clássica: equipei o Skyranger no hangar com bastões, esperei pelo dia (o aviso «AMANHECEU NO LOCAL» já não se repete) e deixei um Sectoide inconsciente com um golpe («Golpe ≈ 100 % · 17 UT»).",
+    "O pânico psiónico dos Sectoides líderes, um soldado enlouquecido a matar um colega e o sargento a largar a arma em pânico. Assustador e fiel ao original.",
+    "O aviso «Ficaram em Base…» agora põe à frente o fumo e os bastões e acaba com «e mais 3 tipos», e os preços do mercado são os de 1994 (fumo $150, sinalizador $60, bastão $1 260)."
+   ]
+  },
+  {
+   "persona": "Sofia, 40 anos, MacBook Air só com trackpad, nunca jogou X-COM. Campanha em Recruta no instantâneo a78a57f, base em Lisboa, cerca de 90 minutos reais.",
+   "rating": 7,
+   "wouldContinue": true,
+   "summary": "Sessão de cerca de 90 minutos reais, registada em /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r5/casual/log.txt. A Sofia abateu o primeiro OVNI aos 7,0 minutos, guiada pela barra «Acelerar · 5 min» e pela pergunta «Desligar mísseis?», e ganhou a primeira missão aos 11,8 minutos (3 turnos, sem baixas). Jogou 5 missões: 4 vitórias e 1 derrota noturna, em que perdeu a equipa e o Skyranger. A reconstrução depois da derrota funcionou bem, com «Nave perdida» a explicar tudo e «10 soldados receberam armas do armazém». Chegou ao relatório mensal de janeiro com classificação BOM. Para lá chegar, o testador mandou o Skyranger regressar à base em vez de jogar a 6.ª missão.\n\nRe-teste das falhas da ronda 4 relevantes para a Sofia:\n- Corrigido: o conselho «estão dentro do OVNI» aparece de dia ao turno 11 (captura 053) e a porta encontra-se com «Mostrar».\n- Corrigido: o terror à noite já diz «há tempo para esperar».\n- Corrigido: o pop-up noturno já não repete o texto.\n- Corrigido: o armazém sobrelotado aparece no Geoscape e com vírgula.\n- Corrigido: a lista de construção já não desce depois de uma obra.\n- Corrigido: «Ritmo: desconhecido» tem dica.\n- Não re-testado: «Fabrico concluído → equipar», porque não chegou a fabricar.\n\nOnde ficou confusa:\n- Duas vezes carregou no botão principal «Esperar pelo dia» e, na primeira, o OVNI levantou voo antes do amanhecer. Perdeu a missão e o Skyranger foi atrás dele até ao Sara. Na segunda viu-o a tempo e atacou de noite.\n- «Vender material» abriu o Mercado em Comprar.\n- Duas vitórias acabaram com 3 mortes repentinas que nenhum ecrã explica.\n- Numa missão noturna ninguém levava sinalizadores, e foi preciso usar o auto-equipar soldado a soldado.\n\nMesmo assim os momentos bons pesam mais e ela quer ver o que vem em fevereiro.",
+   "findings": [
+    {
+     "file": "ovni-1999/js/ui/geo_ui.js",
+     "area": "sim",
+     "severity": "major",
+     "claim": "Em Recruta, quando a equipa chega a um OVNI aterrado de noite, «Esperar pelo dia» é o botão principal (Enter), mesmo quando o OVNI levanta voo antes do amanhecer. Ao seguir a recomendação, a Sofia perdeu a missão: o OVNI partiu, o Skyranger perseguiu-o até à Líbia e acabou em «Alvo perdido».",
+     "evidence": "Aconteceu duas vezes na mesma campanha.\n\nOVNI-2, 6 jan, 19:20, Alemanha:\n- O pop-up dizia «Esperar pelo dia (cerca de 11 h)?», com ESPERAR PELO DIA como botão principal (↵). O texto acrescentava só «o OVNI pode descolar entretanto».\n- O OVNI tinha groundLeftS = 4,6 h.\n- A Sofia carregou em Enter. Às 00:00 o OVNI já estava em voo, apareceu o toast «OVNI-2 deixou a Terra» e às 01:14 veio «ALVO PERDIDO», com o Skyranger em patrulha a 24,4° N 10,8° E.\n\nOVNI-4, 11 jan, 17:05:\n- Mesmo pop-up, com «Esperar (cerca de 12 h)» e groundLeftS = 3,13 h. Desta vez a Sofia já desconfiou e atacou.\n\nCausa: waitIsDefault() (cerca da linha 426) devolve true sempre que (G.difficulty|0)===0. Ignora nt.safe, que nightAt() calcula precisamente como groundLeftS >= h*3600.\n\nContraste: no terror, o mesmo pop-up já diz «O ataque ainda dura cerca de 9 h 30 min: há tempo para esperar».\n\nCapturas:\n- /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r5/casual/shots/036-pop_craftArrived.png\n- /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r5/casual/shots/038-wait2b.png\n- /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r5/casual/shots/068-arrive4.png",
+     "fix": "Em waitIsDefault, quando o.status === 'landed' && !nt.safe, devolver false (também em Recruta), para que «Atacar já» seja o botão principal. Em Recruta, trocar «o OVNI pode descolar entretanto» por algo explícito, por exemplo: «É provável que o OVNI levante voo antes do amanhecer: se esperar, perde-o». Também é possível mostrar nesse caso só «Atacar já / Regressar à base». Quando o OVNI que a nave esperava parte, a nave sem armas deve regressar à base (ver a falha seguinte)."
+    },
+    {
+     "file": "ovni-1999/js/ui/battle_ui.js",
+     "area": "ui",
+     "severity": "major",
+     "claim": "Quando a batalha acaba no turno alienígena, ou quando uma granada rebenta depois de «Fim do turno», as baixas dessa última fase nunca são explicadas. finishBattle() mostra a faixa e salta logo para o relatório. Aí o memorial diz só «Morto em combate» e a dica é genérica («ajoelhe-se»), mesmo quando quem matou foi uma granada.",
+     "evidence": "Missão 2 (Batedor Grande, Espanha):\n- O turno 15 começou com 9 soldados vivos.\n- Depois de «Fim do turno», a batalha passou diretamente para VITÓRIA com 4 mortos. Morreram 3 nesse último turno: Dmitri, Wu Li e Harry.\n- Não houve o painel «Durante o turno alienígena».\n- Captura: /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r5/casual/shots/059-debrief2.png\n\nTerror em Lagos:\n- O turno 16 começou com «Granada alienígena! Afaste os soldados do círculo vermelho» e 7 soldados vivos.\n- Depois do «Fim do turno» veio logo VITÓRIA com 6 mortos no total, dos quais 3 morreram nessa última fase.\n- A dica dizia «Avance de abrigo em abrigo e ajoelhe-se».\n- Captura: /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r5/casual/shots/131-debrief4.png\n\nCódigo: em finishBattle() (linha 1843) não se chama openReport('turn') antes de OV.Scenes.replace('debrief').",
+     "fix": "Em finishBattle, se houver entradas de baixas desde a última marca do relatório do turno, mostrar primeiro o painel «Desde o fim do seu turno / Durante o turno alienígena», com o botão «Continuar para o relatório». Em alternativa, pôr a causa no memorial do relatório (por exemplo «Morta em combate — granada alienígena (Flutuante Navegador)»). Escolher a dica pela causa dominante: com granada, «Afaste os soldados do círculo vermelho e não os junte»."
+    },
+    {
+     "file": "ovni-1999/js/ui/geo_ui.js",
+     "area": "ui",
+     "severity": "minor",
+     "claim": "O botão «VENDER MATERIAL» do aviso de armazém sobrelotado abre o Mercado no separador COMPRAR. A Sofia vê uma lista de compras com «O armazém não tem espaço suficiente» em todas as linhas e tem de descobrir sozinha o botão VENDER.",
+     "evidence": "Passos para reproduzir: depois da missão 2, o Geoscape mostra «Armazém de Base Lusitânia sobrelotado (58,6/50) … VENDER MATERIAL». Ao clicar, o Mercado abre com COMPRAR ativo.\n\nCódigo: geo_ui.js:1212 chama openBase(o.baseId, 'market') sem indicar o modo, e base_ui.js parte de market:'buy' (linhas 299 e 2151).\n\nCaptura: /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r5/casual/shots/061-sell.png",
+     "fix": "Passar opts {market:'sell'} em openBase e, em BaseUI.open/scene enter, definir S.market = opts.market quando vier preenchido. Isto aplica-se ao botão do aviso de armazém e a qualquer outro «Vender» que leve ao Mercado."
+    },
+    {
+     "file": "ovni-1999/js/ui/campaign_ui.js",
+     "area": "ui",
+     "severity": "minor",
+     "claim": "Numa missão noturna, o equipamento de bordo por omissão não dá sinalizadores a ninguém, apesar de haver 4 a bordo. Também deixa 3 soldados com pistola enquanto 4 espingardas ficam por usar na nave. Só o «AUTO-EQUIPAR» corrige isto, e tem de ser feito soldado a soldado. Além disso, o auto-equipar tirou o Kit Médico ao João, e o briefing seguinte avisou «Ninguém leva um kit médico».",
+     "evidence": "Missão 3 (Batedor Médio aterrado, noite):\n- O briefing avisava «Missão noturna… Use sinalizadores», mas nenhum cartão de soldado mostrava sinalizador.\n- Em EQUIPAR, o armazém tinha «Sinalizador ×4» e «Espingarda ×4». O Roberto, o João e o Bongani tinham pistola.\n- Foram precisos 6 cliques de seleção e 6 de AUTO-EQUIPAR.\n- Depois, o Kit Médico do João apareceu no armazém de bordo. Na missão 5 o briefing listava «Ninguém leva um kit médico».\n\nCapturas:\n- /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r5/casual/shots/069-brief4.png\n- /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r5/casual/shots/070-equip4.png\n- /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r5/casual/shots/072-equip_all.png",
+     "fix": "Quando o briefing é noturno, aplicar automaticamente o kit noturno: sinalizador no cinto de 2 a 3 soldados e a melhor arma de bordo a quem só tem pistola. Em alternativa, mostrar no aviso o botão «Equipar para a noite». Acrescentar um botão «AUTO-EQUIPAR TODOS» no ecrã Equipar. O auto-equipar não deve tirar o kit médico a quem já o tinha (ou deve garantir 1 kit por equipa)."
+    },
+    {
+     "file": "ovni-1999/js/ui/geo_ui.js",
+     "area": "ui",
+     "severity": "minor",
+     "claim": "O pop-up «ALVO PERDIDO» de um Skyranger (nave sem armas, com soldados a bordo) tem «PATRULHAR» como ação principal (Enter). Antes disso, a nave tinha perseguido sozinha o OVNI que levantou voo, para fora do radar.",
+     "evidence": "Às 01:14 de 7 jan, o Skyranger-1 estava «Em patrulha · Ponto 24,4° N · 10,8° E», no Sara, com 10 soldados. O botão principal era PATRULHAR ↵.\n\nCódigo: em geo_ui.js:2293, o case 'targetLost' tem sempre keepPatrol com def:true.\n\nCaptura: /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r5/casual/shots/038-wait2b.png",
+     "fix": "Se a nave não tiver armas (data.crafts[type].transport) ou levar soldados, pôr «Regressar à base» como botão principal e acrescentar ao texto «Um transporte não pode intercetar OVNIs em voo». No simulador, quando um OVNI aterrado levanta voo, mandar para casa as naves de transporte que o esperavam no local, em vez de o perseguirem."
+    },
+    {
+     "file": "ovni-1999/js/ui/geo_ui.js",
+     "area": "ui",
+     "severity": "minor",
+     "claim": "Os itens da lista «PRÓXIMOS PASSOS» do 1.º mês (por exemplo «Começar uma investigação na base (B)») parecem ligações, mas clicar neles não faz nada. A Sofia clicou no primeiro passo à espera de ser levada à Investigação.",
+     "evidence": "Nos primeiros minutos, clicar com o trackpad em «Começar uma investigação na base (B)» deixa a cena em geoscape e não acontece nada.\n\nCódigo: em refreshAux, cada passo é um <li> com <span> e sem handler (linhas 1185–1192).\n\nCaptura: /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r5/casual/shots/008-after_step1.png",
+     "fix": "Tornar cada passo um botão com a ação respetiva:\n- research → openBase(base, 'research');\n- hire → openBase(base, 'personnel');\n- speed → setSpeed(3);\n- ufo → mostrar a dica do radar.\nDar-lhes cursor pointer e foco de teclado."
+    },
+    {
+     "file": "ovni-1999/js/ui/battle_ui.js",
+     "area": "ui",
+     "severity": "minor",
+     "claim": "No Battlescape, a dica de um soldado na barra da esquerda («Bongani Ndlovu — Recruta · UT 52 · SAÚ 33 — Clique para selecionar…») abre por cima das duas linhas acima. Com o trackpad, depois de clicar num soldado o cursor fica parado, e a dica esconde os nomes dos colegas que a Sofia quer escolher a seguir.",
+     "evidence": "No turno 6 da missão 2, a seguir a selecionar o Bongani pela barra, a caixa da dica tapa por completo as linhas do Roberto Romano e do João Rodrigues.\n\nCaptura: /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r5/casual/shots/047-b2_now.png",
+     "fix": "Pôr a dica da barra de soldados à direita da linha (placement 'right'), sem tapar a coluna. Em alternativa, escondê-la logo após o clique e só a mostrar depois de cerca de 600 ms de hover parado."
+    }
+   ],
+   "delights": [
+    "Primeiro OVNI abatido aos 7 minutos reais sem ler nada: o chip «Intercetor-1 chega em 27 min — Acelerar · 5 min» e a pergunta «OVNI muito pequeno: desligar os mísseis?» levaram-na pela mão.",
+    "Primeira missão ganha aos 11,8 minutos, sem baixas, e com o ecrã «VITÓRIA» cheio de tesouros alienígenas e «PROMOVIDA A SARGENTO».",
+    "O sinalizador: a dica «Lançar sinalizador (L)» no botão e a zona do mapa a acender-se no meio da noite foi o momento uau da sessão.",
+    "O conselho «Sem contacto há 3 turnos: os alienígenas estão todos dentro do OVNI… Mostrar» apareceu de dia (corrigido) e salvou a missão 2.",
+    "Depois de perder a equipa, tudo encaixou: «NAVE PERDIDA» explicou o que fazer, «REPETIR A MISSÃO» estava disponível e, mais tarde, «10 soldados embarcaram… receberam armas do armazém».",
+    "O aviso vermelho «EQUIPA PEQUENA DEMAIS — Só 2 soldados contra 4–5» e o botão PESSOAL na própria linha da nave evitaram outro desastre.",
+    "O terror noturno em Lagos disse com clareza «O ataque ainda dura cerca de 9 h 30 min: há tempo para esperar».",
+    "O relatório mensal de janeiro, com classificação «BOM», fundos de $4,37 M para $7,45 M e setas verdes na França e na Nigéria, deu vontade de jogar fevereiro.",
+    "A pinça e o deslizar com dois dedos no globo funcionaram à primeira, e a dica no rodapé ensina-os."
+   ]
+  }
+ ]
+}

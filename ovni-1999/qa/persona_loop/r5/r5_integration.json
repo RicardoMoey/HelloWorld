@@ -1,0 +1,58 @@
+[
+ {
+  "from": "A",
+  "issue": "css/campaign.css (campaign/shell owner), finding #8: at heights of 700 px or less, the equip screen's footer hint `.cp-eq > footer .scr-hint` is still cut with an ellipsis. Patch: in the @media (max-height: 700px) block, replace `white-space: nowrap; overflow: hidden; text-overflow: ellipsis;` with `display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; white-space: normal;`."
+ },
+ {
+  "from": "A",
+  "issue": "css/campaign.css, finding #8: at 1024×560, `.cp-eq-left` (line-clamp 2) shows a cut-off third line because of its padding. Patch: add `max-height: calc(2.7em + 10px);` inside the same @media (max-height: 700px) rule, or collapse it to one line below 620 px with a «mais» toggle in campaign_ui.js."
+ },
+ {
+  "from": "A",
+  "issue": "js/sim/battle/actions.js (sim owner), finding #5 at the engine level: in `P.walk`, when a step has `s.occupant !== null && (s.door || s.opensUfoDoor !== null && s.opensUfoDoor !== undefined)`, it currently yields `interrupt 'blocked'` without opening the door. Proposed behaviour, as in the original game: open the door (`OV.Env.openDoor(B, u, s.door ? s.door.i : s.opensUfoDoor, s.door ? s.door.part : 3)`), charge TU_DOOR when `!a.free`, `yield* refreshSightings(B, OV.LOS.refreshAll(B))`, then `yield interrupt(B, u, 'spotted'); return { ok: false, reason: 'spotted', moved }`. The AI and headless bots would then behave the same way; the UI fallback (`doorBlock`) can stay."
+ },
+ {
+  "from": "A",
+  "issue": "js/ui/screens.js (shell owner), optional for #1: the debrief memorial could carry each death's cause (e.g. «— granada alienígena»), and the tip could be chosen by the dominant cause (grenade → «Afaste os soldados do círculo vermelho e não os junte»). The Battlescape now shows the last phase's casualties, with causes, before the debrief, so this is polish only."
+ },
+ {
+  "from": "A",
+  "issue": "js/ui/screens.js «Como Jogar» (shell owner), optional for #5: add «⌥/Alt + clique (ou ⌥ + Enter) abre uma porta sem entrar». Walking into a door with someone behind it now opens it on its own."
+ },
+ {
+  "from": "B",
+  "issue": "Battle fixer (js/ui/battle_ui.js, finding #13, my part done in css/base.css): on the squad row, add a bleeding marker and extend the spoken label.\n- Where the row's aria-label is built from hud.sq.aria (about l.2242), append T('hud.sq.bleeding') when (u.wounds || []).some((w) => w > 0).\n- Next to the bars (about l.2258), add el('span', { class: 'bs-sq-bleed', 'aria-hidden': 'true', text: '✚' }) when the soldier is bleeding.\n- New pt-PT.hud key: 'hud.sq.bleeding': ', ferido a sangrar'.\n- CSS: .bs-sq-bleed { position: absolute; right: 6px; top: 4px; color: var(--red); font-weight: 900; }"
+ },
+ {
+  "from": "B",
+  "issue": "Equipment UI owner (js/ui/inventory_ui.js, finding #4): AUTO-EQUIPAR takes the medikit away from whoever had it. In autoFor(s), before emptyInto(s.id), compute const hadMed = loTypes(E.loadouts[s.id]).indexOf('medikit') >= 0 and pass { keepMed: hadMed } into autoLoadout's options. In autoLoadout, change the medikit condition from (best && best.id === s.id && have('medikit') …) to ((opt.keepMed || (best && best.id === s.id)) && have('medikit') …). The soldier's own medikit goes back to stores in emptyInto, so it is available again."
+ },
+ {
+  "from": "B",
+  "issue": "Sim owner (js/sim/geo/missions.js onUfoLiftOff or js/sim/geo/world.js, finding #5): so the headless bot also stops chasing, after ufo.status = 'flying' in onUfoLiftOff, add a loop over G.crafts. For each craft c with c.dest && c.dest.kind === 'ufo' && c.dest.id === ufo.id, D().crafts[c.type].transport, (c.status === 'out' || c.status === 'patrol') and !c.dogfightId, call OV.World.recall(G, c.id), or set c.dest = 'home' and status 'returning' the same way recall does. The UI's transportsHome() then finds nothing left to do, so the two do not conflict."
+ },
+ {
+  "from": "B",
+  "issue": "Not mine: when my last full suite ran, all 69 files were green. The campaign_pacing2 and sim_persona_r5 tests owned by the sim fixer had failed in an earlier run while they were editing them."
+ },
+ {
+  "from": "C",
+  "issue": "The full suite was 798/0 with my changes. Two later reruns showed 7–8 transient failures in other fixers' areas: integration_r3, integration_r4 (blastPreview civ), late_persona_r4 (stores warning), shell_persona_r3 (geo «Esperar pelo dia»), sim_persona_r1 (Path.flyRoute), sim_persona_r4 (alien-base control-centre win) and ui_persona_r4 (shot log). They coincide with concurrent edits to js/ui/battle_ui.js and js/sim/battle/*.js. None of them touch js/ui/screens.js or js/i18n/pt-PT.screens.js."
+ },
+ {
+  "from": "S",
+  "issue": "BATTLE FIXER (js/ui/battle_ui.js + js/i18n/pt-PT.battle.js). (1) After each player action/event, where `OV.Battle.outcome` is already checked: `if (!S.exitHinted && OV.Battle.exitWin && OV.Battle.exitWin(S.B)) { S.exitHinted = true; OV.Dom.toast(T('bs.obj.exitWin'), null, 'good'); }`. (2) In `abortMission()`: `const exit = OV.Battle.exitWin && OV.Battle.exitWin(S.B) && n > 0;` then the body text is `exit ? T('hud.abort.exitWin') : T('bs.abort.confirm')` and the confirm button is `{label: T(exit ? 'hud.abort.exitWinBtn' : …), kind: exit ? 'primary' : 'danger'}`. `finishBattle` already reads `B.result` ('win'). New keys: 'bs.obj.exitWin': 'Centro de controlo destruído! A base cai quando a equipa sair: reúna-a na zona de chegada e carregue em Abortar (X) — ou elimine os restantes alienígenas.'; 'hud.abort.exitWin': 'O centro de controlo está destruído: sair agora conta como VITÓRIA (base destruída). Quem não estiver na zona de chegada fica para trás.'; 'hud.abort.exitWinBtn': 'Sair — base destruída'. Change 'bs.noRoute' to 'Bomba sem rota até ao alvo pelas casas já vistas'."
+ },
+ {
+  "from": "S",
+  "issue": "SCREENS FIXER (js/ui/screens.js + js/i18n/pt-PT.screens.js). In `lossCauses()`, after the panic block add: `out.clustered = OV.Battle && OV.Battle.clusteredDeaths ? OV.Battle.clusteredDeaths(B) : 0; if (out.clustered >= 2 && best === 'enemy' && out.tip !== 'scr.db.tip.outnumbered') { if (!out.tip2) out.tip2 = out.tip; out.tip = 'scr.db.tip.clustered'; }`. New key 'scr.db.tip.clustered': 'Os soldados estavam todos juntos: o mesmo alienígena atingiu vários. Afaste-os 2 a 3 casas uns dos outros e avance em lanços.' Change 'scr.br.obj.alienBase.1' to 'Destruir o centro de controlo e sair (Abortar), ou eliminar todos os alienígenas da base.' and 'scr.db.objective' to 'Centro de controlo destruído: a equipa saiu e a base caiu; os alienígenas que restavam fugiram com o que levavam.'"
+ },
+ {
+  "from": "S",
+  "issue": "SHELL/CAMPAIGN FIXER (js/ui/campaign_ui.js). In `autoKit`, replace `const guns = PREF_GUNS.concat(Object.keys(st).filter(...))` with `const guns = C().kitGuns ? C().kitGuns(G, st) : PREF_GUNS.concat(Object.keys(st).filter((id) => D().items[id] && D().items[id].kind === 'firearm' && PREF_GUNS.indexOf(id) < 0).sort((a, b) => weightOf(a) - weightOf(b)));`. The existing loop keeps the ammo and Strength checks, so a recruit gets a Rocket Launcher plus up to 2 rockets before a pistol (persona r5 finding 1). Also add the briefing AVISOS line for heavy weapons left at base, e.g. 'cp.br.leftHeavy': '{n} × {item} ficaram na base — E para levar' (opens the craft's equip screen); fits the leftAtBaseAll finding you already own. In js/i18n/pt-PT.campaign.js change 'cp.db.surrendered' to '{name} ×{n}: o posto de comando rendeu-se quando tomámos a base — para a contenção de {base}.'"
+ },
+ {
+  "from": "S",
+  "issue": "BASE/GEO UI (js/ui/base_ui.js, js/ui/geo_ui.js, their i18n). In the Instalações tab, show `const o = OV.Campaign.defenceOdds(G, baseId)` as a bar «Defesa da base: força {o.strength} / exigida ≈ {o.need} ({raça}) — risco de perder a base {o.lostPct} %», with tone bad when lostPct > 0 and warn when holdPct > 0. In the 'baseAttack' popup use `defenceOdds(G, ev.baseId, {ufoId: ev.ufoId})`: when lostPct > 0 add 'geo.ev.baseAttack.short': 'Guarnição insuficiente: faltam ~{n} soldados' plus, if defencesShort > 0, ' (ou {m} Defesas de Mísseis)'. In the 'baseDefence' popup, when `ev.held`, add 'geo.ev.baseDefence.held': 'Aguentámos a custo: {list} ficaram destruídas e voltam a obra.' using `ev.facilitiesDamaged`. The result code stays 'repelled', so existing texts still render without the patch. When a damaged facility finishes rebuilding it fires the normal 'facilityDone' event (shown as construction completed)."
+ }
+]

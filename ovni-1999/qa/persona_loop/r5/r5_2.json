@@ -1,0 +1,146 @@
+{
+ "round": 5,
+ "results": [
+  {
+   "persona": "Tiago, 11 anos (Recruta, Batalhas Rápidas + campanha, rato e teclado, clica depressa e não lê textos longos)",
+   "rating": 6,
+   "wouldContinue": true,
+   "summary": "Joguei cerca de 95 minutos reais: 2 Batalhas Rápidas de terror (Bagdade 7 turnos, Caracas 20 turnos) e o início de uma campanha em Recruta (3 missões, de 1 a 15 de janeiro de 1999). Muitas correções das rondas anteriores funcionam. O duplo clique em Começar, Contratar e Comprar já não parte nada. A granada com aliados no raio pede mesmo um 2.º clique. Há avisos «X está perto da linha de tiro» e um painel de avisos no Geoscape com botões grandes (Investigar, Contratar soldados). O fim de uma investigação abre «Novo projeto» com Enter. Em Recruta já não há pânico em cadeia. Os botões do Geoscape já não aparecem cortados.\n\nPara o Tiago, o pior continua a ser perder soldados sem perceber porquê:\n- No 1.º turno de Caracas, um foguete disparado com um duplo clique matou o sargento que estava ao lado do atirador, sem nenhuma confirmação.\n- O rótulo «Explosão raio 3 · apanha o alvo» prometia acertar, mas os 3 foguetes seguintes falharam.\n- Em Caracas ficou 10 turnos preso: um Flutuante via-se pela janela, mas não se podia disparar contra ele. A porta só abre com Alt + clique, que ele não conhece.\n- Na campanha morreram 7 de 10 soldados na 1.ª missão e 5 de 10 na 2.ª, contra 4–5 Sectoides. A dica do relatório foi sempre a mesma.\n- Os 10 Lança-Foguetes que comprou ficaram no armazém, e os recrutas novos foram para a missão de pistola.\n\nGanhou todas as missões. O terror de Teerão (4 de 5 vivos, BOM) e a 1.ª Batalha Rápida (0 baixas, BOM) foram muito divertidos. Continuava a jogar, sobretudo Batalhas Rápidas.",
+   "findings": [
+    {
+     "file": "ovni-1999/js/ui/battle_ui.js",
+     "area": "ui",
+     "severity": "major",
+     "claim": "Um foguete (ou outra arma explosiva disparada) com um aliado mesmo ao lado do atirador ou da linha de tiro dispara logo ao 1.º clique. Não há nenhuma confirmação, nem em Recruta. O rótulo só mostra a linha pequena «Risco: Nicolas Leroy está perto da linha de tiro». lineRiskConfirm() devolve 0 para munição explosiva («if (b && !b.smoke) return 0»). blastRisk() só conta aliados dentro do raio à volta do ponto apontado, não à volta de onde o foguete rebenta quando apanha o colega do lado.",
+     "evidence": "Batalha Rápida, Local de Terror (Caracas), Recruta, Mês 0, semente da missão 75270, turno 1. Serguei Morozov (Lança-Foguetes, em 15,5) aponta em Tiro rápido para uma casa 3 casas à frente (12,2). O Sargento Nicolas Leroy está na casa ao lado (15,4). O rótulo diz «Explosão raio 3 · 24 UT» e «Risco: Nicolas Leroy está perto da linha de tiro», com tapLock −1 e lock false. Um duplo clique (um só clique chega) dispara. Registo: «1x: Nicolas Leroy foi morto em combate — explosão (Serguei Morozov)». Capturas: persona/r5/crianca/shots/079_rocket_risk_hover.png e 080_rocket_risk_after_dbl.png. Pelo contrário, a granada na mesma situação pede «Clique outra vez para disparar — atinge 6 aliados» (083_grenade_after_dbl.png).",
+     "fix": "Em lineRiskConfirm, não sair cedo para munição explosiva. Para armas com raio > 0, pedir o 2.º clique (com a guarda CONFIRM_GAP/detail já existente) sempre que lineRisk() encontre aliados, sobretudo a ≤ 2 casas do atirador, porque aí um foguete que falha rebenta em cima deles. Fazê-lo sempre em Recruta, ou quando o acerto for < 50 %. Em blastPreview/blastRisk, somar os aliados dentro do raio à volta de cada aliado que está na linha. Mudar o rótulo para «Clique outra vez — o foguete pode rebentar em cima de Nicolas Leroy»."
+    },
+    {
+     "file": "ovni-1999/js/ui/battle_ui.js",
+     "area": "ui",
+     "severity": "major",
+     "claim": "Ao apontar uma arma explosiva a um alienígena, o rótulo diz «Explosão raio 3 · apanha o alvo · 25 UT» e esconde por completo a probabilidade de acerto (T0.hitPct = null). O tiro pode falhar e desviar-se, e o Lança-Foguetes em Tiro rápido tem Pontaria 23 %. Uma criança lê «apanha o alvo» como garantia.",
+     "evidence": "Caracas, turnos 3–5. Serguei Morozov e Oleg Kozlov disparam 3 foguetes com o rótulo «Explosão raio 3 · apanha o alvo · 25/23/27 UT». O registo mostra «Serguei Morozov falhou o tiro em Ceifador» (turnos 3 e 4) e «Oleg Kozlov falhou o tiro em Ceifador». O menu da mesma arma mostra «Tiro rápido 23 UT Pontaria 23 %» (143_reload_menu.png). Código: battle_ui.js, perto da l. 766 (T0.label = 'hud.target.blast'; T0.hitPct = null); i18n pt-PT.hud.js l. 170 «Explosão raio {r} · apanha o alvo · {tu} UT».",
+     "fix": "Manter o acerto real no rótulo dos explosivos apontados a uma unidade, por exemplo «Acerto ≈ 23 % · explosão raio 3 · 25 UT». Mostrar «apanha o alvo» só quando o alvo está no raio mesmo que o tiro falhe, ou seja, com o desvio máximo previsto dentro do raio. Alternativa: trocar o texto por «Se acertar: explosão raio 3»."
+    },
+    {
+     "file": "ovni-1999/js/ui/battle_ui.js",
+     "area": "ui",
+     "severity": "major",
+     "claim": "Um alienígena parado logo atrás de uma porta fechada bloqueia a equipa por tempo indeterminado. Clicar numa casa do outro lado da porta mostra o caminho («Custa 16 UT…»), mas ao clicar aparece só «Caminho bloqueado»: o soldado não se mexe e a porta não abre. A porta só abre com Alt + clique, que nada no ecrã sugere. Ao mesmo tempo, o outro Flutuante vê-se pela janela, mas todos os tiros dão «Sem linha de tiro — parede no caminho». Não há nenhuma dica.",
+     "evidence": "Batalha Rápida, Local de Terror (Caracas), Recruta, Mês 0, semente 75270. Do turno 9 ao 19 (≈ 25 min reais), 2 Flutuantes ficaram numa sala pequena em (4,36) e (3,35). Julia Wagner está à porta, em (5,36). O clique em (3,36) mostra «Custa 16 UT · ficam 44» e depois dá o toast «Caminho bloqueado», sem mudar UT nem visibilidade (232_julia_in.png). A equipa vê o alienígena pela janela, mas «Sem linha de tiro — parede no caminho» em todos os soldados, turno após turno (279_room_view.png). Alt + clique na porta abriu-a e revelou o Flutuante na soleira (283_door_alt.png); 1 turno depois a missão acabou.",
+     "fix": "Quando o caminho é recusado porque uma unidade invisível ocupa a casa logo a seguir a uma porta, abrir a porta (gastando as UT do passo), parar o soldado e revelar a unidade, como no original. Pelo menos, trocar o toast por «Há alguém do outro lado da porta — Alt + clique abre a porta». Acrescentar o Alt + clique à barra de ajuda do modo mover e ao «Como Jogar». Em missões sem OVNI, se houver alienígenas avistados mas nenhum tiro possível durante ≥ 3 turnos, mostrar uma dica do tipo ufoHint: «Os alienígenas estão numa sala: entre pela porta (Alt + clique abre-a)»."
+    },
+    {
+     "file": "ovni-1999/js/data/tuning.js",
+     "area": "sim",
+     "severity": "major",
+     "claim": "Em Recruta, as primeiras missões da campanha continuam a ser um massacre para um principiante. Morreram 7 de 10 soldados na 1.ª missão e 5 de 10 na 2.ª, contra 4–5 Sectoides de um Batedor Grande. A pistola de plasma mata um recruta (28–40 de saúde) com um tiro, e a «Pontaria alienígena ×0,5» quase não conta quando os soldados estão juntos, porque os falhanços acertam no do lado. O pânico já não acontece (0 episódios), mas o relatório mostra sempre a mesma dica genérica.",
+     "evidence": "Campanha em Recruta, semente 210353344. Missão 1, OVNI-3 despenhado no Reino Unido: um só Sectoide Soldado matou 5 soldados em 2 turnos alienígenas («3a: Jason Wilson…», «3a: Rui Rodrigues…», «4a: Rekha Patel…», «4a: Alessandro Ricci…», «4a: Marta Gonçalves…»). Resultado: VITÓRIA −24 FRACO com 7 mortos (382_c1_debrief.png). Missão 2, OVNI-4 em Itália: 5 mortos, incluindo 1 por fogo amigo. Nas duas, a dica foi a mesma: «Avance de abrigo em abrigo e ajoelhe-se (K)…». Na 1.ª Batalha Rápida (Recruta) não morreu ninguém. A diferença vem dos Sectoides com pistolas de plasma junto ao casco do OVNI.",
+     "fix": "Acrescentar ao tuning um multiplicador de dano alienígena por dificuldade, como o MORALE_LOSS_PCT, por exemplo ALIEN_DAMAGE_PCT = [75, 100, 100], para que um tiro de plasma raramente mate um recruta saudável. Em alternativa, dar Fato de Combate com +armadura aos recrutas em Recruta. No relatório, quando ≥ 2 soldados morrem no mesmo turno alienígena a ≤ 2 casas uns dos outros, mostrar uma dica específica: «Os teus soldados estavam todos juntos: um alienígena acertou em vários. Espalha-os.»"
+    },
+    {
+     "file": "ovni-1999/js/sim/campaign.js",
+     "area": "ui",
+     "severity": "minor",
+     "claim": "Ainda presente em parte (ronda 3): as armas compradas continuam sem chegar às missões. O aviso de entrega tem agora o botão «PÔR NA SKYRANGER-1», mas o botão por omissão (Enter) é OK. A linha «Ficaram em Base Lusitânia: … 11 × Lança-Foguetes» só aparece no ecrã Equipar, que o Tiago nunca abre. Pior: quando os recrutas novos chegam, o armamento automático dá-lhes pistolas, embora haja 11 Lança-Foguetes e 14 foguetes no armazém.",
+     "evidence": "O Tiago comprou 10 Lança-Foguetes e 10 Foguetes Pequenos a 1 jan (313_market_rl.png). Aviso de 2 jan, com Enter = OK (314_pop_deliveryArrived.png). O aviso de 8 jan diz «7 soldados receberam armas do armazém». O kit da missão de 11 jan dá Ngozi Adebayo e Valentina De Luca com pistol + pistol_clip, os restantes com rifle, e nenhum rocket_launcher. O armazém tinha rocket_launcher: 11, small_rocket: 14. O briefing não tem nenhum aviso sobre isto (323_cbrief1.png, 393_cbrief2.png).",
+     "fix": "No armamento automático dos recrutas que embarcam (e no Auto-equipar), quando acabarem as espingardas, preferir a melhor arma do armazém que o soldado aguente, incluindo lança-foguetes com 1–2 foguetes, antes de pistolas. No briefing, acrescentar em AVISOS (tom 'warn') uma linha curta: «11 Lança-Foguetes ficaram na base — E para levar», que abre o equip da nave."
+    },
+    {
+     "file": "ovni-1999/js/ui/geo_ui.js",
+     "area": "ui",
+     "severity": "minor",
+     "claim": "Depois de uma missão com baixas, os soldados aptos que ficaram na base não voltam a embarcar sozinhos. A nave segue para a missão seguinte com metade da equipa. O único sinal é uma caixa informativa (tom 'info') no diálogo «Enviar equipa» e, no briefing, «Vão 5 lugares vazios na nave». Uma criança clica na linha da Skyranger e parte.",
+     "evidence": "Campanha, 15 jan, ataque terrorista em Teerão. Na base havia 8 soldados aptos (woundDays 0), dos quais 3 sem nave: Dieter Schmidt, Rui Marques e Filipa Almeida, craftId null. A Skyranger partiu com «5/10». O briefing mostra só «AVISOS | Vão 5 lugares vazios na nave.» (457_cbrief3.png). geo_ui.js l. 1649 só mostra box('info', geo.fix.seats…) quando fit ≥ crew.min.",
+     "fix": "Depois do relatório de missão, e quando chegam contratações, embarcar automaticamente os soldados aptos sem nave na nave de transporte da base, como já se faz quando as contratações chegam. Em alternativa, quando há lugares e soldados livres, fazer do clique na linha da nave «Embarcar 3 e enviar», ou pôr o botão «Embarcar 3 e equipar» como ação por omissão."
+    },
+    {
+     "file": "ovni-1999/js/ui/dom.js",
+     "area": "ui",
+     "severity": "minor",
+     "claim": "Uma dica (tooltip) de um botão da base fica presa no Geoscape. Se o rato estiver em cima de «COMPRAR» no Mercado quando se carrega em Esc, a dica «Comprar 1 × Stingray · …O armazém não tem espaço suficiente» continua visível no Geoscape. Fica lá depois de mexer o rato e de acelerar o tempo, e tapa o painel de avisos, incluindo o botão «VENDER MATERIAL».",
+     "evidence": "Base → 8 Mercado → pôr o rato sobre um botão COMPRAR → Esc. A div #tooltip continua visível com «Comprar 1 × Stingray» depois de mover o rato para (500,400) e para (1100,480) e de acelerar com 6 (495_geo_after_market_tip.png, 496_stale_tip_after_moves.png). Também aconteceu sem querer a 2 jan, por cima do aviso «CHEGARAM ENCOMENDAS» (314_pop_deliveryArrived.png). Causa: tooltip() só esconde em mouseleave/pointerdown. Quando a cena é removida, o nó desaparece sem disparar mouseleave.",
+     "fix": "Chamar hideTooltip() sempre que uma cena é empurrada ou retirada (OV.Scenes push/pop/replace) e quando um modal ou popup abre. Por segurança, em mousemove no document, esconder #tooltip se o nó de origem já não estiver ligado ao DOM (!node.isConnected) ou não estiver em :hover."
+    }
+   ],
+   "delights": [
+    "1.ª Batalha Rápida de terror (Bagdade): VITÓRIA BOM em 7 turnos, com 0 baixas, um Ceifador capturado e o relatório com «Nenhuma baixa. Todos regressam a casa.»",
+    "Na campanha, o terror de Teerão: VITÓRIA BOM (+235) com 4 de 5 soldados vivos e 5 alienígenas abatidos.",
+    "O duplo clique já não parte nada: Começar, Jogar de novo, Fundar base, Iniciar investigação, Contratar +5 e Comprar fazem tudo uma só vez.",
+    "A granada rápida (G) com a equipa no raio pede mesmo «Clique outra vez para disparar — atinge 6 aliados», mesmo com um duplo clique rápido.",
+    "Os avisos «Risco: 2 aliados perto da linha de tiro», com contorno vermelho nos soldados, e o painel «Durante o turno alienígena» com «Mostrar».",
+    "No Geoscape, os avisos com botões grandes («15 cientistas parados → INVESTIGAR», «Só 3 soldados aptos → CONTRATAR SOLDADOS») mostram o que fazer sem ler muito.",
+    "Fim de investigação com «NOVO PROJETO ↵» como botão por omissão.",
+    "Em Recruta não houve pânico nenhum, mesmo depois de 5 mortes.",
+    "A arma vazia mostra «Vazia» a vermelho na ranhura da mão, e o clique num tiro desativado diz «Sem munições».",
+    "Laser investigado em 3 dias: o Tiago sentiu que a investigação dá resultado depressa."
+   ]
+  },
+  {
+   "persona": "Inês, otimizadora (procura exploits e picos injustos). Joga com trackpad e teclado e usa a simulação headless (scripts Node contra OV.* e tools/sim.js). Ronda 5: cerca de 78 min de jogo real no browser (10:59 a 12:17). Campanha nova em Super-humano (semente 777, base em Lisboa) de 1 jan até ao relatório de fevereiro: 4 batalhas, 2 terrores ignorados, Skyranger perdida e recomprada. Para chegar a conteúdo de fim de jogo fiz uma Batalha Rápida na Base Alienígena (Super-humano, equipamento de Cidónia) e usei em headless a gravação de meio de campanha da ronda 4 (4 mar). Registo: /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r5/minmaxer/mylog.txt; scripts e capturas na mesma pasta.",
+   "rating": 7,
+   "wouldContinue": true,
+   "summary": "Voltei a testar os meus achados das rondas 1 a 4 e quase todos estão corrigidos. O fabrico para vender rende no máximo cerca de 100 $/h de engenheiro e pára quando o armazém enche. O aluguer das naves é proporcional aos dias. Abortar um terror custa pelo menos o mesmo que ignorá-lo. A quinta de abortar acabou: o OVNI guarda a guarnição e o material já levado. O kit médico funciona sem investigação. Carregar uma gravação sorteia outro mapa. O RNG de combate é determinístico, por isso recarregar o turno não volta a lançar os dados. Vender o último artefacto pede confirmação. A lista de construção já não salta. O aviso «Equipa pequena demais» funciona. A defesa da base deixou de ser trivial.\n\nO problema novo e grande nasce da correção da ronda 4. Um único tiro de Lançador Blaster, disparado da rampa no turno 1, ganha qualquer base alienígena. A bomba guiada calcula sozinha uma rota de 25 casas por corredores nunca vistos, e o jogo até a desenha no escuro. Depois, o comandante e os líderes rendem-se vivos, com 12 alienígenas ainda de pé. Isto salta a parte mais difícil da história.\n\nA defesa da base caiu para o extremo oposto: é um precipício escondido. Em Super-humano, no mês 3, 8 soldados sem defesas perdem 20 em 20 vezes, e com 4 Defesas de Mísseis ganham 18 em 20. Perder destrói a única base e acaba o jogo, sem batalha e sem nenhum número visível que deixe planear.\n\nTambém confirmei que a rendição ainda entrega um comandante que foi abatido. O terror do mês 0 com o equipamento inicial fica abaixo das metas do próprio sim.js.\n\nMesmo assim gostei. A investigação é rápida e recompensa uma boa ordem, e campar dentro da Skyranger com reação ainda funciona, como no original.",
+   "findings": [
+    {
+     "file": "ovni-1999/js/sim/battle/battle.js",
+     "area": "sim",
+     "severity": "major",
+     "claim": "Um único tiro de Lançador Blaster, disparado da rampa no turno 1, ganha qualquer base alienígena. A bomba guiada calcula sozinha uma rota de 23 a 27 casas pelo interior não explorado até ao centro de controlo. A potência 200 é maior do que 2 × 60 de armadura, por isso as 4 consolas caem de uma vez, e outcome() devolve logo 'win', que é a correção (a) da ronda 4. Na campanha, finishMission ainda põe na contenção o comandante e os líderes vivos, com 8 a 12 alienígenas de pé, e dá +514 pontos. Fica tudo desbloqueado sem atordoar ninguém: Origens, Solução Marciana e Cidónia. A pré-visualização mostra a rota inteira por cima de casas pretas, o que revela a planta da base. Sem Blaster, um Plasma Pesado destrói as consolas com cerca de 10 impactos diretos.",
+     "evidence": "Headless:\n- blaster.js: alienBase, Super-humano, mês 6, sementes 1 a 10: 1 tiro a partir da formação inicial (distância 23 a 27). Resultado 10/10 'win' no turno 1. Em Cidónia dá noRoute, por isso só a base alienígena é afetada.\n- abobj.js (gravação do mês 3 da ronda 4) em modo «objective»: aliens still alive 12, score 514, surrendered {floater_commander:1, floater_leader:2}, base gone true.\n- objrush3.js: com Plasma Pesado bastam 5 a 12 impactos de terreno para as 4 consolas. Com HE pack, foguete ou granada é impossível.\n\nNo browser: Batalha Rápida, Base Alienígena, Super-humano, Mês 4. Para ir direto ao alvo usei a posição do centro de controlo (9,9) lida no debug, que a otimizadora conheceria depois de uma primeira visita. Selecionei o soldado do Blaster, escolhi «Tiro apontado» e apontei para uma casa preta.\n- O rótulo diz «Bomba guiada · rota 25 casas · Acerto ≈ 60 % · 35 UT» e a rota tracejada atravessa território inexplorado: …/shots/075_blaster_aim.png\n- Logo a seguir aparece «MISSÃO CUMPRIDA», ainda no TURNO 1: …/shots/076_blaster_after.png\n- O relatório dá VITÓRIA em 1 turno, +574, EXCELENTE e nenhuma baixa: …/shots/077_ab_debrief.png\n\nCapturas em /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r5/minmaxer/shots/",
+     "fix": "- Base alienígena: voltar à regra do original. O centro destruído não acaba a batalha, apenas garante que a base é destruída quando a equipa sai ou aborta. Alternativa: ganhar pelo objetivo só quando restarem no máximo 2 alienígenas conscientes.\n- Rendição: só quando não restam alienígenas conscientes. Numa vitória pelo objetivo não deve haver rendição.\n- Path.flyRoute com c.bomb: atravessar apenas casas descobertas (m.disc[i] & 1), ou exigir pontos de passagem em casas vistas, como os waypoints do original.\n- battle_ui: não desenhar a rota sobre casas por descobrir.\n- Juntar um teste em tools/tests: Blaster no turno 1 contra alienBase não pode dar outcome 'win'."
+    },
+    {
+     "file": "ovni-1999/js/sim/campaign.js",
+     "area": "sim",
+     "severity": "major",
+     "claim": "A defesa da base (resolvida automaticamente) ficou um precipício escondido, com perda total em jogo. O resultado é um limiar determinístico de força: Σ(UT+Pontaria+Saúde+armadura frontal) dos soldados contra a exigência do OVNI. As armas não contam, e o jogo não mostra nem a força da guarnição nem a exigida. Perder destrói a base com naves e pessoal, e se for a única base é fim de jogo, sem batalha tática. Pequenas diferenças na guarnição invertem o resultado de 0 % para 100 %.",
+     "evidence": "basedef3.js: Couraçado intacto, 20 sementes por linha.\n- Super-humano, mês 3, Mutões, 8 soldados com Armadura Pessoal:\n  - 0 Defesas de Mísseis: lost 20/20, fim de jogo 20/20.\n  - 2 defesas: lost 18/20.\n  - 4 defesas: repelled 18/20.\n- Veterano, mês 3, Mutões, 10 soldados com Armadura Pessoal:\n  - 0 defesas: lost 20/20.\n  - 2 defesas: repelled 20/20.\n- basedef2.js: a exigência vai de 752 (Recruta, mês 1, Sectoides) a 3051 (Super-humano, Etéreos). defenderPower dá 140 a um recruta de fato, 178 com Armadura Pessoal e 228 com Fato Energético, e ignora se ele leva espingarda ou Plasma Pesado.\n- O único texto ao jogador é 'geo.ev.baseAttack.body': «As defesas e a guarnição vão responder.» Nenhum ecrã diz se chega.",
+     "fix": "- Mostrar no separador Instalações uma barra «Defesa da base: força X / exigida ≈ Y» para a raça e o mês correntes.\n- Quando um OVNI de retaliação ruma à base, avisar: «Guarnição insuficiente: faltam ~N soldados ou M defesas».\n- Trocar o limiar por uma probabilidade suave, por exemplo P(vitória) = clamp(strength/need − 0,5, 0, 1).\n- Incluir o tier da arma em defenderPower.\n- Num desaire perto do limite, destruir só algumas instalações e matar parte da guarnição, em vez de apagar a base logo à primeira."
+    },
+    {
+     "file": "ovni-1999/js/sim/campaign.js",
+     "area": "sim",
+     "severity": "minor",
+     "claim": "Ainda presente (ronda 4), em parte. A rendição na base alienígena tem agora um teto igual ao número de cada patente na tripulação (B.crew) menos os capturados, mas os abatidos continuam a contar. Matando todos os alienígenas, incluindo o comandante e o líder, a contenção recebe na mesma 1 comandante e 1 líder vivos.",
+     "evidence": "surr2.js usa a gravação de 4 mar da ronda 4 e mata todos os alienígenas da base (kills 9, captured []). O resultado é: surrendered {floater_commander:1, floater_leader:1}, containment {floater_commander:1, floater_leader:1}. O código está em campaign.js, no bloco da rendição: cap = min(want[rank], inCrew[rank]) − capturedStored[unit], sem descontar os mortos dessa patente.",
+     "fix": "Contar só os vivos no fim da batalha. Por patente: cap = número de unidades em B.units com origSide 'alien', essa patente e status 'ok', 'panic' ou 'out', menos as já capturadas. Juntar o caso «todos abatidos ⇒ surrendered vazio» a tools/tests/sim_persona_r4.test.js."
+    },
+    {
+     "file": "ovni-1999/js/data/geo.js",
+     "area": "sim",
+     "severity": "minor",
+     "claim": "O terror do mês 0 com o equipamento inicial fica abaixo das metas do próprio sim.js (70 % de vitórias e no máximo 3 baixas). No mês 1 fica muito acima. A campanha gera terrores logo em janeiro (o meu foi em Vancouver, a 15 jan). Como abandonar custa o mesmo que ignorar, a jogada ótima em janeiro é sempre ignorar o terror (−500).",
+     "evidence": "node tools/sim.js battle --kind terror com 30 sementes:\n- Veterano, mês 0: 60 % de vitórias e 5,07 baixas por batalha.\n- Veterano, mês 1: 97 % e 1,90.\n- Veterano, mês 0 com --gear 1 (lasers): 100 % e 1,67.\n- Super-humano, mês 0: 33 % e 6,90.\nO varrimento --ufo all de Veterano no mês 0 (sweep_all_vet_m0.txt) dá terror 58 %/5,08 e Batedor Médio 1,83 baixas.\nNo browser, a 15 jan, o diálogo dizia «Só 4 soldados contra 7–9 alienígenas».",
+     "fix": "Uma de duas:\n- Não gerar missões de terror antes de cerca do dia 20 do mês 0.\n- No mês 0, aplicar ao terror o crewRules.earlyMonths (uma patente a menos, ou −2 terroristas).\nCom isto o terror do mês 0 chega aos 70 % / ≤ 3 baixas no sim.js."
+    },
+    {
+     "file": "ovni-1999/js/ui/dogfight_ui.js",
+     "area": "ui",
+     "severity": "minor",
+     "claim": "Na janela de interceção, o cabeçalho continua a mostrar o eco de radar («OVNI-3 · Pequeno») mesmo quando o OVNI já está identificado. A lista lateral, no mesmo ecrã, diz «Em voo · Batedor Grande». A otimizadora escolhe o modo de combate pelo tipo de OVNI e tem de procurar a informação noutro sítio.",
+     "evidence": "10 jan 01:26: o OVNI-3 já tinha aterrado uma vez e estava identificado como Batedor Grande. Ao descolar, o cabeçalho mostra «Intercetor-1 contra OVNI-3 · Pequeno», enquanto a lista OVNIS DETETADOS diz «OVNI-3 Em voo · Batedor Grande». Capturas: …/shots/058_scene_dogfight.png e …/shots/059_df3_end.png.",
+     "fix": "Quando o tipo já é conhecido (ufo identificado ou visto aterrado), mostrar no cabeçalho o nome do tipo («Batedor Grande»), com o eco entre parênteses."
+    },
+    {
+     "file": "ovni-1999/js/i18n/pt-PT.campaign.js",
+     "area": "data",
+     "severity": "minor",
+     "claim": "O briefing de um OVNI aterrado diz sempre «a tripulação está completa e o casco intacto», mesmo quando o OVNI aterrou depois de levar 47 % de dano numa interceção. O dano anterior não tem efeito nenhum na batalha. A otimizadora pensa que danificar o OVNI antes de ele aterrar compensa, e não compensa.",
+     "evidence": "Os Stingray deixaram o OVNI-3 com 47 % de dano antes de ele fugir (…/shots/059_df3_end.png). A 10 jan 05:42 aterrou com G.ufos u3.dmg = 118 de 250. O briefing de 07:51 dizia «OVNI aterrado: a tripulação está completa e o casco intacto. Mais perigo, mais recompensa.» (chave cp.br.note.landed).",
+     "fix": "Escolher uma de duas:\n- Quando ufo.dmg > 0, usar outra frase: «O OVNI pousou danificado, mas a tripulação está completa.»\n- Dar efeito ao dano: com ufo.dmg acima de cerca de 50 %, usar as regras de queda (fontes de energia podem rebentar, menos ligas)."
+    }
+   ],
+   "delights": [
+    "A investigação rápida recompensa uma boa ordem de projetos: tinha Espingarda Laser a 7 jan e fabriquei 10 logo a seguir. O «Auto-equipar» deu a todos a melhor arma investigada.",
+    "Recarregar o COMBATE devolve exatamente o mesmo estado do RNG (combat 3962937671 nas duas vezes), por isso não há rolos de dados repetidos. E carregar a gravação de antes da missão sorteia outro mapa. Gostei do anti-save-scum.",
+    "A confirmação «MATERIAL PARA INVESTIGAR: vender 2 × Granada Alienígena deixa a base sem nenhum…», com GUARDAR por omissão.",
+    "O aviso «EQUIPA PEQUENA DEMAIS» oferece logo «EMBARCAR 1 E ENVIAR» e diz quando chegam os recrutas.",
+    "Na interceção, o aviso «OVNI muito pequeno: os mísseis desintegram-no… Desligar os mísseis?» é um conselho de otimização a sério.",
+    "Campar dentro da Skyranger, ajoelhados e com reação, continua a funcionar como no original: ganhei um Batedor Grande aterrado sem sair da nave.",
+    "A grelha de construção já não salta quando começa uma obra (a correção da ronda 4 funciona)."
+   ]
+  }
+ ]
+}

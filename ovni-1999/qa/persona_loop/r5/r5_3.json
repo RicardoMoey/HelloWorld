@@ -1,0 +1,130 @@
+{
+ "round": 5,
+ "results": [
+  {
+   "persona": "Pedro: plays keyboard-only (finds the mouse hard), has deuteranopia (CDP Emulation.setEmulatedVisionDeficiency 'deuteranopia'), and uses 125 % zoom on a 1280×800 screen (viewport 1024×560, DSF 2.5, prefers-reduced-motion: reduce). Round 5, about 75 min of real play (log: /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r5/acessivel/mylog.txt). Recruta campaign with the base in Portugal (Base Lusitânia), from 1 Jan to the January monthly report. Covered: 2 interceptions; 3 battles (daytime crash: victory; landed UFO on a farm with the «Daltonismo» palette: victory; night crash: aborted with X); base on every tab; Equipar from the base and from the briefing; Gravar; Ufopédia; plus one Quick Battle in month 2 to test the kit médico. Skips: I read B.units to steer the squad (no exploration), and I closed the events of 13–31 Jan with Esc to reach the monthly report.",
+   "rating": 8,
+   "wouldContinue": true,
+   "summary": "Na ronda 5 já consigo jogar a campanha toda só com o teclado. Verifiquei de novo as falhas das rondas 3 e 4 e quase todas estão corrigidas:\n- O foco já não salta para «Novo projeto» nos botões −/+ dos cientistas.\n- Um segundo Enter em «Contratar +5» volta a contar (2 × 5 cientistas, $300 000).\n- O Mercado tem uma só paragem de Tab por linha: ↑/↓ mudam de linha, ⇧→ soma 10, e Comprar/Vender tem aria-pressed.\n- O briefing, o relatório mensal e a lista de teclas (?) deslocam-se com ↓/PageDown/End.\n- O registo (N) já diz «X acertou em Y (−22)» e «X falhou o tiro», com ✔/○.\n- A reserva de UT tem aria-pressed e um ✓ no botão ativo, e as velocidades do Geoscape formam um radiogroup com nome e uma só paragem de Tab.\n- Abortar faz-se com X e há confirmação.\n- O kit médico tem ←/→ para o ferido, ↑/↓ para a parte do corpo, Tab nos botões e uma linha de ajuda.\n- O «Como Jogar» explica ● ○ ✕, e a mira para a base aceita setas, + e Espaço.\n\nO que ainda me atrapalha é pouco:\n- Na paleta Daltonismo, as duas barras de cada soldado na lista do combate ficam do mesmo azul (UT e Saúde), e um soldado a sangrar só aparece no cartão de baixo.\n- A frase «Sem trajetória até esta casa…» fica por baixo da lista de soldados e corta-se.\n- Os tiros alienígenas que me falham não ficam no registo.\n- No Equipar do briefing, a 1024×560, a mochila continua escondida ao abrir, e a ajuda do rodapé aparece cortada com «…».\n- Na ficha do soldado, os botões Armadura e Nave não dizem qual está escolhido (não têm aria-pressed).\n\nNota 8: dá para jogar a sério e com conforto, e o que sobra são acabamentos.",
+   "findings": [
+    {
+     "file": "ovni-1999/css/base.css",
+     "area": "ui",
+     "severity": "minor",
+     "claim": "With the «Daltonismo» palette on, the two bars of each soldier row in the combat squad list are the same blue. --hp becomes #4fa8ff while --tu is #58c8ff, so you cannot tell which bar is the TU and which is Health. The row also has no text or icon for a bleeding soldier («A SANGRAR ×1» appears only in the unit card), and its aria-label is just «Akiko Sasaki — 55 UT, 15 de saúde».",
+     "evidence": "Night mission, turn 14, CVD palette. Akiko Sasaki has 15/33 health and a bleeding wound (wounds [0,1,0,0,0,0]). The row shows two blue bars (the TU bar computes to rgb(88,200,255), the hp bar to rgb(79,168,255)) and no marker. The unit card says «A SANGRAR ×1». In the HUD card, UT, SAÚ and MOR are all blue too, but each has a text label there. Shots: /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r5/acessivel/shots/096b-squad.png and 063-b2t2.png. Code: css/base.css l.36 (`:root[data-palette=cvd] { --hp: #4fa8ff }`), css/battle.css l.75, battle_ui.js l.2242 and l.2258–2259.",
+     "fix": "In the CVD palette, give health a colour that does not clash with TU (for example white/light grey #e6eef5, or the orange of --red only below 50 %), or draw the hp bar with a different pattern (dashed) or thickness. On the row, add a small «✚» or a drop icon with text for bleeding or wounded soldiers. Extend hud.sq.aria with «, ferido a sangrar» when u.wounds has any value > 0."
+    },
+    {
+     "file": "ovni-1999/js/ui/battle_ui.js",
+     "area": "ui",
+     "severity": "minor",
+     "claim": "When throwing a grenade or flare, the label «Sem trajetória até esta casa: paredes ou teto no caminho — as casas marcadas a tracejado têm arco» is drawn under the squad list on the left (lower z-index). The start of the sentence is hidden behind the «Mandla Botha» and «Thabo van de…» rows, so you read «…casa: paredes ou teto».",
+     "evidence": "Night mission, turn 1: L (flare), then 6× ArrowLeft to (31,8). The label is long and centred on the cursor near the left edge, so it extends under .bs-squad (10,52 → 160,330). Shots: /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r5/acessivel/shots/093-flare.png and 093b-label-overlap.png (crop).",
+     "fix": "Clamp the target/throw label horizontally to the free area of the map (left ≥ the right edge of .bs-squad + 8 px, right ≤ the alien column), or put the label above the squad list (z-index). For long messages, wrap onto two lines with max-width ~420 px."
+    },
+    {
+     "file": "ovni-1999/js/ui/battle_ui.js",
+     "area": "ui",
+     "severity": "minor",
+     "claim": "Alien shots that miss my soldiers (reaction fire or the alien turn) are not recorded in the message log (N) or in the turn summary. The only cue is the «Sectoide Navegador reage!» toast, which disappears. Afterwards I do not know who was shot at, or from where, unless they got hit.",
+     "evidence": "Mission 2, turn 2: after Thierry's aimed shot the toast «Sectoide Navegador reage!» appeared (shot 066-fired.png). The log then had only the X-COM entries («Thierry Michel acertou em Sectoide Navegador (−22)») and nothing about the alien's shot (066-log.png). Code: logEntry, battle_ui.js l.1593, `if (!a || !mine(a) || a.side !== 'xcom') return null;` discards every 'shot' whose shooter is not ours. Only 'damage' on our soldiers creates entries.",
+     "fix": "For 'shot' events whose shooter is a visible alien and whose target is ours, create an entry «{alien} disparou contra {soldado} — falhou» (kind 'warn', icon ○, with an «ATACANTE» button that centres on the shooter). Merge it into the existing entry when damage follows."
+    },
+    {
+     "file": "ovni-1999/css/screens.css",
+     "area": "ui",
+     "severity": "minor",
+     "claim": "Ainda presente (ronda 3), em parte: in the briefing's Equipar at 1024×560, the soldier area is still cut off when the screen opens. Only the hands and the belt are visible, and the MOCHILA does not appear until you move the cursor there. The two help lines are cut with «…» («O 1.º carreg…», «Esc c…»), so the most useful keyboard hint is never read in full.",
+     "evidence": "Briefing for OVNI-5, E: .inv-doll has scrollHeight 306 and clientHeight 224 (it was 457/182 in round 3, so this is better). The MOCHILA header is at y=433, below the visible area. Truncated text measured with text-overflow:ellipsis: «Clique ou arraste objetos… O 1.º carregador de cada arma vai para dentro dela…» and the scr-hint «…Tab ou 1–9 muda de soldado · Esc conclui». There is no title and no way to expand them. Shots: /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r5/acessivel/shots/090-beq.png (on open) and 091-beq2.png (after navigating).",
+     "fix": "Below ~620 px of height, collapse the «Ficaram em Base…» card into one line that can be expanded, and use line-clamp:2 instead of the ellipsis for both help lines (or a ? that opens the full text). Shrink the doll cells (e.g. 48 px) so hands, belt and backpack fit in 224 px."
+    },
+    {
+     "file": "ovni-1999/js/ui/base_ui.js",
+     "area": "ui",
+     "severity": "minor",
+     "claim": "In the Soldados tab, the soldier sheet's segmented buttons (Armadura: «Fato de Combate» / «Nenhuma»; Nave: «Skyranger-1 10/10») show the current choice only with the .on class (a lighter background). They have no aria-pressed and no role=radio, and the group has no name, so a keyboard or screen-reader user cannot tell which is selected. The Mercado and the reserve buttons got this fix in round 4, but these did not.",
+     "evidence": "Soldados (7) → soldier row → Enter → Tab to «NENHUMA». outerHTML: `<button class=\"btn small seg on\" data-armour=\"coveralls\">Fato de Combate</button>`, `<button class=\"btn small seg\">Nenhuma</button>`, `<button class=\"btn small seg on\" aria-label=\"Skyranger-1\" data-seat=\"c1\">`. The parent has no role or aria-label. Shot: /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r5/acessivel/shots/026-armour.png. Code: base_ui.js l.1508 and l.1522.",
+     "fix": "Add aria-pressed={on} to these btn(...) calls (or role=radio with aria-checked inside a role=radiogroup with aria-label «Armadura» / «Nave»), and add a shape cue (✓) to the active button, as was done for the reserve buttons."
+    }
+   ],
+   "delights": [
+    "I picked the base site with arrows, + and Space only. The panel shows the country, the region and the radar coverage at once, so I knew straight away that I had landed in Spain and adjusted to Portugal.",
+    "The Mercado by keyboard is now excellent: ↑/↓ move between rows, ⇧→ adds 10, and «Comprar 10 × Granada» goes through with Enter. The button's accessible name already says the quantity.",
+    "In the combat log (N) I can finally see «Thierry Michel acertou em Sectoide Navegador (−22)» and «Alexei Vasiliev falhou o tiro» with ✔/○ icons, plus MOSTRAR/ATACANTE buttons reachable with Tab.",
+    "G and then 1 put the grenade cursor on the alien. The label explains why there is no trajectory and that the dashed tiles have an arc. On the right tile the grenade killed the Sectoide, all by keyboard.",
+    "The new kit médico: ←/→ for the wounded soldier, ↑/↓ for the body part, a visible outline, and a line of help at the bottom. It now matches the screen.",
+    "With the «Daltonismo» palette the target labels («Acerto ≈ 79 % · 48 UT») and the alien buttons are blue/magenta, so they read well. The «Risco: Pedro Pinto está perto da linha de tiro» warning is very useful.",
+    "X to abort with a clear confirmation («Ninguém está na nave: … perde-se (−200 pontos)»), and the key sheet (?) now opens at the top and scrolls with the arrows.",
+    "The monthly report has ▼ shapes beside the funding cuts and scrolls with ↓/PageDown, with a hint at the bottom saying so."
+   ]
+  },
+  {
+   "persona": "Marta (iPad Pro 11\" Safari, touch only, landscape 1194×834 and portrait 834×1194, DSF 2): Recruta campaign from 1 Jan to the February monthly report (3 ground missions, 1 retry, 1 interception), plus 2 Quick Battles. About 95 minutes of real time.",
+   "rating": 8,
+   "wouldContinue": true,
+   "summary": "Retested first. Almost everything from rounds 1–4 that matters to Marta is fixed and holds up:\n- Equipar in portrait works, and dragging works too: a long press on a row of the Armazém can be dragged into the Mochila.\n- Tapping a Armazém row with an item selected stores it.\n- The aim tap on an alien standing right behind the soldier now targets it (99 %).\n- Pinch and two-finger pan at maximum zoom keep zoom at 2.\n- «Esperar pelo dia» now takes 1.5 s, and the night notice no longer repeats.\n- Financiamento in portrait shows the whole table.\n- The difficulty number badges are hidden. A double tap on the sea gives no warning. The globe stays on the chosen site when rotating.\n- Return on the virtual keyboard does not found the base.\n- «Toque de novo para lançar» appears; the dogfight text and the long-press tooltips are in touch language without [K].\n- The pt-PT comma shows in «Armazém sobrelotado (50,3/50)». «10 cientistas chegam». «1 alienígena».\n- Soldier rows are 33 px tall. The date shows in the base header in portrait. The base grid in portrait is smaller.\nOnly the Options screen is still partly keyboard/computer-specific.\n\nNew ground covered: retrying a mission in Recruta, the alien grenade with its red circle and «Mostrar», flares at night, abort, the monthly report in portrait, saving, and the Quick Battle setup with its slider.\n\nThe worst moment: on the iPad a rocket shot with allies in the blast radius fires on the same second tap as any other shot. The only warning is a red line, «atinge 1 aliado», and that ally is the shooter herself. That way I lost 3 soldiers in one go in a night Quick Battle, and reproduced it in a second one.\n\nThere are also small irritations:\n- A tap on «Fim do turno» or on a soldier during the short kneel animation is ignored with no feedback.\n- In a battle that has just loaded, if I start with HUD buttons I get «clique secundário para cancelar».\n- The «procurem a porta» hint disappears for good once closed.\n- In the base in portrait, toasts cover the tab labels.\n\nNo accidental page zoom or scroll on any screen, no target under 32 px, and portrait is usable everywhere I went. Marta keeps playing.",
+   "findings": [
+    {
+     "file": "ovni-1999/js/ui/battle_ui.js",
+     "area": "ui",
+     "severity": "major",
+     "claim": "On the iPad, a shot with explosive ammo (rocket launcher, heavy cannon HE) that hits allies fires on the same 2nd tap as any normal shot. The 'Confirmar explosivos perto de aliados' safeguard (on by default in Recruta) adds no extra step on touch, only a red line. That line says «atinge 1 aliado» even when that ally is the shooter herself, and it does not name who.",
+     "evidence": "Quick Battle, OVNI Despenhado, Batedor Pequeno, Dia, Recruta. Lucía Rodríguez with a Lança-Foguetes → Tiro rápido → tap on tile (24,12), 3 tiles from her. The label shows «Explosão raio 3 · 23 UT» / «Toque outra vez para disparar — atinge 1 aliado» (shots/155_rocket_tap1.png). The 2nd tap 0.8 s later fires: Lucía and Ksenia die (shots/156_rocket_tap2.png). In the night Quick Battle (Batedor Médio), Kate Taylor's aimed shot on the alien next to the group gave a debrief of «3 soldados mortos por fogo amigo: Roberto Rossi ← explosão de Kate Taylor · Philippe Moreau ← … · Kate Taylor ← a própria explosão». In clickTarget (around line 1214), `if ((pointerType === 'touch' || isTouch() || risky) && S.tapLock !== i)`: on touch the risky case arms exactly like a normal shot, so the 2nd tap fires.",
+     "fix": "On touch, when blastRisk(...)>0 and blastConfirm(...) is true, require a distinct confirmation. Option one: an OV.Dom.modal «Disparar mesmo assim?» listing the names in the radius, marking the shooter («Lucía Rodríguez — a própria atiradora»), with Cancelar as the default. Option two: a 3rd tap with a long CONFIRM_GAP (≥ 800 ms) plus a vibrating/red sub-label. In blastPreview, count the shooter separately and use a key such as 'hud.confirmBlast.tap.self' («atinge a própria atiradora e mais N»)."
+    },
+    {
+     "file": "ovni-1999/js/ui/input.js",
+     "area": "ui",
+     "severity": "minor",
+     "claim": "In a battle that has just loaded, if the player's first touches are HUD buttons (soldier list, Sinalizador/grenade, kneel) before touching the map, the hints come out in the mouse version: «Escolha onde lançar · clique secundário para cancelar». OV.Input.lastPointerType is only set by pointerdown on the canvas, so isTouch() returns false until the first tap on the map.",
+     "evidence": "Fresh page (new context, iPad emulation), Quick Battle at night. Tap Ajoelhar, tap «Fim do turno», tap the Sinalizador button: the bottom hint reads «Escolha onde lançar · clique secundário para cancelar» (shots/131_flare_aim.png). After one tap on the map, cancel and repeat: «Toque onde lançar e toque outra vez para confirmar · toque longo cancela» (shots/132_flare_aim_touch.png). OV.Input.lastPointerType was 'touch' only after the canvas tap. In input.js:119, I.lastPointerType = e.pointerType is set only in canvas.addEventListener('pointerdown').",
+     "fix": "Set I.lastPointerType in a pointerdown listener on document with {capture:true, passive:true} (it also covers HUD buttons). Initialise it from matchMedia('(hover: none) and (pointer: coarse)') ('touch' when it matches), so the first hint in a battle is already right."
+    },
+    {
+     "file": "ovni-1999/js/ui/battle_ui.js",
+     "area": "ui",
+     "severity": "minor",
+     "claim": "Taps during short animations are silently thrown away. «Fim do turno» tapped within about 300 ms of Ajoelhar does nothing: the click becomes OV.Presenter.hurry() and no confirmation dialog appears. A soldier tapped in the list while another soldier walks is not selected. There is no visual or sound feedback, and the player thinks the button did not respond.",
+     "evidence": "Fresh Quick Battle. Ajoelhar then «Fim do turno» after 150 ms and after 250 ms: no dialog (shots/129_qb_swallow_150.png, 130_qb_swallow_250.png); after 400/700/1200 ms the dialog appears. Sampling S.playing shows the kneel animation lasts 200–580 ms. In the campaign, my log records «END TAP SWALLOWED» 3 times, and once the turn stayed open for 177 s waiting. Test with Manon walking and a tap on Rajesh Patel in the list: after the walk Manon is still selected. Code: H.end click → `if (S.playing) return OV.Presenter.hurry();`.",
+     "fix": "Keep the hurry, but remember the intent: on an end-turn click while S.playing, set S.pendingEnd = true and call endTurn() when playGen resolves. Likewise store S.pendingSelect = id for a soldier-list tap and apply it at the end of the animation. Alternatively, give quick feedback (the button pulses / toast «A terminar a animação…»)."
+    },
+    {
+     "file": "ovni-1999/js/ui/battle_ui.js",
+     "area": "ui",
+     "severity": "minor",
+     "claim": "The «Sem contacto há N turnos: os alienígenas estão todos dentro do OVNI. Procurem a porta — «Mostrar» leva à entrada mais perto» hint appears only once per battle in the turn report and is not kept in the Registo de mensagens. Once closed (an easy tap on Fechar), the player cannot get the «Mostrar» back, and the Registo says «Ainda não aconteceu nada de importante.»",
+     "evidence": "Campaign, 1st mission (Batedor Médio landed, Espanha). The report at the start of turn 4 brought the hint with «Mostrar». After closing it, at turn 6 the log button (document icon) opens «REGISTO DE MENSAGENS … Ainda não aconteceu nada de importante.» (shots/040_log_open.png). In the code, ufoHintRow() goes only to openReport(...) with S.ufoHinted = true, and nothing is pushed to S.log.",
+     "fix": "When showing the hint, also add an entry to S.log (a kind 'tip' with at = ufoEntry), so it appears in the Registo with its «Mostrar» button. Alternatively, while ufoHintDue stays true, show a small persistent chip «Entrada do OVNI» next to the turn counter that centres on the door."
+    },
+    {
+     "file": "ovni-1999/js/ui/screens.js",
+     "area": "ui",
+     "severity": "minor",
+     "claim": "Still present (round 4), in part. On the iPad, Options (in combat and from the menu) still shows «Cursor de teclado no combate — Uma casa marcada que as setas movem: mover, apontar e lançar sem rato», which is useless without a keyboard, and «Reduzir movimento: «Sistema» segue a preferência do computador». The edge-scrolling and mouse-wheel rows are now gone.",
+     "evidence": "Combat → Opções button, landscape 1194×834 (shots/057_battle_options.png): the ACESSIBILIDADE section ends with «Cursor de teclado no combate … Ligado». The motion text says «computador». Source: screens.js:1958 optRow(T(ACC + 'kbCursor') …) and pt-PT.screens.js:341 'scr.opt.acc.motion.hint'.",
+     "fix": "With matchMedia('(hover: none) and (pointer: coarse)'), hide the kbCursor row unless a physical keyboard has already been used (any keydown in the session). Change the text to «segue a preferência do sistema» or add a '.touch' variant: «segue a definição do iPad (Acessibilidade › Movimento)»."
+    },
+    {
+     "file": "ovni-1999/css/basescape.css",
+     "area": "ui",
+     "severity": "minor",
+     "claim": "In the base in portrait, the toasts («Contratação: 5 soldados. Chegada dentro de 48 h.», «Contratação: 1 engenheiro…») land over the 2nd row of tabs and hide the labels SOLDADOS and MERCADO for about 3 s, right when the player wants to change tabs. The tap passes through, but the player cannot see where she is tapping.",
+     "evidence": "Base Sintra, portrait 834×1194, Pessoal tab → Contratar +1 engenheiro: the toast covers «SOLDADOS» and «MERCADO» (shots/013_base_portrait_pessoal.png, shots/015_soldados_tab_after_toast.png). basescape.css:343 places #toasts at top: calc(132px + env(safe-area-inset-top)), which in landscape falls below the tabs but in portrait (tabs over 2 rows, about 90–180 px) falls on them.",
+     "fix": "In @media (orientation: portrait) and (max-width: 900px), place the base toasts below the tab bar (e.g. top: calc(190px + env(safe-area-inset-top))) or at the bottom (bottom: calc(24px + env(safe-area-inset-bottom)); top: auto), as already done in campaign.css:261 for the briefing and debrief."
+    }
+   ],
+   "delights": [
+    "Dragging in Equipar with a long press: the ammo row goes into the Mochila, and a tap on the Armazém stores it again. On the iPad this is very natural.",
+    "«Esperar pelo dia» is now instant (1.5 s), with a clear toast saying the clock moved to «30 min».",
+    "The alien grenade in Recruta: a red circle on the map plus «Mostrar» in the turn report. It is clear what is about to happen.",
+    "«Repetir a missão» after a total defeat in Recruta: a second chance without reloading the save.",
+    "The flare at night lights up the forest beautifully, and the dashed tiles show where the arc reaches.",
+    "Rotating the iPad when choosing the base: the Lisbon marker stays in view and the panel moves underneath without trouble.",
+    "The monthly report and Financiamento in portrait read like a magazine page, with no sideways scrolling.",
+    "Tapping the alien right behind the soldier inside the UFO finally hits the target (99 %).",
+    "The interception arrives with its text already in touch language («Os interruptores ligam e desligam cada arma»)."
+   ]
+  }
+ ]
+}

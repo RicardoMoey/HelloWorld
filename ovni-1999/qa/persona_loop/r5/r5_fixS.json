@@ -1,0 +1,56 @@
+[
+ {
+  "file": "ovni-1999/js/data/tuning.js",
+  "area": "sim",
+  "severity": "major",
+  "claim": "Em Recruta, as primeiras missões da campanha continuam a ser um massacre para um principiante. Morreram 7 de 10 soldados na 1.ª missão e 5 de 10 na 2.ª, contra 4–5 Sectoides de um Batedor Grande. A pistola de plasma mata um recruta (28–40 de saúde) com um tiro, e a «Pontaria alienígena ×0,5» quase não conta quando os soldados estão juntos, porque os falhanços acertam no do lado. O pânico já não acontece (0 episódios), mas o relatório mostra sempre a mesma dica genérica.",
+  "evidence": "Campanha em Recruta, semente 210353344. Missão 1, OVNI-3 despenhado no Reino Unido: um só Sectoide Soldado matou 5 soldados em 2 turnos alienígenas («3a: Jason Wilson…», «3a: Rui Rodrigues…», «4a: Rekha Patel…», «4a: Alessandro Ricci…», «4a: Marta Gonçalves…»). Resultado: VITÓRIA −24 FRACO com 7 mortos (382_c1_debrief.png). Missão 2, OVNI-4 em Itália: 5 mortos, incluindo 1 por fogo amigo. Nas duas, a dica foi a mesma: «Avance de abrigo em abrigo e ajoelhe-se (K)…». Na 1.ª Batalha Rápida (Recruta) não morreu ninguém. A diferença vem dos Sectoides com pistolas de plasma junto ao casco do OVNI.",
+  "fix": "Acrescentar ao tuning um multiplicador de dano alienígena por dificuldade, como o MORALE_LOSS_PCT, por exemplo ALIEN_DAMAGE_PCT = [75, 100, 100], para que um tiro de plasma raramente mate um recruta saudável. Em alternativa, dar Fato de Combate com +armadura aos recrutas em Recruta. No relatório, quando ≥ 2 soldados morrem no mesmo turno alienígena a ≤ 2 casas uns dos outros, mostrar uma dica específica: «Os teus soldados estavam todos juntos: um alienígena acertou em vários. Espalha-os.»",
+  "persona": "Tiago, 11 anos (Recruta, Batalhas Rápida"
+ },
+ {
+  "file": "ovni-1999/js/sim/campaign.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "Ainda presente em parte (ronda 3): as armas compradas continuam sem chegar às missões. O aviso de entrega tem agora o botão «PÔR NA SKYRANGER-1», mas o botão por omissão (Enter) é OK. A linha «Ficaram em Base Lusitânia: … 11 × Lança-Foguetes» só aparece no ecrã Equipar, que o Tiago nunca abre. Pior: quando os recrutas novos chegam, o armamento automático dá-lhes pistolas, embora haja 11 Lança-Foguetes e 14 foguetes no armazém.",
+  "evidence": "O Tiago comprou 10 Lança-Foguetes e 10 Foguetes Pequenos a 1 jan (313_market_rl.png). Aviso de 2 jan, com Enter = OK (314_pop_deliveryArrived.png). O aviso de 8 jan diz «7 soldados receberam armas do armazém». O kit da missão de 11 jan dá Ngozi Adebayo e Valentina De Luca com pistol + pistol_clip, os restantes com rifle, e nenhum rocket_launcher. O armazém tinha rocket_launcher: 11, small_rocket: 14. O briefing não tem nenhum aviso sobre isto (323_cbrief1.png, 393_cbrief2.png).",
+  "fix": "No armamento automático dos recrutas que embarcam (e no Auto-equipar), quando acabarem as espingardas, preferir a melhor arma do armazém que o soldado aguente, incluindo lança-foguetes com 1–2 foguetes, antes de pistolas. No briefing, acrescentar em AVISOS (tom 'warn') uma linha curta: «11 Lança-Foguetes ficaram na base — E para levar», que abre o equip da nave.",
+  "persona": "Tiago, 11 anos (Recruta, Batalhas Rápida"
+ },
+ {
+  "file": "ovni-1999/js/sim/battle/battle.js",
+  "area": "sim",
+  "severity": "major",
+  "claim": "Um único tiro de Lançador Blaster, disparado da rampa no turno 1, ganha qualquer base alienígena. A bomba guiada calcula sozinha uma rota de 23 a 27 casas pelo interior não explorado até ao centro de controlo. A potência 200 é maior do que 2 × 60 de armadura, por isso as 4 consolas caem de uma vez, e outcome() devolve logo 'win', que é a correção (a) da ronda 4. Na campanha, finishMission ainda põe na contenção o comandante e os líderes vivos, com 8 a 12 alienígenas de pé, e dá +514 pontos. Fica tudo desbloqueado sem atordoar ninguém: Origens, Solução Marciana e Cidónia. A pré-visualização mostra a rota inteira por cima de casas pretas, o que revela a planta da base. Sem Blaster, um Plasma Pesado destrói as consolas com cerca de 10 impactos diretos.",
+  "evidence": "Headless:\n- blaster.js: alienBase, Super-humano, mês 6, sementes 1 a 10: 1 tiro a partir da formação inicial (distância 23 a 27). Resultado 10/10 'win' no turno 1. Em Cidónia dá noRoute, por isso só a base alienígena é afetada.\n- abobj.js (gravação do mês 3 da ronda 4) em modo «objective»: aliens still alive 12, score 514, surrendered {floater_commander:1, floater_leader:2}, base gone true.\n- objrush3.js: com Plasma Pesado bastam 5 a 12 impactos de terreno para as 4 consolas. Com HE pack, foguete ou granada é impossível.\n\nNo browser: Batalha Rápida, Base Alienígena, Super-humano, Mês 4. Para ir direto ao alvo usei a posição do centro de controlo (9,9) lida no debug, que a otimizadora conheceria depois de uma primeira visita. Selecionei o soldado do Blaster, escolhi «Tiro apontado» e apontei para uma casa preta.\n- O rótulo diz «Bomba guiada · rota 25 casas · Acerto ≈ 60 % · 35 UT» e a rota tracejada atravessa território inexplorado: …/shots/075_blaster_aim.png\n- Logo a seguir aparece «MISSÃO CUMPRIDA», ainda no TURNO 1: …/shots/076_blaster_after.png\n- O relatório dá VITÓRIA em 1 turno, +574, EXCELENTE e nenhuma baixa: …/shots/077_ab_debrief.png\n\nCapturas em /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r5/minmaxer/shots/",
+  "fix": "- Base alienígena: voltar à regra do original. O centro destruído não acaba a batalha, apenas garante que a base é destruída quando a equipa sai ou aborta. Alternativa: ganhar pelo objetivo só quando restarem no máximo 2 alienígenas conscientes.\n- Rendição: só quando não restam alienígenas conscientes. Numa vitória pelo objetivo não deve haver rendição.\n- Path.flyRoute com c.bomb: atravessar apenas casas descobertas (m.disc[i] & 1), ou exigir pontos de passagem em casas vistas, como os waypoints do original.\n- battle_ui: não desenhar a rota sobre casas por descobrir.\n- Juntar um teste em tools/tests: Blaster no turno 1 contra alienBase não pode dar outcome 'win'.",
+  "persona": "Inês, otimizadora (procura exploits e pi"
+ },
+ {
+  "file": "ovni-1999/js/sim/campaign.js",
+  "area": "sim",
+  "severity": "major",
+  "claim": "A defesa da base (resolvida automaticamente) ficou um precipício escondido, com perda total em jogo. O resultado é um limiar determinístico de força: Σ(UT+Pontaria+Saúde+armadura frontal) dos soldados contra a exigência do OVNI. As armas não contam, e o jogo não mostra nem a força da guarnição nem a exigida. Perder destrói a base com naves e pessoal, e se for a única base é fim de jogo, sem batalha tática. Pequenas diferenças na guarnição invertem o resultado de 0 % para 100 %.",
+  "evidence": "basedef3.js: Couraçado intacto, 20 sementes por linha.\n- Super-humano, mês 3, Mutões, 8 soldados com Armadura Pessoal:\n  - 0 Defesas de Mísseis: lost 20/20, fim de jogo 20/20.\n  - 2 defesas: lost 18/20.\n  - 4 defesas: repelled 18/20.\n- Veterano, mês 3, Mutões, 10 soldados com Armadura Pessoal:\n  - 0 defesas: lost 20/20.\n  - 2 defesas: repelled 20/20.\n- basedef2.js: a exigência vai de 752 (Recruta, mês 1, Sectoides) a 3051 (Super-humano, Etéreos). defenderPower dá 140 a um recruta de fato, 178 com Armadura Pessoal e 228 com Fato Energético, e ignora se ele leva espingarda ou Plasma Pesado.\n- O único texto ao jogador é 'geo.ev.baseAttack.body': «As defesas e a guarnição vão responder.» Nenhum ecrã diz se chega.",
+  "fix": "- Mostrar no separador Instalações uma barra «Defesa da base: força X / exigida ≈ Y» para a raça e o mês correntes.\n- Quando um OVNI de retaliação ruma à base, avisar: «Guarnição insuficiente: faltam ~N soldados ou M defesas».\n- Trocar o limiar por uma probabilidade suave, por exemplo P(vitória) = clamp(strength/need − 0,5, 0, 1).\n- Incluir o tier da arma em defenderPower.\n- Num desaire perto do limite, destruir só algumas instalações e matar parte da guarnição, em vez de apagar a base logo à primeira.",
+  "persona": "Inês, otimizadora (procura exploits e pi"
+ },
+ {
+  "file": "ovni-1999/js/sim/campaign.js",
+  "area": "sim",
+  "severity": "minor",
+  "claim": "Ainda presente (ronda 4), em parte. A rendição na base alienígena tem agora um teto igual ao número de cada patente na tripulação (B.crew) menos os capturados, mas os abatidos continuam a contar. Matando todos os alienígenas, incluindo o comandante e o líder, a contenção recebe na mesma 1 comandante e 1 líder vivos.",
+  "evidence": "surr2.js usa a gravação de 4 mar da ronda 4 e mata todos os alienígenas da base (kills 9, captured []). O resultado é: surrendered {floater_commander:1, floater_leader:1}, containment {floater_commander:1, floater_leader:1}. O código está em campaign.js, no bloco da rendição: cap = min(want[rank], inCrew[rank]) − capturedStored[unit], sem descontar os mortos dessa patente.",
+  "fix": "Contar só os vivos no fim da batalha. Por patente: cap = número de unidades em B.units com origSide 'alien', essa patente e status 'ok', 'panic' ou 'out', menos as já capturadas. Juntar o caso «todos abatidos ⇒ surrendered vazio» a tools/tests/sim_persona_r4.test.js.",
+  "persona": "Inês, otimizadora (procura exploits e pi"
+ },
+ {
+  "file": "ovni-1999/js/data/geo.js",
+  "area": "sim",
+  "severity": "minor",
+  "claim": "O terror do mês 0 com o equipamento inicial fica abaixo das metas do próprio sim.js (70 % de vitórias e no máximo 3 baixas). No mês 1 fica muito acima. A campanha gera terrores logo em janeiro (o meu foi em Vancouver, a 15 jan). Como abandonar custa o mesmo que ignorar, a jogada ótima em janeiro é sempre ignorar o terror (−500).",
+  "evidence": "node tools/sim.js battle --kind terror com 30 sementes:\n- Veterano, mês 0: 60 % de vitórias e 5,07 baixas por batalha.\n- Veterano, mês 1: 97 % e 1,90.\n- Veterano, mês 0 com --gear 1 (lasers): 100 % e 1,67.\n- Super-humano, mês 0: 33 % e 6,90.\nO varrimento --ufo all de Veterano no mês 0 (sweep_all_vet_m0.txt) dá terror 58 %/5,08 e Batedor Médio 1,83 baixas.\nNo browser, a 15 jan, o diálogo dizia «Só 4 soldados contra 7–9 alienígenas».",
+  "fix": "Uma de duas:\n- Não gerar missões de terror antes de cerca do dia 20 do mês 0.\n- No mês 0, aplicar ao terror o crewRules.earlyMonths (uma patente a menos, ou −2 terroristas).\nCom isto o terror do mês 0 chega aos 70 % / ≤ 3 baixas no sim.js.",
+  "persona": "Inês, otimizadora (procura exploits e pi"
+ }
+]

@@ -1,0 +1,120 @@
+[
+ {
+  "file": "ovni-1999/js/ui/battle_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "Depois do turno alienígena, o painel «Durante o turno alienígena» abre com o foco no botão FECHAR. Carregar em Enter (a tecla que o botão FIM DO TURNO mostra, «↵») só fecha o painel e o turno não acaba. Quem termina os turnos ao teclado tem de carregar duas vezes, e com a equipa em pânico ficava à espera sem perceber porquê.",
+  "evidence": "Couraçado, turno 12, com 2 soldados vivos (um em pânico) e o painel aberto («Mark Thomas enlouqueceu!», FECHAR com o anel de foco). Carregar em Enter fechou o painel e o turno continuou no 12 durante mais de 5 minutos. Capturas: r5/veterano/shots/042_t.png (painel com o foco em FECHAR) e 043_hang.png (painel fechado, ainda «TURNO 12 FORÇAS X-COM»). Aconteceu o mesmo na Base Alienígena: num turno sem cliques em soldados, o Enter não terminou o turno e esperei 411 s. Com ⌫ ou com o clique em FIM DO TURNO funciona à primeira.",
+  "fix": "Não pôr o foco do teclado em FECHAR quando o painel abre; deixar o foco no campo de batalha, porque Esc já fecha o painel. Em alternativa, tratar o Enter no painel como «fechar e terminar turno». Se a escolha for mantê-lo, mudar a dica do botão para «⌫».",
+  "verdict": "PLAUSIBLE",
+  "persona": "Rui, 49 anos, jogou o X-COM original em "
+ },
+ {
+  "file": "ovni-1999/js/ui/battle_ui.js",
+  "area": "ui",
+  "severity": "major",
+  "claim": "Quando a batalha acaba no turno alienígena, ou quando uma granada rebenta depois de «Fim do turno», as baixas dessa última fase nunca são explicadas. finishBattle() mostra a faixa e salta logo para o relatório. Aí o memorial diz só «Morto em combate» e a dica é genérica («ajoelhe-se»), mesmo quando quem matou foi uma granada.",
+  "evidence": "Missão 2 (Batedor Grande, Espanha):\n- O turno 15 começou com 9 soldados vivos.\n- Depois de «Fim do turno», a batalha passou diretamente para VITÓRIA com 4 mortos. Morreram 3 nesse último turno: Dmitri, Wu Li e Harry.\n- Não houve o painel «Durante o turno alienígena».\n- Captura: /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r5/casual/shots/059-debrief2.png\n\nTerror em Lagos:\n- O turno 16 começou com «Granada alienígena! Afaste os soldados do círculo vermelho» e 7 soldados vivos.\n- Depois do «Fim do turno» veio logo VITÓRIA com 6 mortos no total, dos quais 3 morreram nessa última fase.\n- A dica dizia «Avance de abrigo em abrigo e ajoelhe-se».\n- Captura: /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r5/casual/shots/131-debrief4.png\n\nCódigo: em finishBattle() (linha 1843) não se chama openReport('turn') antes de OV.Scenes.replace('debrief').",
+  "fix": "Em finishBattle, se houver entradas de baixas desde a última marca do relatório do turno, mostrar primeiro o painel «Desde o fim do seu turno / Durante o turno alienígena», com o botão «Continuar para o relatório». Em alternativa, pôr a causa no memorial do relatório (por exemplo «Morta em combate — granada alienígena (Flutuante Navegador)»). Escolher a dica pela causa dominante: com granada, «Afaste os soldados do círculo vermelho e não os junte».",
+  "persona": "Sofia, 40 anos, MacBook Air só com track"
+ },
+ {
+  "file": "ovni-1999/js/ui/battle_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "No Battlescape, a dica de um soldado na barra da esquerda («Bongani Ndlovu — Recruta · UT 52 · SAÚ 33 — Clique para selecionar…») abre por cima das duas linhas acima. Com o trackpad, depois de clicar num soldado o cursor fica parado, e a dica esconde os nomes dos colegas que a Sofia quer escolher a seguir.",
+  "evidence": "No turno 6 da missão 2, a seguir a selecionar o Bongani pela barra, a caixa da dica tapa por completo as linhas do Roberto Romano e do João Rodrigues.\n\nCaptura: /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r5/casual/shots/047-b2_now.png",
+  "fix": "Pôr a dica da barra de soldados à direita da linha (placement 'right'), sem tapar a coluna. Em alternativa, escondê-la logo após o clique e só a mostrar depois de cerca de 600 ms de hover parado.",
+  "persona": "Sofia, 40 anos, MacBook Air só com track"
+ },
+ {
+  "file": "ovni-1999/js/ui/battle_ui.js",
+  "area": "ui",
+  "severity": "major",
+  "claim": "Um foguete (ou outra arma explosiva disparada) com um aliado mesmo ao lado do atirador ou da linha de tiro dispara logo ao 1.º clique. Não há nenhuma confirmação, nem em Recruta. O rótulo só mostra a linha pequena «Risco: Nicolas Leroy está perto da linha de tiro». lineRiskConfirm() devolve 0 para munição explosiva («if (b && !b.smoke) return 0»). blastRisk() só conta aliados dentro do raio à volta do ponto apontado, não à volta de onde o foguete rebenta quando apanha o colega do lado.",
+  "evidence": "Batalha Rápida, Local de Terror (Caracas), Recruta, Mês 0, semente da missão 75270, turno 1. Serguei Morozov (Lança-Foguetes, em 15,5) aponta em Tiro rápido para uma casa 3 casas à frente (12,2). O Sargento Nicolas Leroy está na casa ao lado (15,4). O rótulo diz «Explosão raio 3 · 24 UT» e «Risco: Nicolas Leroy está perto da linha de tiro», com tapLock −1 e lock false. Um duplo clique (um só clique chega) dispara. Registo: «1x: Nicolas Leroy foi morto em combate — explosão (Serguei Morozov)». Capturas: persona/r5/crianca/shots/079_rocket_risk_hover.png e 080_rocket_risk_after_dbl.png. Pelo contrário, a granada na mesma situação pede «Clique outra vez para disparar — atinge 6 aliados» (083_grenade_after_dbl.png).",
+  "fix": "Em lineRiskConfirm, não sair cedo para munição explosiva. Para armas com raio > 0, pedir o 2.º clique (com a guarda CONFIRM_GAP/detail já existente) sempre que lineRisk() encontre aliados, sobretudo a ≤ 2 casas do atirador, porque aí um foguete que falha rebenta em cima deles. Fazê-lo sempre em Recruta, ou quando o acerto for < 50 %. Em blastPreview/blastRisk, somar os aliados dentro do raio à volta de cada aliado que está na linha. Mudar o rótulo para «Clique outra vez — o foguete pode rebentar em cima de Nicolas Leroy».",
+  "persona": "Tiago, 11 anos (Recruta, Batalhas Rápida"
+ },
+ {
+  "file": "ovni-1999/js/ui/battle_ui.js",
+  "area": "ui",
+  "severity": "major",
+  "claim": "Ao apontar uma arma explosiva a um alienígena, o rótulo diz «Explosão raio 3 · apanha o alvo · 25 UT» e esconde por completo a probabilidade de acerto (T0.hitPct = null). O tiro pode falhar e desviar-se, e o Lança-Foguetes em Tiro rápido tem Pontaria 23 %. Uma criança lê «apanha o alvo» como garantia.",
+  "evidence": "Caracas, turnos 3–5. Serguei Morozov e Oleg Kozlov disparam 3 foguetes com o rótulo «Explosão raio 3 · apanha o alvo · 25/23/27 UT». O registo mostra «Serguei Morozov falhou o tiro em Ceifador» (turnos 3 e 4) e «Oleg Kozlov falhou o tiro em Ceifador». O menu da mesma arma mostra «Tiro rápido 23 UT Pontaria 23 %» (143_reload_menu.png). Código: battle_ui.js, perto da l. 766 (T0.label = 'hud.target.blast'; T0.hitPct = null); i18n pt-PT.hud.js l. 170 «Explosão raio {r} · apanha o alvo · {tu} UT».",
+  "fix": "Manter o acerto real no rótulo dos explosivos apontados a uma unidade, por exemplo «Acerto ≈ 23 % · explosão raio 3 · 25 UT». Mostrar «apanha o alvo» só quando o alvo está no raio mesmo que o tiro falhe, ou seja, com o desvio máximo previsto dentro do raio. Alternativa: trocar o texto por «Se acertar: explosão raio 3».",
+  "persona": "Tiago, 11 anos (Recruta, Batalhas Rápida"
+ },
+ {
+  "file": "ovni-1999/js/ui/battle_ui.js",
+  "area": "ui",
+  "severity": "major",
+  "claim": "Um alienígena parado logo atrás de uma porta fechada bloqueia a equipa por tempo indeterminado. Clicar numa casa do outro lado da porta mostra o caminho («Custa 16 UT…»), mas ao clicar aparece só «Caminho bloqueado»: o soldado não se mexe e a porta não abre. A porta só abre com Alt + clique, que nada no ecrã sugere. Ao mesmo tempo, o outro Flutuante vê-se pela janela, mas todos os tiros dão «Sem linha de tiro — parede no caminho». Não há nenhuma dica.",
+  "evidence": "Batalha Rápida, Local de Terror (Caracas), Recruta, Mês 0, semente 75270. Do turno 9 ao 19 (≈ 25 min reais), 2 Flutuantes ficaram numa sala pequena em (4,36) e (3,35). Julia Wagner está à porta, em (5,36). O clique em (3,36) mostra «Custa 16 UT · ficam 44» e depois dá o toast «Caminho bloqueado», sem mudar UT nem visibilidade (232_julia_in.png). A equipa vê o alienígena pela janela, mas «Sem linha de tiro — parede no caminho» em todos os soldados, turno após turno (279_room_view.png). Alt + clique na porta abriu-a e revelou o Flutuante na soleira (283_door_alt.png); 1 turno depois a missão acabou.",
+  "fix": "Quando o caminho é recusado porque uma unidade invisível ocupa a casa logo a seguir a uma porta, abrir a porta (gastando as UT do passo), parar o soldado e revelar a unidade, como no original. Pelo menos, trocar o toast por «Há alguém do outro lado da porta — Alt + clique abre a porta». Acrescentar o Alt + clique à barra de ajuda do modo mover e ao «Como Jogar». Em missões sem OVNI, se houver alienígenas avistados mas nenhum tiro possível durante ≥ 3 turnos, mostrar uma dica do tipo ufoHint: «Os alienígenas estão numa sala: entre pela porta (Alt + clique abre-a)».",
+  "persona": "Tiago, 11 anos (Recruta, Batalhas Rápida"
+ },
+ {
+  "file": "ovni-1999/js/ui/battle_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "When throwing a grenade or flare, the label «Sem trajetória até esta casa: paredes ou teto no caminho — as casas marcadas a tracejado têm arco» is drawn under the squad list on the left (lower z-index). The start of the sentence is hidden behind the «Mandla Botha» and «Thabo van de…» rows, so you read «…casa: paredes ou teto».",
+  "evidence": "Night mission, turn 1: L (flare), then 6× ArrowLeft to (31,8). The label is long and centred on the cursor near the left edge, so it extends under .bs-squad (10,52 → 160,330). Shots: /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r5/acessivel/shots/093-flare.png and 093b-label-overlap.png (crop).",
+  "fix": "Clamp the target/throw label horizontally to the free area of the map (left ≥ the right edge of .bs-squad + 8 px, right ≤ the alien column), or put the label above the squad list (z-index). For long messages, wrap onto two lines with max-width ~420 px.",
+  "persona": "Pedro: plays keyboard-only (finds the mo"
+ },
+ {
+  "file": "ovni-1999/js/ui/battle_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "Alien shots that miss my soldiers (reaction fire or the alien turn) are not recorded in the message log (N) or in the turn summary. The only cue is the «Sectoide Navegador reage!» toast, which disappears. Afterwards I do not know who was shot at, or from where, unless they got hit.",
+  "evidence": "Mission 2, turn 2: after Thierry's aimed shot the toast «Sectoide Navegador reage!» appeared (shot 066-fired.png). The log then had only the X-COM entries («Thierry Michel acertou em Sectoide Navegador (−22)») and nothing about the alien's shot (066-log.png). Code: logEntry, battle_ui.js l.1593, `if (!a || !mine(a) || a.side !== 'xcom') return null;` discards every 'shot' whose shooter is not ours. Only 'damage' on our soldiers creates entries.",
+  "fix": "For 'shot' events whose shooter is a visible alien and whose target is ours, create an entry «{alien} disparou contra {soldado} — falhou» (kind 'warn', icon ○, with an «ATACANTE» button that centres on the shooter). Merge it into the existing entry when damage follows.",
+  "persona": "Pedro: plays keyboard-only (finds the mo"
+ },
+ {
+  "file": "ovni-1999/css/screens.css",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "Ainda presente (ronda 3), em parte: in the briefing's Equipar at 1024×560, the soldier area is still cut off when the screen opens. Only the hands and the belt are visible, and the MOCHILA does not appear until you move the cursor there. The two help lines are cut with «…» («O 1.º carreg…», «Esc c…»), so the most useful keyboard hint is never read in full.",
+  "evidence": "Briefing for OVNI-5, E: .inv-doll has scrollHeight 306 and clientHeight 224 (it was 457/182 in round 3, so this is better). The MOCHILA header is at y=433, below the visible area. Truncated text measured with text-overflow:ellipsis: «Clique ou arraste objetos… O 1.º carregador de cada arma vai para dentro dela…» and the scr-hint «…Tab ou 1–9 muda de soldado · Esc conclui». There is no title and no way to expand them. Shots: /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r5/acessivel/shots/090-beq.png (on open) and 091-beq2.png (after navigating).",
+  "fix": "Below ~620 px of height, collapse the «Ficaram em Base…» card into one line that can be expanded, and use line-clamp:2 instead of the ellipsis for both help lines (or a ? that opens the full text). Shrink the doll cells (e.g. 48 px) so hands, belt and backpack fit in 224 px.",
+  "persona": "Pedro: plays keyboard-only (finds the mo"
+ },
+ {
+  "file": "ovni-1999/js/ui/battle_ui.js",
+  "area": "ui",
+  "severity": "major",
+  "claim": "On the iPad, a shot with explosive ammo (rocket launcher, heavy cannon HE) that hits allies fires on the same 2nd tap as any normal shot. The 'Confirmar explosivos perto de aliados' safeguard (on by default in Recruta) adds no extra step on touch, only a red line. That line says «atinge 1 aliado» even when that ally is the shooter herself, and it does not name who.",
+  "evidence": "Quick Battle, OVNI Despenhado, Batedor Pequeno, Dia, Recruta. Lucía Rodríguez with a Lança-Foguetes → Tiro rápido → tap on tile (24,12), 3 tiles from her. The label shows «Explosão raio 3 · 23 UT» / «Toque outra vez para disparar — atinge 1 aliado» (shots/155_rocket_tap1.png). The 2nd tap 0.8 s later fires: Lucía and Ksenia die (shots/156_rocket_tap2.png). In the night Quick Battle (Batedor Médio), Kate Taylor's aimed shot on the alien next to the group gave a debrief of «3 soldados mortos por fogo amigo: Roberto Rossi ← explosão de Kate Taylor · Philippe Moreau ← … · Kate Taylor ← a própria explosão». In clickTarget (around line 1214), `if ((pointerType === 'touch' || isTouch() || risky) && S.tapLock !== i)`: on touch the risky case arms exactly like a normal shot, so the 2nd tap fires.",
+  "fix": "On touch, when blastRisk(...)>0 and blastConfirm(...) is true, require a distinct confirmation. Option one: an OV.Dom.modal «Disparar mesmo assim?» listing the names in the radius, marking the shooter («Lucía Rodríguez — a própria atiradora»), with Cancelar as the default. Option two: a 3rd tap with a long CONFIRM_GAP (≥ 800 ms) plus a vibrating/red sub-label. In blastPreview, count the shooter separately and use a key such as 'hud.confirmBlast.tap.self' («atinge a própria atiradora e mais N»).",
+  "persona": "Marta (iPad Pro 11\" Safari, touch only, "
+ },
+ {
+  "file": "ovni-1999/js/ui/input.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "In a battle that has just loaded, if the player's first touches are HUD buttons (soldier list, Sinalizador/grenade, kneel) before touching the map, the hints come out in the mouse version: «Escolha onde lançar · clique secundário para cancelar». OV.Input.lastPointerType is only set by pointerdown on the canvas, so isTouch() returns false until the first tap on the map.",
+  "evidence": "Fresh page (new context, iPad emulation), Quick Battle at night. Tap Ajoelhar, tap «Fim do turno», tap the Sinalizador button: the bottom hint reads «Escolha onde lançar · clique secundário para cancelar» (shots/131_flare_aim.png). After one tap on the map, cancel and repeat: «Toque onde lançar e toque outra vez para confirmar · toque longo cancela» (shots/132_flare_aim_touch.png). OV.Input.lastPointerType was 'touch' only after the canvas tap. In input.js:119, I.lastPointerType = e.pointerType is set only in canvas.addEventListener('pointerdown').",
+  "fix": "Set I.lastPointerType in a pointerdown listener on document with {capture:true, passive:true} (it also covers HUD buttons). Initialise it from matchMedia('(hover: none) and (pointer: coarse)') ('touch' when it matches), so the first hint in a battle is already right.",
+  "persona": "Marta (iPad Pro 11\" Safari, touch only, "
+ },
+ {
+  "file": "ovni-1999/js/ui/battle_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "Taps during short animations are silently thrown away. «Fim do turno» tapped within about 300 ms of Ajoelhar does nothing: the click becomes OV.Presenter.hurry() and no confirmation dialog appears. A soldier tapped in the list while another soldier walks is not selected. There is no visual or sound feedback, and the player thinks the button did not respond.",
+  "evidence": "Fresh Quick Battle. Ajoelhar then «Fim do turno» after 150 ms and after 250 ms: no dialog (shots/129_qb_swallow_150.png, 130_qb_swallow_250.png); after 400/700/1200 ms the dialog appears. Sampling S.playing shows the kneel animation lasts 200–580 ms. In the campaign, my log records «END TAP SWALLOWED» 3 times, and once the turn stayed open for 177 s waiting. Test with Manon walking and a tap on Rajesh Patel in the list: after the walk Manon is still selected. Code: H.end click → `if (S.playing) return OV.Presenter.hurry();`.",
+  "fix": "Keep the hurry, but remember the intent: on an end-turn click while S.playing, set S.pendingEnd = true and call endTurn() when playGen resolves. Likewise store S.pendingSelect = id for a soldier-list tap and apply it at the end of the animation. Alternatively, give quick feedback (the button pulses / toast «A terminar a animação…»).",
+  "persona": "Marta (iPad Pro 11\" Safari, touch only, "
+ },
+ {
+  "file": "ovni-1999/js/ui/battle_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "The «Sem contacto há N turnos: os alienígenas estão todos dentro do OVNI. Procurem a porta — «Mostrar» leva à entrada mais perto» hint appears only once per battle in the turn report and is not kept in the Registo de mensagens. Once closed (an easy tap on Fechar), the player cannot get the «Mostrar» back, and the Registo says «Ainda não aconteceu nada de importante.»",
+  "evidence": "Campaign, 1st mission (Batedor Médio landed, Espanha). The report at the start of turn 4 brought the hint with «Mostrar». After closing it, at turn 6 the log button (document icon) opens «REGISTO DE MENSAGENS … Ainda não aconteceu nada de importante.» (shots/040_log_open.png). In the code, ufoHintRow() goes only to openReport(...) with S.ufoHinted = true, and nothing is pushed to S.log.",
+  "fix": "When showing the hint, also add an entry to S.log (a kind 'tip' with at = ufoEntry), so it appears in the Registo with its «Mostrar» button. Alternatively, while ufoHintDue stays true, show a small persistent chip «Entrada do OVNI» next to the turn counter that centres on the door.",
+  "persona": "Marta (iPad Pro 11\" Safari, touch only, "
+ }
+]

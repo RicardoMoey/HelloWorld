@@ -1,0 +1,11 @@
+[
+ {
+  "file": "ovni-1999/js/ui/screens.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "Still present (round 4), in part. On the iPad, Options (in combat and from the menu) still shows «Cursor de teclado no combate — Uma casa marcada que as setas movem: mover, apontar e lançar sem rato», which is useless without a keyboard, and «Reduzir movimento: «Sistema» segue a preferência do computador». The edge-scrolling and mouse-wheel rows are now gone.",
+  "evidence": "Combat → Opções button, landscape 1194×834 (shots/057_battle_options.png): the ACESSIBILIDADE section ends with «Cursor de teclado no combate … Ligado». The motion text says «computador». Source: screens.js:1958 optRow(T(ACC + 'kbCursor') …) and pt-PT.screens.js:341 'scr.opt.acc.motion.hint'.",
+  "fix": "With matchMedia('(hover: none) and (pointer: coarse)'), hide the kbCursor row unless a physical keyboard has already been used (any keydown in the session). Change the text to «segue a preferência do sistema» or add a '.touch' variant: «segue a definição do iPad (Acessibilidade › Movimento)».",
+  "persona": "Marta (iPad Pro 11\" Safari, touch only, "
+ }
+]
