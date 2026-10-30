@@ -239,6 +239,12 @@ body.in-battle:has(.bs-report:not(.hidden)) #toasts { top: auto; bottom: calc((v
 .bs-end-txt { text-align: center; line-height: 1.2; }
 .bs-end .key { color: #5a3a06; border-color: rgba(90, 58, 6, 0.5); background: rgba(255, 255, 255, 0.2); }
 .bs-hud.alien-turn .bs-end { background: linear-gradient(180deg, #4a3a22, #2a200f); color: #8a7550; border-color: #5a4a2a; box-shadow: none; }
+/* «Fim do turno» tocado a meio de uma animação: fica guardado e o botão pulsa até o turno acabar */
+.bs-end.queued { animation: bsEndQueued 0.6s ease-in-out infinite alternate; }
+@keyframes bsEndQueued { from { box-shadow: 0 0 0 2px #fff, 0 0 12px rgba(255, 198, 94, 0.5); } to { box-shadow: 0 0 0 2px #fff, 0 0 28px rgba(255, 198, 94, 0.95); } }
+.bs-rm .bs-end.queued, body.bs-rm .bs-end.queued { animation: none; box-shadow: 0 0 0 3px #fff; }
+/* janela «Disparar mesmo assim?» (toque): quem a explosão pode apanhar */
+.bs-blast-ask { margin: 6px 0 0; padding-left: 20px; color: #ffd2c8; font-weight: 700; line-height: 1.6; }
 
 /* ---- menu de ações ---------------------------------------------------------------------------------- */
 .bs-menu { position: absolute; min-width: 268px; max-width: min(440px, calc(100vw - 16px)); width: max-content; padding: 6px; z-index: 5; border-top: 2px solid var(--amber); animation: bsMenuIn 0.12s ease-out; }
@@ -545,6 +551,7 @@ body.bs-cvd .inv-chip.bad { color: #ffd0f4; background: #3a1032; border-color: #
 .inv-desc li { break-inside: avoid; }
 .inv-hint { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 3px; font: 500 12px/1.5 var(--sans); color: var(--muted); }
 .inv-hint b { font: 800 10px var(--sans); letter-spacing: 2px; text-transform: uppercase; color: var(--amber); }
+.inv-hint-short { display: none; }
 .inv-acts { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: flex-end; max-width: 460px; }
 .inv-act { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 10px; cursor: pointer; font: 700 12px var(--sans); color: var(--ink); background: #182534; border: 1px solid #31506d; border-radius: 3px; }
 .inv-act:hover { border-color: var(--cyan); color: #fff; }
@@ -738,11 +745,32 @@ body.bs-cvd .inv-unk, .inv-equip .inv-unk { box-shadow: inset 0 0 0 1px rgba(255
   .inv-equip .inv-it.big { padding-bottom: 16px; }
   .inv-equip .inv-it.big canvas.inv-ic { width: 52px !important; height: 52px !important; }
   .inv-equip .inv-strip { padding: 4px 6px 5px; }
-  .inv-equip .inv-cells { grid-auto-rows: 40px; margin-top: 3px; }
-  .inv-equip .inv-it.cell canvas.inv-ic { width: 34px !important; height: 34px !important; }
+  .inv-equip .inv-cells { grid-auto-rows: 36px; margin-top: 3px; }
+  .inv-equip .inv-it.cell canvas.inv-ic { width: 30px !important; height: 30px !important; }
+  /* ronda 5 (Pedro, 1024×560): mãos um pouco mais baixas (cinto e mochila lado a lado, bloco seguinte) */
+  .inv-equip .eq-grid .eq-main .inv-doll { gap: 4px 6px; }
+  .inv-equip .eq-grid .eq-main .inv-doll > .inv-handsrow { height: 78px; }
+  .inv-equip .inv-fig canvas { height: 74px !important; }
+  .inv-equip .inv-it.big canvas.inv-ic { width: 44px !important; height: 44px !important; }
+  /* ajuda: a versão curta em 2 linhas inteiras (a longa fica na dica do nó) */
+  .inv-equip .eq-grid .eq-main > .inv-info { height: auto; max-height: 44px; }
+  .inv-equip .inv-info .inv-hint .inv-hint-long { display: none; }
+  .inv-equip .inv-info .inv-hint .inv-hint-short { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; white-space: normal; line-height: 1.35; font-size: 11.5px; }
 }
 @media (max-height: 640px) and (hover: hover) {
   .inv-equip .eq-grid .eq-main .inv-head.eq .eq-btns .btn { min-height: 26px; padding: 0 8px; font-size: 10px; letter-spacing: 0.4px; }
+}
+
+/* janelas até 860 px de altura (iPad deitado, 1366×768, 1280×800 a 125 %, 1024×560): cinto e mochila lado a lado
+   (colunas na proporção das capacidades 4 : 9, casas da mesma largura) — mãos, cinto e mochila à vista ao abrir, sem
+   deslocar o boneco. Só com o arranjo de colunas (no retrato o boneco já não desloca) */
+@media (max-height: 860px) {
+  @container eq (min-width: 861px) {
+    .inv-equip .eq-grid .eq-main .inv-doll { display: grid; grid-template-columns: minmax(0, 4fr) minmax(0, 9fr); align-content: start; gap: 5px 6px; }
+    .inv-equip .eq-grid .eq-main .inv-handsrow { height: auto; min-height: 0; max-height: 180px; }
+    .inv-equip .eq-grid .eq-main .inv-doll > .inv-head, .inv-equip .eq-grid .eq-main .inv-doll > .inv-handsrow { grid-column: 1 / -1; }
+    .inv-equip .eq-grid .eq-main .inv-doll .inv-cells { grid-template-columns: repeat(var(--cap), minmax(0, 1fr)); }
+  }
 }
 
 /* ecrãs mais pequenos */

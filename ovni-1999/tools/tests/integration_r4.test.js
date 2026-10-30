@@ -43,7 +43,7 @@ module.exports = function (OV, t) {
   t.test('r4 integração: o raio da explosão conta os civis à parte dos aliados (textos .who)', () => {
     const src = read('js/ui/battle_ui.js');
     t.ok(/if \(f\.origSide === 'civ' \|\| f\.side === 'civ'\) civ\+\+;/.test(src), 'blastPreview conta os civis');
-    t.ok(/return \{ x, y, z, r, smoke, risk, civ \};/.test(src), 'blastPreview devolve civ');
+    t.ok(/return \{ x, y, z, r, smoke, risk, civ[,; }]/.test(src), 'blastPreview devolve civ');
     t.eq((src.match(/blastRiskText\('hud\.(throw\.risk|confirmBlast\.' \+ confirmVia\(\))'?, /g) || []).length, 4, 'os 4 textos de risco usam blastRiskText');
     t.ok(!/Tn\('hud\.throw\.risk'/.test(src) && !/Tn\('hud\.confirmBlast\./.test(src), 'nenhum texto de risco fica só com «aliados»');
     for (const k of ['hud.throw.risk.who', 'hud.confirmBlast.click.who', 'hud.confirmBlast.tap.who', 'hud.confirmBlast.key.who', 'hud.blast.ally.one', 'hud.blast.ally.other', 'hud.blast.civ.one', 'hud.blast.civ.other', 'hud.blast.and']) t.ok(has(k), k);

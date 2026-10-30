@@ -20,7 +20,9 @@
      relatório do turno (turno alienígena + secção «No início do turno X-COM»), ufoHintDue(B, contactTurn) → bool
      (conselho «estão dentro do OVNI», de noite ou de dia, sem contacto há ufoHintTurns(B) turnos), ufoEntry(B) → tile
      da porta/brecha do OVNI mais perto da equipa | −1, reserveWhat(reserveInfo) → texto do que a reserva guarda (modo
-     efetivo), arcTiles(B, u, z, range) → Uint8Array (casas com arco de arremesso)}, debug: {tileToScreen(x,y,z), unitScreen(id), selectAndMove(id,x,y,z) → Promise,
+     efetivo), arcTiles(B, u, z, range) → Uint8Array (casas com arco de arremesso), blastLineRisk(B, atirador, tx, ty, tz,
+     r, {seen, exclude}) → {near, hit, self} (explosivo: aliados perto da linha e os do raio deles), blastWho({risk, civ,
+     self, selfF}) → «o próprio atirador, 1 aliado e 2 civis»}, debug: {tileToScreen(x,y,z), unitScreen(id), selectAndMove(id,x,y,z) → Promise,
      state(), hover(x,y), perf() → {fps, avg, p95, chunks, sprites}|null (só com ?debug=1, que também mostra a leitura
      no topo do ecrã), showAll(on) (só a vista), centre(x,y,z) (câmara), log() → [entrada], kb(x,y,z) (cursor de
      teclado), noteEvent(ev), report('turn'|'log'), grenades() → n (aviso de granadas alienígenas, Recruta),
@@ -230,7 +232,13 @@
     if (!S || !S.hud) return;
     const H = S.hud, vh = S.view.h || window.innerHeight;
     const top = H.top.getBoundingClientRect(), bot = [H.card, H.console, H.end].map((n) => n.getBoundingClientRect().top).filter((y) => y > 0);
-    S.view.safe = { t: Math.max(0, top.bottom), b: bot.length ? Math.max(0, vh - Math.min(...bot)) : 0, l: 0, r: 0 };
+    // colunas da equipa (esquerda) e dos alienígenas/mapa (direita): as etiquetas do cursor fogem delas
+    const avoid = [];
+    for (const n of [H.squad, H.right]) {
+      const r = n.getBoundingClientRect();
+      if (r.width > 0 && r.height > 0 && n.children.length) avoid.push({ x0: r.left, y0: r.top, x1: r.right, y1: r.bottom });
+    }
+    S.view.safe = { t: Math.max(0, top.bottom), b: bot.length ? Math.max(0, vh - Math.min(...bot)) : 0, l: 0, r: 0, avoid };
     // altura real do HUD de baixo (no retrato a reserva passa a 2.ª linha): a dica e os avisos ficam por cima dele
     const bb = Math.round(S.view.safe.b) + 'px';
     if (bb !== S.botVar) {
@@ -480,7 +488,9 @@
     const p = OV.Iso.tileCenter(K.x, K.y, v.viewZ, v.cam);
     const sf = v.safe || { t: 0, b: 0 };
     const mx = Math.min(160, v.w * 0.14), my = 50;
-    if (p.x < mx || p.x > v.w - mx || p.y < sf.t + my || p.y > v.h - sf.b - my) centreOn(K.x, K.y, v.viewZ, reduceMotion() ? 0 : 170);
+    // debaixo das colunas do HUD (lista da equipa, alienígenas) o cursor não se vê: também puxa a câmara
+    const under = (sf.avoid || []).some((r) => p.x >= r.x0 - 12 && p.x <= r.x1 + 12 && p.y >= r.y0 && p.y <= r.y1);
+    if (under || p.x < mx || p.x > v.w - mx || p.y < sf.t + my || p.y > v.h - sf.b - my) centreOn(K.x, K.y, v.viewZ, reduceMotion() ? 0 : 170);
   }
   // alienígenas à vista por distância ao soldado (Tab no modo de alvo/lançamento)
   function aliensByDistance() {
@@ -768,8 +778,11 @@
     if (v.ok && S.aim.mode !== 'melee') {
       T0.blast = blastPreview(u, it, toI);
       if (T0.blast && !T0.blast.smoke) {
-        T0.label = T(S.force && !tgtUnit ? 'hud.target.blastForce' : tgtUnit ? 'hud.target.blast' : 'hud.target.blastTile', { r: T0.blast.r, tu: v.tu });
-        T0.hitPct = null;
+        /* apontado a uma unidade, o acerto fica à vista: o foguete pode falhar e desviar-se («apanha o alvo» só se
+           acertar). A uma casa ou forçado, fala-se só da explosão */
+        const pct = tgtUnit ? T0.hitPct : null;
+        T0.label = T(S.force && !tgtUnit ? 'hud.target.blastForce' : !tgtUnit ? 'hud.target.blastTile' : pct === null ? 'hud.target.blast.noPct' : 'hud.target.blast', { r: T0.blast.r, tu: v.tu, pct });
+        T0.hitPct = pct;
       }
       if (route) {
         T0.hitPct = hitChance(u, it, S.aim.mode, tgtUnit || toI, 'g' + toI);
@@ -785,11 +798,14 @@
        palavras e contorno nesses soldados (o aliado que bloqueia a linha também fica marcado) */
     if (!route && S.aim.mode !== 'melee' && (v.ok || v.reason === 'noTU')) {
       const [tx, ty, tz] = xyzOf(toI);
-      const near = lineRisk(S.B, u, tx, ty, tz, { seen, exclude: [tgtUnit ? tgtUnit.id : -1, friend ? friend.id : -1] });
+      const ex = [tgtUnit ? tgtUnit.id : -1, friend ? friend.id : -1];
+      const near = lineRisk(S.B, u, tx, ty, tz, { seen, exclude: ex });
       if (near.length) {
-        T0.risk = near.map((r) => r.id);
+        // explosivo: um falhanço rebenta em cima de quem está perto da linha — marcam-se também os que estão no raio dele
+        const xb = T0.blast && !T0.blast.smoke ? blastLineRisk(S.B, u, tx, ty, tz, T0.blast.r, { seen, exclude: ex }) : null;
+        T0.risk = xb ? xb.hit.filter((id) => id !== u.id).concat(xb.near.filter((id) => xb.hit.indexOf(id) < 0)) : near.map((r) => r.id);
         if (!T0.sub) {
-          T0.sub = Tn('hud.target.nearLine', near.length, { n: near.length, name: uname(unitOf(near[0].id)) });
+          T0.sub = Tn(xb ? 'hud.target.nearLine.blast' : 'hud.target.nearLine', near.length, { n: near.length, name: uname(unitOf(near[0].id)) });
           T0.subCol = 'out';
         }
       }
@@ -799,8 +815,9 @@
       const diff = S.B.mission && S.B.mission.difficulty;
       const risk = T0.blast && T0.blast.risk && blastConfirm(settings(), diff) ? T0.blast.risk : 0;
       const line = !risk && T0.risk && T0.risk.length && lineRiskConfirm(u, tgtUnit, toI) > 0 ? T0.risk : null;
+      const lineKey = T0.blast && !T0.blast.smoke ? 'hud.confirmLine.blast.' : 'hud.confirmLine.';
       T0.sub = risk ? blastRiskText('hud.confirmBlast.' + confirmVia(), T0.blast)
-        : line ? Tn('hud.confirmLine.' + confirmVia(), line.length, { n: line.length, name: uname(unitOf(line[0])) }) : T(confirmKey('hud.confirmFire'));
+        : line ? Tn(lineKey + confirmVia(), line.length, { n: line.length, name: uname(unitOf(line[0])) }) : T(confirmKey('hud.confirmFire'));
       T0.subCol = risk || line ? 'out' : null;
       T0.lock = true;
     }
@@ -907,27 +924,53 @@
     let risk = 0, civ = 0;
     if (!smoke) {
       for (const f of S.B.units) {
-        if (f.side === 'alien' || !f.onMap || !LIVE[f.status] || f.z !== z || !seen(f)) continue;
-        const dx = f.x - x, dy = f.y - y;
-        if (dx * dx + dy * dy <= r * r) {
-          risk++;
-          if (f.origSide === 'civ' || f.side === 'civ') civ++;
-        }
+        if (!inBlast(f, x, y, z, r)) continue;
+        risk++;
+        if (f.origSide === 'civ' || f.side === 'civ') civ++;
       }
     }
-    return { x, y, z, r, smoke, risk, civ };
+    const who = blastPeople(u, x, y, z, r, smoke);
+    return { x, y, z, r, smoke, risk, civ, self: who.self, selfF: who.selfF, ids: who.ids };
+  }
+  const inBlast = (f, x, y, z, r) => f.side !== 'alien' && f.onMap && LIVE[f.status] && f.z === z && seen(f) && (f.x - x) ** 2 + (f.y - y) ** 2 <= r * r;
+  /* quem está no raio (ids) e se o próprio atirador/lançador lá está (self: conta em risk, mas diz-se à parte —
+     «atinge a própria atiradora e 1 aliado») */
+  function blastPeople(u, x, y, z, r, smoke) {
+    const ids = smoke ? [] : S.B.units.filter((f) => inBlast(f, x, y, z, r)).map((f) => f.id);
+    const self = !!u && ids.indexOf(u.id) >= 0;
+    return { ids, self, selfF: !!(self && u.female) };
+  }
+  /* explosivo com aliados perto da linha de tiro: um falhanço desvia-se e rebenta em cima deles. → {near: [ids na
+     linha], hit: [ids no raio r de algum deles, incl. o atirador], self}. Pura (testada em Node). */
+  function blastLineRisk(B, shooter, tx, ty, tz, r, opts) {
+    const near = lineRisk(B, shooter, tx, ty, tz, opts).map((n) => n.id);
+    const o = opts || {};
+    const isSeen = o.seen || (() => true);
+    const skip = new Set(o.exclude || []);
+    const hit = [];
+    if (near.length) {
+      const centres = near.map((id) => B.units.find((f) => f.id === id)).filter(Boolean);
+      for (const f of B.units) {
+        if (skip.has(f.id) || f.side === 'alien' || !f.onMap || f.x < 0 || !LIVE[f.status] || (f.id !== shooter.id && !isSeen(f))) continue;
+        if (centres.some((c) => c.z === f.z && (f.x - c.x) ** 2 + (f.y - c.y) ** 2 <= r * r)) hit.push(f.id);
+      }
+    }
+    return { near, hit, self: hit.indexOf(shooter.id) >= 0 };
   }
   /* texto do risco no raio: só aliados → «N aliados» (chave plural de sempre); com civis → «N aliados e M civis»
      (o principiante distingue os seus soldados dos civis que vai salvar) */
   function blastWho(b) {
-    const civ = b.civ | 0, s = (b.risk | 0) - civ;
+    const civ = b.civ | 0, me = b.self ? 1 : 0, s = (b.risk | 0) - civ - me;
     const parts = [];
+    // o próprio atirador primeiro: «atinge a própria atiradora e 1 aliado»
+    if (me) parts.push(T(b.selfF ? 'hud.blast.self.f' : 'hud.blast.self'));
     if (s > 0) parts.push(Tn('hud.blast.ally', s));
     if (civ > 0) parts.push(Tn('hud.blast.civ', civ));
+    if (parts.length > 2) return T('hud.blast.and3', { a: parts[0], b: parts[1], c: parts[2] });
     return parts.length > 1 ? T('hud.blast.and', { a: parts[0], b: parts[1] }) : parts[0] || '';
   }
   function blastRiskText(base, b) {
-    return b.civ ? T(base + '.who', { who: blastWho(b) }) : Tn(base, b.risk | 0, { n: b.risk | 0 });
+    return b.civ || b.self ? T(base + '.who', { who: blastWho(b) }) : Tn(base, b.risk | 0, { n: b.risk | 0 });
   }
 
   // ---- modos ------------------------------------------------------------------------------------------------
@@ -1058,6 +1101,7 @@
   function afterAction() {
     S.hitCache.clear();
     if (S.B.phase === 'over' || OV.Battle.outcome(S.B)) {
+      S.pending = null;
       finishBattle();
       return;
     }
@@ -1066,6 +1110,25 @@
     ensureSelection();
     invalidate();
     updateMusic();
+    // toques guardados durante a animação: aplicam-se quando já não há outra ação na fila (actSeq continua sozinho)
+    if (S.pending) setTimeout(runPending, 0);
+  }
+  /* «Fim do turno» ou um soldado da lista tocados durante uma animação curta: o toque não se perde (antes virava só
+     «acelerar» e o jogador achava que o botão não respondia). O botão pisca enquanto espera. */
+  function queueIntent(o) {
+    S.pending = Object.assign(S.pending || {}, o);
+    S.queuedN = (S.queuedN | 0) + 1;
+    if (o.end && S.hud) S.hud.end.classList.add('queued');
+    sfx('ui_click', { vol: 0.6 });
+  }
+  function runPending() {
+    if (!S || S.playing || S.ended || !S.pending) return;
+    const P0 = S.pending;
+    S.pending = null;
+    if (S.hud) S.hud.end.classList.remove('queued');
+    if (S.B.side !== 'xcom') return;
+    if (P0.select !== undefined && P0.select !== null) select(P0.select, { centre: false });
+    if (P0.end) endTurn();
   }
   async function act(a) {
     if (!S || S.playing || S.ended) return { ok: false };
@@ -1122,7 +1185,39 @@
       deny(res ? 'hud.path.reserve.deny' + (isTouch() ? '.touch' : '') : 'reserved', res ? { res: res.tu, what: res.what } : null);
       return;
     }
+    const db = v.ok ? doorBlock(u, v.steps) : null;
+    if (db) {
+      walkToDoor(u, db, v);
+      return;
+    }
     act(a);
+  }
+  /* porta fechada no caminho com alguém não visto logo do outro lado: o motor pára antes da porta sem a abrir e a
+     equipa ficava presa («Caminho bloqueado»). Como no original, o soldado vai até à porta e abre-a (e vê quem lá
+     está). → {k: passo da porta, at: tile antes dela, door: ação} | null */
+  function doorBlock(u, steps) {
+    if (!OV.Path || !Array.isArray(steps)) return null;
+    let cur = tileOfUnit(u);
+    for (let k = 0; k < steps.length; k++) {
+      const st = OV.Path.stepCost(S.B, u, cur, steps[k], {});
+      if (!st) return null;
+      if (st.occupant !== null && st.occupant !== undefined) {
+        const d = st.door ? { i: st.door.i, part: st.door.part } : st.opensUfoDoor !== null && st.opensUfoDoor !== undefined ? { i: st.opensUfoDoor, part: 3 } : null;
+        return d ? { k, at: cur, door: { type: 'door', unitId: u.id, i: d.i, part: d.part } } : null;
+      }
+      cur = st.to;
+    }
+    return null;
+  }
+  async function walkToDoor(u, db, v) {
+    if (db.k > 0) {
+      const w = await act({ type: 'walk', unitId: u.id, to: v.tiles[db.k - 1], path: v.steps.slice(0, db.k) });
+      if (!w.ok || !S || S.ended || tileOfUnit(u) !== db.at || !selectable(u)) return;
+    }
+    const dv = OV.Act.validate(S.B, db.door);
+    if (dv.ok) act(db.door);
+    else if (dv.reason === 'noTU' || dv.reason === 'reserved') deny(dv.reason);
+    else toast(isTouch() ? 'hud.door.someone.touch' : isMac() ? 'hud.door.someone.mac' : 'hud.door.someone', null, 'warn');
   }
   function needConfirm(pointerType) {
     const m = settings().confirmMove || 'auto';
@@ -1170,10 +1265,12 @@
     const it = itemOf(S.aim.itemId), d = defOf(it);
     if (!it || (d && d.guided)) return 0;
     const b = blastPreview(u, it, i);
-    if (b && !b.smoke) return 0;
-    const pct = hitChance(u, it, S.aim.mode, tgt || i, tgt ? 'u' + tgt.id + '@' + i : 't' + i);
-    if (!lineConfirm(settings(), S.B.mission && S.B.mission.difficulty, pct)) return 0;
     const [tx, ty, tz] = xyzOf(i);
+    const diff = S.B.mission && S.B.mission.difficulty;
+    // explosivo: um aliado perto da linha pede sempre o 2.º clique (com as opções dos explosivos), seja qual for o acerto
+    if (b && !b.smoke) return blastConfirm(settings(), diff) ? lineRisk(S.B, u, tx, ty, tz, { seen, exclude: [tgt ? tgt.id : -1] }).length : 0;
+    const pct = hitChance(u, it, S.aim.mode, tgt || i, tgt ? 'u' + tgt.id + '@' + i : 't' + i);
+    if (!lineConfirm(settings(), diff, pct)) return 0;
     return lineRisk(S.B, u, tx, ty, tz, { seen, exclude: [tgt ? tgt.id : -1] }).length;
   }
   /* 2.ª confirmação de explosivos com aliados no raio: o 2.º clique de um duplo clique (detail > 1) ou um clique a
@@ -1210,16 +1307,62 @@
       return;
     }
     // toque: 1.º toque mostra, 2.º dispara; explosivo com aliados no raio: 2.º clique/Enter no mesmo alvo
-    const risky = a.type === 'shoot' && (blastRisk(u, itemOf(S.aim.itemId), i) > 0 || lineRiskConfirm(u, tgt, i) > 0);
+    const it = itemOf(S.aim.itemId);
+    const risky = a.type === 'shoot' && (blastRisk(u, it, i) > 0 || lineRiskConfirm(u, tgt, i) > 0);
     if ((pointerType === 'touch' || isTouch() || risky) && S.tapLock !== i) {
       armConfirm(i, risky);
       return;
     }
     if (risky && confirmTooSoon(pointerType, detail)) return;
-    S.tapLock = -1;
-    S.lastFire = { unitId: u.id, action: a };
-    cancelMode(true);
-    act(a);
+    const fire = () => {
+      S.tapLock = -1;
+      S.lastFire = { unitId: u.id, action: a };
+      cancelMode(true);
+      act(a);
+    };
+    // toque: o 2.º toque é igual ao de qualquer tiro — um explosivo que apanha aliados pede uma janela à parte
+    const b = risky && isTouch() ? blastPreview(u, it, i) : null;
+    if (b && !b.smoke) {
+      const ids = blastAskIds(u, it, i, tgt, b);
+      askBlast(u, ids, 'shoot', () => S.mode === 'target' && S.aim && S.aim.itemId === it.id, fire);
+      return;
+    }
+    fire();
+  }
+  // quem a janela de confirmação nomeia: os do raio no alvo e, com aliados perto da linha, os do raio deles
+  function blastAskIds(u, it, i, tgt, b) {
+    const out = (b && b.ids ? b.ids : []).slice();
+    if (lineRiskConfirm(u, tgt, i) > 0) {
+      const [tx, ty, tz] = xyzOf(i);
+      const x = blastLineRisk(S.B, u, tx, ty, tz, b.r, { seen, exclude: [tgt ? tgt.id : -1] });
+      for (const id of x.near.concat(x.hit)) if (out.indexOf(id) < 0) out.push(id);
+    }
+    // o próprio atirador à cabeça
+    return out.sort((p, q) => (p === u.id ? -1 : q === u.id ? 1 : 0));
+  }
+  /* janela «Disparar mesmo assim?» com os nomes de quem está em risco (o atirador marcado); Cancelar tem o foco. still()
+     confirma que nada mudou entretanto (modo, arma) antes de go() */
+  function askBlast(u, ids, kind, still, go) {
+    if (S.asking) return;
+    S.asking = true;
+    sfx('ui_deny');
+    const names = ids.map(unitOf).filter(Boolean).map((f) => (f.id === u.id ? T(gk('hud.blastAsk.self', u), { name: uname(f) }) : uname(f)));
+    const body = el('div', null,
+      el('p', { class: 'modal-text', text: T(kind === 'throw' ? 'hud.blastAsk.text.throw' : 'hud.blastAsk.text') }),
+      el('ul', { class: 'bs-blast-ask' }, names.map((n) => el('li', { text: n }))));
+    OV.Dom.modal({
+      title: T(kind === 'throw' ? 'hud.blastAsk.title.throw' : 'hud.blastAsk.title'), body, cls: 'alert',
+      buttons: [{ label: T('common.cancel'), value: false }, { label: T(kind === 'throw' ? 'hud.blastAsk.throw' : 'hud.blastAsk.fire'), value: true, kind: 'danger' }],
+    }).then((ok) => {
+      if (!S) return;
+      S.asking = false;
+      if (ok && !S.ended && !S.playing && sel() === u && still()) go();
+      else {
+        S.tapLock = -1;
+        S.hoverKey = '';
+        refreshHover();
+      }
+    });
   }
   function clickThrow(p, pointerType, detail) {
     const u = sel();
@@ -1237,14 +1380,22 @@
       return;
     }
     if (risky && confirmTooSoon(pointerType, detail)) return;
-    S.tapLock = -1;
     const plan = S.throwPlan;
-    const steps = [];
-    if (plan.inv) steps.push({ type: 'inv', unitId: u.id, itemId: plan.itemId, to: plan.inv });
-    if (plan.fuse !== null && plan.fuse !== undefined) steps.push({ type: 'prime', unitId: u.id, itemId: plan.itemId, fuse: plan.fuse });
-    steps.push({ type: 'throw', unitId: u.id, itemId: plan.itemId, toI: i });
-    cancelMode(true);
-    actSeq(steps);
+    const go = () => {
+      S.tapLock = -1;
+      const steps = [];
+      if (plan.inv) steps.push({ type: 'inv', unitId: u.id, itemId: plan.itemId, to: plan.inv });
+      if (plan.fuse !== null && plan.fuse !== undefined) steps.push({ type: 'prime', unitId: u.id, itemId: plan.itemId, fuse: plan.fuse });
+      steps.push({ type: 'throw', unitId: u.id, itemId: plan.itemId, toI: i });
+      cancelMode(true);
+      actSeq(steps);
+    };
+    // toque: granada com aliados no raio — a mesma janela à parte dos explosivos disparados
+    if (risky && isTouch()) {
+      askBlast(u, info.blast.ids.slice().sort((p, q) => (p === u.id ? -1 : q === u.id ? 1 : 0)), 'throw', () => S.mode === 'throw' && S.throwPlan === plan, go);
+      return;
+    }
+    go();
   }
 
   // ---- comandos de teclado / botões -----------------------------------------------------------------------
@@ -1429,11 +1580,14 @@
     cancelMode(true);
     closeMenu();
     closeReport();
+    S.pending = null;
+    S.hud.end.classList.remove('queued');
     sfx('ui_confirm');
     S.lastFire = null;
     // marca pelo número de série (o registo corta as entradas antigas a 400: um índice deslizaria)
     const mark = S.logSeq, endNo = S.B.turn | 0;
     S.endNo = endNo;
+    S.endMark = mark;
     await playGen(OV.Battle.endPlayerTurn(S.B));
     if (S) S.endNo = null;
     if (!S || S.ended) return;
@@ -1448,6 +1602,8 @@
     // OVNI sem contacto há vários turnos (de noite ou de dia): os alienígenas estão lá dentro (uma vez por batalha)
     const hint = !S.ufoHinted && ufoHintDue(S.B, S.contactTurn) ? ufoHintRow() : null;
     if (hint) S.ufoHinted = true;
+    // fica no registo (N) com o seu «Mostrar»: fechar o painel não perde o conselho
+    if (hint) pushLog(Object.assign({}, hint, { own: false }));
     // granadas que rebentaram depois de «Fim do turno» (antes dos alienígenas jogarem): o título deixa de ser só
     // «Durante o turno alienígena»
     const title = hurt.some((e) => e.key === 'hud.report.turnEnd') ? 'hud.report.title.since' : undefined;
@@ -1589,7 +1745,21 @@
        Sectoide (−18)», «falhou»); no turno alienígena (fogo de reação) entra também no relatório do turno */
     if (ev.t === 'shot') {
       const a = find(ev.shooterId);
-      if (!(ev.round > 0)) C.burst = null;
+      if (!(ev.round > 0)) {
+        C.burst = null;
+        C.aburst = null;
+      }
+      /* tiros contra os nossos (fogo de reação, turno alienígena): «Sectoide disparou contra Ana — falhou» com o
+         atacante («Mostrar atacante»); se um dano dele chegar a um dos nossos, a entrada sai (fica a do ferimento) */
+      if (a && !mine(a) && a.side !== 'xcom') {
+        const tgt = find(ev.targetId);
+        if (!mine(tgt)) return null;
+        if (ev.round > 0 && C.aburst && C.aburst.shooterId === a.id) return null;
+        const shown = ev.vis && seenNow(a);
+        const e = { key: (ev.shots | 0) > 1 ? 'hud.log.shotAt.burst' : 'hud.log.shotAt', params: { name: shown ? nm(a) : T('hud.log.unseenAlien'), target: nm(tgt), shots: ev.shots | 0 || 1 }, kind: 'warn', ic: '○', own: true, at: tgt.x >= 0 ? (tgt.z * B.map.h + tgt.y) * B.map.w + tgt.x : -1, from: shown && C.seenAt[a.id] !== undefined ? C.seenAt[a.id] : -1 };
+        C.aburst = { shooterId: a.id, entry: e };
+        return e;
+      }
       if (!a || !mine(a) || a.side !== 'xcom') return null;
       if (ev.round > 0 && C.burst && C.burst.shooterId === a.id) {
         C.burst.round = ev.round | 0;
@@ -1603,6 +1773,11 @@
       return tgtName ? e : null;
     }
     if (ev.t === 'throw' || ev.t === 'melee' || ev.t === 'walk' || ev.t === 'turn') C.burst = null;
+    // o tiro contra os nossos acertou (ou a explosão apanhou alguém): a entrada «falhou» deixa de valer
+    if (ev.t === 'damage' && C.aburst && ev.attackerId === C.aburst.shooterId && mine(find(ev.unitId))) {
+      C.aburst.entry.gone = true;
+      C.aburst = null;
+    }
     if (ev.t === 'damage' && C.burst && ev.attackerId === C.burst.shooterId && ev.cause === 'shot') {
       const v = find(ev.unitId);
       const W = C.burst;
@@ -1675,7 +1850,9 @@
       if (a && a.side === 'alien') S.alienNades.add(ev.itemId);
     }
     const e = logEntry(S.B, ev, S.logCtx);
-    if (!e) return;
+    if (e) pushLog(e);
+  }
+  function pushLog(e) {
     e.turn = S.B.turn;
     e.side = S.B.side;
     e.seq = ++S.logSeq;
@@ -1686,11 +1863,13 @@
   }
   function closeReport() {
     if (!S || !S.hud || !S.report) return false;
+    const fin = S.report.final;
     S.report = null;
     // o foco estava num botão do painel: devolvê-lo ao jogo (nunca fica num nó removido)
     if (S.hud.report.contains(document.activeElement)) document.activeElement.blur();
     S.hud.report.classList.add('hidden');
     OV.Dom.clear(S.hud.report);
+    if (fin) fin();
     return true;
   }
   // Tab / ⇧Tab com o painel aberto: percorre Fechar e os «Mostrar» (Enter ou Espaço ativa o botão com foco)
@@ -1703,27 +1882,29 @@
     n.scrollIntoView({ block: 'nearest' });
   }
   // kind 'turn' (início do turno: só o que aconteceu aos nossos) ou 'log' (registo inteiro, mais recente primeiro)
-  function openReport(kind, list, titleKey) {
+  function openReport(kind, list, titleKey, final) {
     if (!S || !S.hud) return;
+    if (S.report && S.report.final) return;
     if (S.report && S.report.kind === kind && kind === 'log') {
       closeReport();
       return;
     }
     const R = S.hud.report;
     OV.Dom.clear(R);
-    S.report = { kind };
-    const rows = kind === 'log' ? S.log.slice(-80).reverse() : list;
+    // final: a batalha acabou nesta fase — o botão é «Continuar para o relatório» (Enter, Esc ou Espaço também)
+    S.report = { kind, final: final || null };
+    const rows = kind === 'log' ? S.log.filter((e) => !e.gone).slice(-80).reverse() : list.filter((e) => !e.gone);
     R.classList.toggle('tips', kind === 'tips');
     const head = el('div', { class: 'bs-report-head' },
       el('span', { class: 'bs-report-title', text: T(titleKey || (kind === 'log' ? 'hud.log.title' : kind === 'tips' ? 'hud.tips.title' : 'hud.report.title')) }),
       kind === 'turn' ? el('span', { class: 'bs-report-sum', text: reportSummary(rows) }) : null);
-    const closeLabel = T(kind === 'tips' ? 'hud.tips.ok' : 'hud.report.close');
-    const close = el('button', { class: 'btn small', type: 'button' }, closeLabel, el('span', { class: 'key', text: 'Esc' }));
+    const closeLabel = T(final ? 'hud.report.continue' : kind === 'tips' ? 'hud.tips.ok' : 'hud.report.close');
+    const close = el('button', { class: 'btn small' + (final ? ' primary' : ''), type: 'button' }, closeLabel, el('span', { class: 'key', text: final ? '↵' : 'Esc' }));
     close.addEventListener('click', () => {
       sfx('ui_click');
       closeReport();
     });
-    tip(close, closeLabel, 'Esc');
+    tip(close, closeLabel, final ? 'Enter' : 'Esc');
     head.appendChild(close);
     const listEl = el('div', { class: 'bs-report-list', 'data-scroll': '1', role: 'log' });
     let lastTurn = null;
@@ -1768,8 +1949,10 @@
     if (!rows.length) listEl.appendChild(el('div', { class: 'bs-report-none muted', text: T('hud.log.empty') }));
     R.append(head, listEl);
     R.classList.remove('hidden');
-    // quem joga com o teclado fica com o foco no painel (Tab chega aos «Mostrar», Esc fecha)
-    if (S.lastInput === 'kb') close.focus({ preventScroll: true });
+    /* relatório do turno (abre sozinho): o foco fica no campo de batalha — Enter termina o turno (como diz o botão ↵),
+       Esc fecha o painel e Tab entra nele. Com o foco em FECHAR, o Enter só fechava o painel e o turno não acabava.
+       O registo (N), aberto de propósito, recebe o foco de quem joga com o teclado (Tab chega aos «Mostrar») */
+    if (kind === 'log' && S.lastInput === 'kb') close.focus({ preventScroll: true });
     sfx(kind === 'turn' ? 'ui_deny' : 'ui_click', { vol: 0.7 });
   }
   // {i: tile do atacante, flash: o tile dele tem um clarão} se o atacante escondido da entrada está agora à vista
@@ -1804,7 +1987,7 @@
      e turn endNo), durante o turno alienígena e, à parte, no início do turno X-COM seguinte (pânico, descontrolo,
      mortes por hemorragia). Nenhuma baixa fica fora do relatório. */
   function turnReportRows(entries, endNo) {
-    const own = entries.filter((e) => e.own);
+    const own = entries.filter((e) => e.own && !e.gone);
     const atEnd = (e) => e.side === 'xcom' && endNo !== undefined && (e.turn | 0) <= (endNo | 0);
     const end = own.filter(atEnd);
     const alien = own.filter((e) => e.side !== 'xcom');
@@ -1844,6 +2027,9 @@
     if (!S || S.ended) return;
     S.ended = true;
     const B = S.B;
+    // a batalha acabou depois de «Fim do turno» (granadas, turno alienígena): as baixas dessa fase ainda não foram ditas
+    const endNo = S.endNo, mark = S.endMark;
+    const last = endNo !== null && endNo !== undefined ? turnReportRows(S.log.filter((e) => e.seq > mark), endNo) : [];
     const outcome = B.result || OV.Battle.outcome(B) || 'abort';
     cancelMode(true);
     closeMenu();
@@ -1855,6 +2041,11 @@
     await delay(1700);
     if (!S || S.B !== B) return;
     showBanner(null);
+    if (reportSummary(last)) {
+      closeReport();
+      await new Promise((res) => openReport('turn', last, last.some((e) => e.key === 'hud.report.turnEnd') ? 'hud.report.title.since' : undefined, res));
+      if (!S || S.B !== B) return;
+    }
     const debrief = OV.Battle.debrief(B);
     const result = { outcome, debrief, B };
     if (S.onExit) {
@@ -2050,7 +2241,11 @@
     H.end.addEventListener('click', (e) => {
       e.preventDefault();
       if (!S || S.ended) return;
-      if (S.playing) return OV.Presenter.hurry();
+      // a meio de uma animação curta (ajoelhar, um passo): acelera-a e termina o turno logo a seguir (nunca se perde)
+      if (S.playing) {
+        if (S.B.side === 'xcom' && S.endNo === null) queueIntent({ end: true });
+        return OV.Presenter.hurry();
+      }
       endTurn();
     });
     tip(H.end, T('hud.btn.endTurn'), 'Enter', T('hud.tip.endTurn'));
@@ -2246,7 +2441,13 @@
       const st = alive ? '' : u.status === 'dead' ? T(gk('bs.ev.kia', u), { name: uname(u) }) : u.mia ? T(gk('bs.status.mia', u)) : T('bs.status.stunned');
       if (alive) {
         row.addEventListener('click', () => {
-          if (!S || S.playing || S.ended) return;
+          if (!S || S.ended) return;
+          // a meio de uma animação: a escolha fica guardada e aplica-se quando ela acaba
+          if (S.playing) {
+            if (S.B.side === 'xcom' && S.endNo === null) queueIntent({ select: u.id });
+            OV.Presenter.hurry();
+            return;
+          }
           select(u.id, { centre: false });
         });
         row.addEventListener('dblclick', () => S && centreUnit(u));
@@ -2254,6 +2455,7 @@
       } else {
         tip(row, uname(u), null, st);
       }
+      tipRight(row);
       // nome acessível com o estado (depois de tip, que o põe só com o nome)
       row.setAttribute('aria-label', !alive ? (u.status === 'dead' ? st : T('hud.sq.gone.aria', { name: uname(u), st }))
         : panic ? T('hud.sq.panic.aria', { name: uname(u) }) : hasTU(u) ? T('hud.sq.aria', { name: uname(u), tu: u.tu | 0, hp: u.hp | 0 }) : T('hud.sq.spent.aria', { name: uname(u) }));
@@ -2261,6 +2463,25 @@
     }
   }
 
+  /* a dica de uma linha da equipa abre à direita da coluna (nunca por cima das linhas de cima, que são os nomes que o
+     jogador quer escolher a seguir). OV.Dom.tooltip põe-na por cima; aqui só se muda o sítio quando é a deste nó */
+  function tipRight(node) {
+    const place = () => {
+      const t = document.getElementById('tooltip');
+      if (!t || t.classList.contains('hidden') || !OV.Dom.tooltipNode || OV.Dom.tooltipNode() !== node) return;
+      const r = node.getBoundingClientRect(), tw = t.offsetWidth, th = t.offsetHeight;
+      if (r.right + 8 + tw > window.innerWidth - 4) return;
+      t.style.left = Math.round(r.right + 8) + 'px';
+      t.style.top = Math.round(Math.max(4, Math.min(window.innerHeight - th - 4, r.top + r.height / 2 - th / 2))) + 'px';
+    };
+    // a dica pode aparecer só no 1.º movimento sobre o nó (OV.Dom): repetir no fotograma seguinte
+    const soon = () => {
+      place();
+      requestAnimationFrame(place);
+    };
+    node.addEventListener('mouseenter', soon);
+    node.addEventListener('pointermove', soon);
+  }
   function renderAliens() {
     const H = S.hud;
     const list = visibleAliens();
@@ -2281,6 +2502,7 @@
       tip(b, T('hud.tip.alien', { n, name: uname(u) }), n <= 10 ? String(n % 10) : null, () => T(tk('hud.tip.alienKeys'), { n: n % 10 }) + ' ' + T(tk('hud.tip.alienAim')));
       H.aliens.appendChild(b);
     });
+    measureSafe();
   }
 
   function renderTop() {
@@ -2874,6 +3096,11 @@
       }
       return true;
     }
+    // fim da batalha com o relatório da última fase à vista: Enter, Esc ou Espaço seguem para o relatório da missão
+    if (S.ended && S.report && S.report.final && (key === 'Enter' || key === 'Escape' || key === ' ')) {
+      if (!ev.repeat) closeReport();
+      return true;
+    }
     if (S.ended) return false;
     S.lastInput = 'kb';
     // painel do turno/registo aberto: Tab entra nele; Enter/Espaço num botão dele é desse botão (clique nativo)
@@ -3378,13 +3605,13 @@
         pathSub: S.view.path ? S.view.path.sub || null : null, hint: S.hud ? S.hud.hint.textContent : '',
         targetLabel: S.view.target && S.view.targetLabel ? Object.assign({}, S.view.targetLabel) : null,
         report: S.report ? { kind: S.report.kind, rows: Array.from(S.hud.report.querySelectorAll('.bs-report-txt')).map((n) => n.textContent) } : null,
-        contactTurn: S.contactTurn, ufoHinted: !!S.ufoHinted,
+        contactTurn: S.contactTurn, ufoHinted: !!S.ufoHinted, queued: S.queuedN | 0,
         arcTiles: S.view.arcTiles ? S.view.arcTiles.tiles.reduce((n, v) => n + v, 0) : 0,
       };
     },
     // registo de mensagens (entradas com o texto já traduzido)
     log() {
-      return S ? S.log.map((e) => ({ turn: e.turn, side: e.side, kind: e.kind, own: e.own, text: T(e.key, e.params), at: e.at, from: e.from })) : [];
+      return S ? S.log.filter((e) => !e.gone).map((e) => ({ turn: e.turn, side: e.side, kind: e.kind, own: e.own, text: T(e.key, e.params), at: e.at, from: e.from })) : [];
     },
     // última leitura de desempenho (?debug=1): {fps, avg, p95, chunks, sprites} | null
     perf() {
@@ -3451,7 +3678,7 @@
     refresh() { if (S) invalidate(); },
     // abortar a missão (com a confirmação de sempre): botão do HUD, tecla X e o painel Opções (Esc)
     abort() { if (S) abortMission(); },
-    model: { kbStep, logEntry, blastConfirm, lineRisk, lineConfirm, handName, confirmEarly, reportSummary, turnReportRows, ufoHintDue, ufoHintTurns, UFO_HINT_TURNS, reserveWhat, arcTiles, ufoEntry },
+    model: { kbStep, logEntry, blastConfirm, lineRisk, lineConfirm, blastLineRisk, blastWho, handName, confirmEarly, reportSummary, turnReportRows, ufoHintDue, ufoHintTurns, UFO_HINT_TURNS, reserveWhat, arcTiles, ufoEntry },
     debug,
   };
 })(globalThis.OV || (globalThis.OV = {}));

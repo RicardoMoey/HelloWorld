@@ -2039,7 +2039,11 @@
       const type = srcType(picker.sel || E.hoverSrc || '') || null;
       const s = soldier();
       if (!type) {
-        box.appendChild(el('div', { class: 'inv-hint' }, el('b', { text: T('hud.equip.title') }), el('span', { text: T(isTouch() ? 'hud.equip.hint.touch' : 'hud.equip.hint') })));
+        /* ajuda inteira e, para janelas baixas (CSS: max-height 640 px), uma versão curta em 2 linhas que se lê toda
+           (a inteira fica na dica do nó) */
+        const full = T(isTouch() ? 'hud.equip.hint.touch' : 'hud.equip.hint');
+        box.appendChild(el('div', { class: 'inv-hint', title: full }, el('b', { text: T('hud.equip.title') }),
+          el('span', { class: 'inv-hint-long', text: full }), el('span', { class: 'inv-hint-short', text: T(isTouch() ? 'hud.equip.hint.short.touch' : 'hud.equip.hint.short') })));
         return box;
       }
       box.appendChild(el('div', { class: 'inv-desc' }, iconCanvas(type, 56),

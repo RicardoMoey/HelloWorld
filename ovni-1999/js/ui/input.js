@@ -17,17 +17,21 @@
    Fora do canvas (HUD, modais): pinça/ctrl+roda dá 'zoom' e nunca amplia a página; roda sem ctrl só desloca
    listas que realmente rolam ([data-scroll] ou overflow auto/scroll); menu de contexto nativo e gestos do Safari
    bloqueados no documento inteiro. Roda: entalhe = evento isolado com wheelDeltaY múltiplo de 120 fora de uma
-   rajada de trackpad; usedTrackpad liga-se com qualquer evento de trackpad e desliga-se com um entalhe. */
+   rajada de trackpad; usedTrackpad liga-se com qualquer evento de trackpad e desliga-se com um entalhe.
+   lastPointerType ('mouse'|'pen'|'touch'): começa em 'touch' num ecrã só tátil e segue o último pointerdown em
+   qualquer sítio do documento (HUD incluído). */
 (function (OV) {
   'use strict';
 
   const isMac = /Mac|iPhone|iPad|iPod/.test((typeof navigator !== 'undefined' && (navigator.platform || navigator.userAgent)) || '');
   const DRAG_PX = 5, LONG_MS = 450, DBL_MS = 320, PINCH_DEAD = 0.06, PINCH_FRAMES = 2;
 
+  // ecrã tátil sem rato (iPad): o primeiro texto da batalha já sai na versão de toque, antes de qualquer toque no mapa
+  const coarseOnly = () => typeof matchMedia === 'function' && matchMedia('(hover: none) and (pointer: coarse)').matches;
   const I = {
     isMac,
     sink: null, // função (ev) => bool
-    lastPointerType: 'mouse',
+    lastPointerType: coarseOnly() ? 'touch' : 'mouse',
     usedTrackpad: false,
     keysDown: new Set(),
     _wheelT: -1e9, // último evento de roda
@@ -110,6 +114,9 @@
     let lastClick = { t: 0, x: 0, y: 0 };
     let longTimer = 0;
 
+    /* o meio de entrada em uso segue qualquer toque/clique no documento (botões do HUD, modais), não só o canvas:
+       um iPad que começa por «Ajoelhar» ou «Sinalizador» já vê as dicas de toque */
+    document.addEventListener('pointerdown', (e) => { if (e.pointerType) I.lastPointerType = e.pointerType; }, { capture: true, passive: true });
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
     // menu de contexto nativo (clique direito / dois dedos no trackpad) nunca aparece por cima do jogo
     window.addEventListener('contextmenu', (e) => { if (!editable(e.target)) e.preventDefault(); });

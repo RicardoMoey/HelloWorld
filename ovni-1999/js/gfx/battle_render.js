@@ -29,7 +29,9 @@
    pick(view, px, py, B?, {hostileFirst, tol}?) → {x, y, z, unitId|null}|null ; view.target.risk = [unitId] aliados perto
    da linha de tiro (anel tracejado + triângulo «!»); view.unitTag = {unitId, text} etiqueta com o nome por cima ; bounds(B) ; centerOn(view, x, y, z) ; markDirty(i?) ;
    reset(B) (nova batalha: estado do zero + prewarm em segundo plano) ; prewarm(B, opts?) ; warmStats() ;
-   labels() → [{x0,y0,x1,y1,text}] e unitRects() → [{unitId,x0,y0,x1,y1}] do último fotograma (px CSS) */
+   labels() → [{x0,y0,x1,y1,text}] e unitRects() → [{unitId,x0,y0,x1,y1}] do último fotograma (px CSS) ;
+   view.safe.avoid = [{x0,y0,x1,y1}] colunas do HUD (px CSS): as etiquetas fogem delas (avoidCols(F, x0, y0, w, h) → x0)
+   e os textos longos partem-se em linhas de ≤ 420 px */
 (function (OV) {
   'use strict';
 
@@ -486,19 +488,53 @@
     }
   }
   // medida de uma etiqueta (px do dispositivo)
+  /* textos longos partem-se em linhas de no máximo PILL_MAX px CSS (ou a largura livre do ecrã): uma etiqueta comprida
+     centrada no cursor perto da margem já não fica com o princípio escondido debaixo das colunas do HUD */
+  const PILL_MAX = 420;
   function pillSize(ctx, F, text) {
     const fs = Math.round(12 * F.dpr * (F.ts || 1));
     ctx.font = '600 ' + fs + 'px -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif';
-    return { w: ctx.measureText(text).width + 12 * F.dpr, h: fs + 8 * F.dpr, fs };
+    const sb = safeBox(F), pad = 12 * F.dpr;
+    const maxW = Math.max(120 * F.dpr, Math.min(PILL_MAX * F.dpr, sb.x1 - sb.x0)) - pad;
+    const lines = wrapText(ctx, String(text), maxW);
+    let w = 0;
+    for (const l of lines) w = Math.max(w, ctx.measureText(l).width);
+    const lh = Math.round(fs * 1.25);
+    return { w: w + pad, h: fs + 8 * F.dpr + (lines.length - 1) * lh, fs, lines, lh };
+  }
+  function wrapText(ctx, text, maxW) {
+    if (ctx.measureText(text).width <= maxW) return [text];
+    const out = [];
+    let cur = '';
+    for (const word of text.split(' ')) {
+      const t = cur ? cur + ' ' + word : word;
+      if (cur && ctx.measureText(t).width > maxW) {
+        out.push(cur);
+        cur = word;
+      } else cur = t;
+    }
+    if (cur) out.push(cur);
+    return out;
   }
   // área livre do ecrã (px do dispositivo): sem o HUD de cima/baixo (view.safe em px CSS, posto pela interface)
   function safeBox(F) {
     const sf = F.view.safe || {}, d = F.dpr, m = 8 * d;
     return { x0: (sf.l || 0) * d + m, y0: (sf.t || 0) * d + m, x1: F.W - (sf.r || 0) * d - m, y1: F.H - (sf.b || 0) * d - m };
   }
+  /* colunas do HUD por cima do mapa (view.safe.avoid = [{x0,y0,x1,y1}] px CSS: equipa à esquerda, alienígenas à
+     direita): uma etiqueta à altura delas desliza para o lado livre. Pura: → x0 (px do dispositivo) */
+  function avoidCols(F, x0, y0, w, h) {
+    const A = (F.view.safe && F.view.safe.avoid) || [], d = F.dpr, m = 8 * d;
+    for (const r of A) {
+      const rx0 = r.x0 * d, rx1 = r.x1 * d, ry0 = r.y0 * d, ry1 = r.y1 * d;
+      if (y0 + h <= ry0 || y0 >= ry1 || x0 + w <= rx0 || x0 >= rx1) continue;
+      x0 = (rx0 + rx1) / 2 < F.W / 2 ? rx1 + m : rx0 - m - w;
+    }
+    return x0;
+  }
   // etiqueta: X é o centro (align 'center'), a aresta esquerda ('left') ou a direita ('right'); fica sempre no ecrã
   function pill(ctx, F, X, Y, text, col, bg, align) {
-    const { w, h } = pillSize(ctx, F, text);
+    const { w, h, lines, lh } = pillSize(ctx, F, text);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = css(bg === undefined || bg === null ? 0x0b0f14 : bg, 0.86);
@@ -506,8 +542,9 @@
     ctx.lineWidth = Math.max(1, F.dpr);
     const sb = safeBox(F);
     let x0 = align === 'left' ? X : align === 'right' ? X - w : X - w / 2, y0 = Y - h / 2;
-    x0 = Math.round(Math.max(sb.x0, Math.min(sb.x1 - w, x0)));
     y0 = Math.round(Math.max(sb.y0, Math.min(sb.y1 - h, y0)));
+    x0 = Math.max(sb.x0, Math.min(sb.x1 - w, x0));
+    x0 = Math.round(Math.max(sb.x0, Math.min(sb.x1 - w, avoidCols(F, x0, y0, w, h))));
     X = x0 + w / 2;
     Y = y0 + h / 2;
     labels.push({ x0: x0 / F.dpr, y0: y0 / F.dpr, x1: (x0 + w) / F.dpr, y1: (y0 + h) / F.dpr, text });
@@ -526,7 +563,9 @@
     ctx.fill();
     ctx.stroke();
     ctx.fillStyle = css(col);
-    ctx.fillText(text, X, Y + 0.5 * F.dpr);
+    const top = Y - ((lines.length - 1) * lh) / 2;
+    for (let k = 0; k < lines.length; k++) ctx.fillText(lines[k], X, top + k * lh + 0.5 * F.dpr);
+    return { x0, y0, w, h };
   }
   function smallText(ctx, F, X, Y, text, col) {
     const fs = Math.round(10.5 * F.dpr * (F.ts || 1));
@@ -1214,8 +1253,8 @@
       const below = !!q && q[1] < p[1] - 2 * d;
       const ly = below ? p[1] + 20 * d + 8 * F.S : p[1] - 22 * d - 18 * F.S;
       const col = PAL[P.steps[pts.length - 1].state] || PAL.ok;
-      pill(ctx, F, p[0], ly, String(P.label), col);
-      if (P.sub) pill(ctx, F, p[0], ly + (below ? 1 : -1) * 24 * d * F.ts, String(P.sub), typeof P.subCol === 'string' ? PAL[P.subCol] || 0xc8d2dc : 0xc8d2dc);
+      const a = pill(ctx, F, p[0], ly, String(P.label), col);
+      if (P.sub) subPill(ctx, F, p[0], a, below, String(P.sub), typeof P.subCol === 'string' ? PAL[P.subCol] || 0xc8d2dc : 0xc8d2dc);
     }
   }
 
@@ -1330,9 +1369,12 @@
     const lx = right ? X + gap : X - gap, al = right ? 'left' : 'right';
     // onde ficaram as etiquetas (px CSS; leitura para o QA)
     F.view.targetLabel = { right, x: lx / d, y: ly / d, tx: X / d, ty: Y / d };
-    if (label) pill(ctx, F, lx, ly, label, T.blocked ? PAL.out : hitCol(T.hitPct), null, al);
+    const a = label ? pill(ctx, F, lx, ly, label, T.blocked ? PAL.out : hitCol(T.hitPct), null, al) : null;
     const subCol = typeof T.subCol === 'string' ? PAL[T.subCol] || PAL.out : T.subCol || PAL.reserve;
-    if (T.sub) pill(ctx, F, lx, ly + 24 * d * F.ts, String(T.sub), subCol, null, al);
+    if (T.sub) {
+      if (a) subPill(ctx, F, lx, a, true, String(T.sub), subCol, al);
+      else pill(ctx, F, lx, ly + 24 * d * F.ts, String(T.sub), subCol, null, al);
+    }
   }
   /* lado das etiquetas do alvo: o oposto ao atirador (no ecrã); com o atirador quase na mesma coluna, o lado com
      espaço e as etiquetas por baixo do alvo quando o atirador está por cima (pura: só lê B e a vista) */
@@ -1436,8 +1478,14 @@
     if (!info || !info.label || info.toI === undefined || info.toI === null || info.toI < 0) return;
     const [X, Y] = tileCenterDev(F, B.map, info.toI);
     const ly = Y - 34 * F.dpr - 12 * F.S;
-    pill(ctx, F, X, ly, String(info.label), info.ok ? PAL.throw : PAL.out);
-    if (info.sub) pill(ctx, F, X, ly - 24 * F.dpr * F.ts, String(info.sub), PAL.out);
+    const a = pill(ctx, F, X, ly, String(info.label), info.ok ? PAL.throw : PAL.out);
+    if (info.sub) subPill(ctx, F, X, a, false, String(info.sub), PAL.out);
+  }
+  // 2.ª etiqueta encostada à 1.ª (por baixo ou por cima), seja qual for o número de linhas de cada uma
+  function subPill(ctx, F, X, a, below, text, col, align) {
+    const h = pillSize(ctx, F, text).h, gap = 4 * F.dpr;
+    const Y = below ? a.y0 + a.h + gap + h / 2 : a.y0 - gap - h / 2;
+    return pill(ctx, F, align ? X : a.x0 + a.w / 2, Y, text, col, null, align);
   }
   // área da explosão prevista: losango isométrico de raio r tiles (vermelho; fumo a cinzento)
   function drawBlast(ctx, B, F) {
@@ -1689,7 +1737,7 @@
   }
 
   OV.BattleRender = {
-    draw, pick, pickHostile, bounds, centerOn, clampCam, markDirty, clearCache, reset, prewarm,
+    draw, pick, pickHostile, bounds, centerOn, clampCam, markDirty, clearCache, reset, prewarm, avoidCols,
     warmStats: () => Object.assign({}, warmInfo, { scales: warmInfo.scales.slice() }),
     stats: () => Object.assign({}, statsInfo),
     // etiquetas (caminho, alvo, arremesso) e caixas das unidades desenhadas no último fotograma, em px CSS

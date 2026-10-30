@@ -117,8 +117,9 @@ module.exports = function (OV, t) {
     e = BM.logEntry(B, shot(0, 1, null), C);
     t.eq(e.own, true, 'fogo de reação no relatório do turno');
     t.ok(!/^hud\.log\.hit/.test(e.key), 'não conta como soldado ferido no resumo do turno');
-    // tiros dos alienígenas continuam fora (o dano aos nossos tem a sua própria linha)
-    t.eq(BM.logEntry(B, { t: 'shot', shooterId: 2, targetId: 1, round: 0, shots: 1, hit: { kind: 'floor' }, vis: true, pos: 49 }, C), null);
+    // ronda 5: o tiro do alienígena contra um dos nossos também entra («… disparou contra … — falhou»)
+    const ae = BM.logEntry(B, { t: 'shot', shooterId: 2, targetId: 1, round: 0, shots: 1, hit: { kind: 'floor' }, vis: true, pos: 49 }, C);
+    t.ok(ae && ae.key === 'hud.log.shotAt' && ae.own === true, 'tiro alienígena contra os nossos no registo');
     for (const k of ['hud.log.shot.miss', 'hud.log.shot.missTile', 'hud.log.shot.burstMiss', 'hud.log.shot.burstMissTile', 'hud.log.shot.hit', 'hud.log.shot.burstHit', 'hud.log.shot.noDmg', 'hud.log.shot.hitMany', 'hud.log.unseenAlien', 'hud.fx.miss', 'hud.tip.alienAim', 'hud.tip.alienAim.touch', 'hud.reserve.group']) {
       t.ok(typeof S[k] === 'string' && S[k].length > 0, k);
     }
