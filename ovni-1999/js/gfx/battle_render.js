@@ -11,7 +11,7 @@
      target.blockI = tile do obstáculo que tapa o tiro (losango vermelho); dangers = [{x,y,z,r}] granadas ativadas no chão; safe = {t,r,b,l} px CSS ocupados pelo HUD
      (as etiquetas ficam dentro do resto do ecrã). clampCam(view, B) usa view.viewZ (0 por omissão).
      view.kcur = {x,y,z} cursor de teclado (contorno branco/preto bem visível); view.palette 'normal'|'cvd';
-     view.reduceMotion (sem pulsações); view.textScale (etiquetas); path.sub = segunda etiqueta (dica da porta).
+     view.reduceMotion (sem pulsações); view.textScale (etiquetas); path.sub = segunda etiqueta (dica da porta, reserva; path.subCol = nome da paleta).
      Formas independentes da cor: passos que guardam a reserva = pontos cheios, que a comem = pontos ocos ligados a
      tracejado (com uma barra onde a reserva acaba), inalcançáveis = ✕; contorno do alcance cheio (mantém a
      reserva) e tracejado (come a reserva); inimigo à vista = losango com cantos + seta por cima da cabeça
@@ -1123,7 +1123,7 @@
       const ly = below ? p[1] + 20 * d + 8 * F.S : p[1] - 22 * d - 18 * F.S;
       const col = PAL[P.steps[pts.length - 1].state] || PAL.ok;
       pill(ctx, F, p[0], ly, String(P.label), col);
-      if (P.sub) pill(ctx, F, p[0], ly + (below ? 1 : -1) * 24 * d * F.ts, String(P.sub), 0xc8d2dc);
+      if (P.sub) pill(ctx, F, p[0], ly + (below ? 1 : -1) * 24 * d * F.ts, String(P.sub), typeof P.subCol === 'string' ? PAL[P.subCol] || 0xc8d2dc : 0xc8d2dc);
     }
   }
 

@@ -541,7 +541,7 @@ try {
         await page.keyboard.press('Enter');
         dropped = true;
       } else {
-        await page.keyboard.press(f === prevF ? 'ArrowLeft' : 'ArrowUp');
+        await page.keyboard.press(f === prevF ? 'ArrowUp' : 'ArrowLeft');
         prevF = f;
       }
     }

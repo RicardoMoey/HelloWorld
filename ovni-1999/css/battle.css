@@ -3,6 +3,9 @@
    bordo esquerdo, mapa tático e alienígenas à vista no bordo direito. Tokens em css/base.css. */
 
 body.in-battle #toasts { top: calc(56px + env(safe-area-inset-top)); }
+/* com o painel do turno alienígena (ou o registo) aberto, os avisos descem para cima do HUD de baixo: nunca tapam
+   as linhas do painel (--bs-bot = altura real do HUD de baixo, medida em battle_ui.js; #toasts tem zoom) */
+body.in-battle:has(.bs-report:not(.hidden)) #toasts { top: auto; bottom: calc((var(--bs-bot, 140px) + 48px) / var(--ui-scale, 1)); }
 
 .bs-hud { position: fixed; inset: 0; font-family: var(--sans); color: var(--ink); --k: var(--ui-scale, 1); }
 .bs-hud.paused { visibility: hidden; }
@@ -120,7 +123,7 @@ body.in-battle #toasts { top: calc(56px + env(safe-area-inset-top)); }
 @keyframes bsBanner { from { transform: scaleX(0.6); opacity: 0; letter-spacing: 16px; } to { transform: none; opacity: 1; } }
 
 .bs-hint {
-  position: absolute; left: 50%; bottom: calc(140px + env(safe-area-inset-bottom)); transform: translateX(-50%);
+  position: absolute; left: 50%; bottom: calc(var(--bs-bot, 130px) + 10px); transform: translateX(-50%);
   padding: 5px 14px; font: 600 calc(12.5px * var(--k)) var(--sans); color: #ffd99a; white-space: nowrap; max-width: calc(100vw - 24px); overflow: hidden; text-overflow: ellipsis;
   background: rgba(8, 13, 20, 0.88); border: 1px solid #5a4416; border-radius: 14px; opacity: 0; transition: opacity 0.15s;
 }
@@ -263,6 +266,8 @@ body.in-battle #toasts { top: calc(56px + env(safe-area-inset-top)); }
 .bs-check { display: flex; align-items: center; gap: 6px; margin-top: 10px; font-size: 12.5px; color: var(--muted); cursor: pointer; min-height: 28px; }
 .bs-abort-lose { color: #ff9a8f; font-weight: 700; padding: 6px 10px; border: 1px solid #8f2a22; border-radius: 3px; background: rgba(60, 12, 10, 0.5); }
 .bs-keys td:first-child { white-space: nowrap; padding-right: 14px; }
+/* folha de teclas: o botão fica num rodapé fixo, por isso o foco nele não desloca a lista para o fundo */
+.modal.bs-keysheet .modal-actions { position: sticky; bottom: -18px; margin: 12px -20px -18px; padding: 10px 20px 14px; background: #0b131c; border-top: 1px solid #1f3346; }
 .bs-keys kbd.key { font-size: 11.5px; color: var(--ink); }
 
 /* ---- relatório do turno alienígena e registo de mensagens ------------------------------------------- */
@@ -317,6 +322,8 @@ body.in-battle #toasts { top: calc(56px + env(safe-area-inset-top)); }
 /* retrato e janelas estreitas (iPad 834 px de largura): a reserva de UT passa para uma linha própria dentro da
    consola e o fim de turno encolhe — nada fica por baixo de outro botão */
 @media (max-width: 960px) {
+  /* o painel do turno alienígena fica à direita da lista de soldados (e à esquerda dos alienígenas à vista) */
+  .bs-report { left: calc(170px + env(safe-area-inset-left)); right: calc(70px + env(safe-area-inset-right)); width: auto; transform: none; }
   .bs-console { flex-wrap: wrap; align-content: flex-end; max-width: calc(100vw - 20px - 236px - 88px - 20px); }
   .bs-reserve-box { flex: 1 0 100%; flex-direction: row; align-items: center; gap: 10px; padding: 6px 0 0; border-left: none; border-top: 1px solid #1f3346; }
   .bs-reserve { grid-template-columns: repeat(5, 34px); }
@@ -346,7 +353,8 @@ body.in-battle #toasts { top: calc(56px + env(safe-area-inset-top)); }
   .bs-btn.bs-logbtn { width: 36px; height: 32px; }
   .bs-check { min-height: 40px; }
   .bs-report-row .btn.small, .bs-report-head .btn.small { min-height: 34px; }
-  .bs-hint { bottom: calc(150px + env(safe-area-inset-bottom)); }
+  /* toque: as teclas não existem — sem emblemas «Esc», «↵», «Q», «E» nos botões do combate */
+  .bs-hud .key, .bs-hud .bs-hand-key, .inv-root .key, body.in-battle #modals .key { display: none; }
 }
 @media (hover: none) and (max-width: 960px) {
   .bs-reserve { grid-template-columns: repeat(5, 34px); }
@@ -463,6 +471,8 @@ body.bs-cvd .inv-chip.bad { color: #ffd0f4; background: #3a1032; border-color: #
 .inv-it.row { display: grid; grid-template-columns: 42px minmax(0, 1fr) auto; grid-template-rows: auto auto; align-items: center; column-gap: 8px; min-height: 48px; padding: 3px 8px 3px 4px; justify-content: stretch; touch-action: pan-y; }
 .inv-it.row .inv-ic { grid-row: 1 / span 2; }
 .inv-it.row .inv-nm { font: 700 12px var(--sans); color: #d7e2ea; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* chão: nomes em duas linhas («Canhão Pesado: munição explosiva» e «… perfurante» distinguem-se) */
+.inv-ground .inv-it.row .inv-nm { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.2; overflow-wrap: anywhere; }
 .inv-it.row .inv-fp { position: static; grid-column: 2; grid-row: 2; }
 .inv-it.row .inv-badge { position: static; grid-column: 3; grid-row: 1; justify-self: end; }
 .inv-it.row .inv-wt { grid-column: 3; grid-row: 2; justify-self: end; font: 600 10px var(--mono); color: #7f97ab; }
@@ -619,17 +629,42 @@ body.bs-cvd .inv-chip.bad { color: #ffd0f4; background: #3a1032; border-color: #
 .eq-sol-w.bad::after { content: ' ⚠'; }
 .eq-sol-none { width: 30px; }
 .eq-main { display: flex; flex-direction: column; gap: 10px; min-width: 0; min-height: 0; }
-.inv-equip .eq-grid .eq-main .inv-head.eq { grid-template-columns: 56px minmax(120px, 1fr) minmax(170px, 240px) auto; }
 .inv-head.eq .inv-port { width: 56px; height: 56px; }
-.inv-head.eq .inv-meters { grid-template-columns: 1fr; }
+/* cabeçalho do «Equipar»: o arranjo segue a largura do boneco (contentor eqd), não a do ecrã — com o armazém e a
+   equipa ao lado, o boneco pode ter 500 px num ecrã de 1440. Os medidores nunca passam da sua coluna (min-width: 0)
+   e o aviso de excesso de peso quebra em duas linhas em vez de ficar por baixo dos botões. */
+.inv-equip .inv-doll { container: eqd / inline-size; }
+.inv-equip .eq-grid .eq-main .inv-head.eq { grid-template-columns: 56px minmax(110px, 1fr) minmax(180px, 1.3fr) max-content; }
+.inv-equip .inv-head.eq .inv-meters { grid-template-columns: minmax(0, 1fr); grid-column: auto; grid-row: auto; min-width: 0; }
+.inv-equip .inv-head.eq .inv-meter { min-width: 0; }
+.inv-equip .inv-head.eq .inv-meter .lbl { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.inv-equip .inv-head.eq .inv-meter .val { flex: 0 0 auto; }
+.inv-equip .inv-head.eq .inv-meter-note { white-space: normal; line-height: 1.25; }
 /* botões: duas colunas que crescem com o texto (nunca cortam «Auto-equipar») */
 .inv-equip .eq-grid .eq-main .inv-head.eq .eq-btns { display: grid; grid-template-columns: repeat(2, max-content); gap: 4px; align-content: start; max-width: none; }
 .inv-equip .eq-grid .eq-main .inv-head.eq .eq-btns .btn { width: 100%; min-width: max-content; padding: 0 10px; white-space: nowrap; }
-.inv-equip .eq-grid .eq-main .inv-body { flex: 1; min-height: 0; }
+/* boneco estreito: botões numa linha própria por baixo, à direita */
+@container eqd (max-width: 640px) {
+  .inv-equip .eq-grid .eq-main .inv-head.eq { grid-template-columns: 48px minmax(0, 1fr) minmax(190px, 1.2fr); row-gap: 6px; }
+  .inv-equip .eq-grid .eq-main .inv-head.eq .eq-btns { grid-column: 1 / -1; grid-row: 2; grid-template-columns: repeat(4, max-content); justify-content: end; }
+}
+@container eqd (max-width: 440px) {
+  .inv-equip .eq-grid .eq-main .inv-head.eq { grid-template-columns: 48px minmax(0, 1fr); }
+  .inv-equip .eq-grid .eq-main .inv-head.eq .inv-meters { grid-column: 1 / -1; grid-row: 2; }
+  .inv-equip .eq-grid .eq-main .inv-head.eq .eq-btns { grid-row: 3; grid-template-columns: repeat(2, minmax(0, 1fr)); justify-content: stretch; }
+}
+.inv-equip .eq-grid .eq-main .inv-body { flex: 1; min-height: 0; grid-template-rows: minmax(0, 1fr); }
+/* janelas baixas (briefing a 1024×560): o boneco desloca-se dentro do seu espaço em vez de passar por cima do cartão
+   de informação */
+.inv-equip .eq-grid .eq-main .inv-doll { min-height: 0; overflow-y: auto; scrollbar-width: thin; touch-action: pan-y; }
 .inv-equip .inv-ground-list { max-height: none; min-height: 0; }
 .inv-equip .inv-it.row .inv-nm { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.2; overflow-wrap: anywhere; }
 .inv-equip .kfocus { outline: 2px solid var(--cyan); outline-offset: 2px; }
 .inv-it.unk { border-style: dashed; }
+/* carregador que entra na arma no início da missão (a mão mostra «20/20») */
+.inv-it.inweapon { border-color: #6a5420; background: rgba(60, 44, 10, 0.35); }
+.inv-it.inweapon .inv-badge.ammo, .inv-it.inweapon .inv-fp { display: none; }
+.eq-inw { position: absolute; left: 2px; right: 2px; bottom: 2px; text-align: center; white-space: nowrap; overflow: hidden; padding: 0 1px; border-radius: 2px; font: 800 8px/12px var(--sans); letter-spacing: 0; text-transform: uppercase; color: #120c02; background: var(--amber); pointer-events: none; }
 .inv-unk { position: absolute; right: 3px; bottom: 3px; padding: 0 4px; border-radius: 2px; font: 800 9.5px/14px var(--sans); letter-spacing: 0.3px; color: #fff; background: #8f2a22; pointer-events: none; }
 .inv-it.row .inv-unk { position: static; grid-column: 2; grid-row: 2; justify-self: end; text-transform: uppercase; }
 body.bs-cvd .inv-unk, .inv-equip .inv-unk { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25); }
@@ -639,9 +674,6 @@ body.bs-cvd .inv-unk, .inv-equip .inv-unk { box-shadow: inset 0 0 0 1px rgba(255
 @container eq (max-width: 1060px) {
   .inv-equip .eq-grid { grid-template-columns: 196px minmax(0, 1fr); gap: 10px; }
   .inv-equip .eq-grid .eq-main .inv-body { grid-template-columns: minmax(0, 1fr) 250px; gap: 10px; }
-  .inv-equip .eq-grid .eq-main .inv-head.eq { grid-template-columns: 48px minmax(0, 1fr) auto; row-gap: 6px; }
-  .inv-equip .eq-grid .eq-main .inv-head.eq .inv-meters { grid-column: 1 / -1; grid-row: 2; }
-  .inv-equip .eq-grid .eq-main .inv-head.eq .eq-btns { grid-column: 3; grid-row: 1; }
   .inv-equip .eq-grid .eq-main .inv-head.eq .eq-btns .btn { min-height: 30px; font-size: 10.5px; letter-spacing: 0.5px; padding: 0 9px; }
 }
 /* estreito (iPad em retrato, janelas pequenas): equipa numa faixa horizontal em cima, armazém por baixo do boneco */
@@ -654,8 +686,6 @@ body.bs-cvd .inv-unk, .inv-equip .inv-unk { box-shadow: inset 0 0 0 1px rgba(255
   .inv-equip .eq-grid .eq-main .inv-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto; align-content: start; flex: 0 0 auto; }
   .inv-equip .eq-grid .eq-main .inv-doll { overflow: visible; }
   .inv-equip .eq-grid .eq-main .eq-stores-list { max-height: 260px; }
-  .inv-equip .eq-grid .eq-main .inv-head.eq { grid-template-columns: 48px minmax(0, 1fr); }
-  .inv-equip .eq-grid .eq-main .inv-head.eq .eq-btns { grid-column: 1 / -1; grid-row: 3; grid-template-columns: repeat(4, max-content); }
   .inv-equip .eq-grid .eq-main .inv-info { display: none; }
 }
 

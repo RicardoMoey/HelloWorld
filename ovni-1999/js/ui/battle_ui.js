@@ -14,7 +14,8 @@
    --ui-scale). Relatório «Durante o turno alienígena» no início de cada turno e registo de mensagens (N).
    OV.BattleUI = {scene (cena ativa | null), open(B, opts), openInventory(unitId), refresh(), model: {kbStep(m, x, y,
      dir, anchor) → {x, y, anchor}, logEntry(B, ev, ctx) → entrada|null, blastConfirm(settings, difficulty) → bool,
-     handName(type) → texto curto}, debug: {tileToScreen(x,y,z), unitScreen(id), selectAndMove(id,x,y,z) → Promise,
+     handName(type) → texto curto, confirmEarly(pointerType, detail, dtMs) → bool (2.º clique de um duplo clique ou
+     depressa demais não confirma um explosivo)}, debug: {tileToScreen(x,y,z), unitScreen(id), selectAndMove(id,x,y,z) → Promise,
      state(), hover(x,y), perf() → {fps, avg, p95, chunks, sprites}|null (só com ?debug=1, que também mostra a leitura
      no topo do ecrã), showAll(on) (só a vista), centre(x,y,z) (câmara), log() → [entrada], kb(x,y,z) (cursor de
      teclado), noteEvent(ev), report('turn'|'log'), grenades() → n (aviso de granadas alienígenas, Recruta)}} */
@@ -121,6 +122,8 @@
   const seen = (u) => !!u && (u.side === 'xcom' || (OV.LOS && OV.LOS.isVisibleTo(S.B, 'xcom', u)));
   const isTouch = () => OV.Input && OV.Input.lastPointerType === 'touch';
   // modo de confirmação: toque, teclado (cursor) ou rato
+  // variante '.touch' de um texto quando se joga com toque (sem teclas nem clique secundário)
+  const tk = (key) => (isTouch() && OV.T.has(key + '.touch') ? key + '.touch' : key);
   const confirmVia = () => (S && S.kcur && S.kcur.armed ? 'key' : isTouch() ? 'tap' : 'click');
   const isMac = () => !!(OV.Input && OV.Input.isMac);
   // tiro forçado: ⌘ no Mac (lá Ctrl+clique é o clique secundário), Ctrl nos outros sistemas
@@ -189,6 +192,12 @@
     const H = S.hud, vh = S.view.h || window.innerHeight;
     const top = H.top.getBoundingClientRect(), bot = [H.card, H.console, H.end].map((n) => n.getBoundingClientRect().top).filter((y) => y > 0);
     S.view.safe = { t: Math.max(0, top.bottom), b: bot.length ? Math.max(0, vh - Math.min(...bot)) : 0, l: 0, r: 0 };
+    // altura real do HUD de baixo (no retrato a reserva passa a 2.ª linha): a dica e os avisos ficam por cima dele
+    const bb = Math.round(S.view.safe.b) + 'px';
+    if (bb !== S.botVar) {
+      S.botVar = bb;
+      document.body.style.setProperty('--bs-bot', bb);
+    }
   }
   function camFor(x, y, z) {
     const tc = { x: S.view.cam.x, y: S.view.cam.y, zoom: S.view.cam.zoom };
@@ -337,10 +346,14 @@
   /* passo do cursor na direção do ecrã ('up'|'down'|'left'|'right'). Cada passo vai para um vizinho ortogonal
      (meia casa na diagonal do ecrã) e alterna entre os dois candidatos à volta de uma coluna/linha de ecrã de
      referência (anchor = {d: x−y, s: x+y, flip}), por isso segurar ↑ sobe a direito e todas as casas são
-     alcançáveis. m = {w, h}. Pura (testada em Node). */
+     alcançáveis. Ao trocar de eixo (↓ depois ←), o empate escolhe o vizinho que segue a seta anterior: ↓ ← ↓ ←
+     anda ao longo de uma fila da grelha (diagonal do ecrã) em vez de saltar entre duas casas. m = {w, h}. Pura
+     (testada em Node). */
+  const PERP = { up: 0, down: 1, left: 0, right: 1 }; // 0 = a seta baixa a referência do outro eixo, 1 = sobe-a
   function kbStep(m, x, y, dir, anchor) {
-    const a = anchor ? { d: anchor.d, s: anchor.s, flip: !!anchor.flip } : { d: x - y, s: x + y, flip: false };
+    const a = anchor ? { d: anchor.d, s: anchor.s, flip: !!anchor.flip, last: anchor.last || null } : { d: x - y, s: x + y, flip: false, last: null };
     const vert = dir === 'up' || dir === 'down';
+    const turned = !!a.last && (a.last === 'up' || a.last === 'down') !== vert;
     let opts;
     if (dir === 'up') opts = [[x - 1, y], [x, y - 1]];
     else if (dir === 'down') opts = [[x, y + 1], [x + 1, y]];
@@ -351,10 +364,12 @@
     let order;
     if (ref > want) order = [0, 1];
     else if (ref < want) order = [1, 0];
+    else if (turned) order = PERP[a.last] ? [1, 0] : [0, 1];
     else {
       order = a.flip ? [1, 0] : [0, 1];
       a.flip = !a.flip;
     }
+    a.last = dir;
     const inMap = (q) => q[0] >= 0 && q[1] >= 0 && q[0] < m.w && q[1] < m.h;
     const pick = inMap(opts[order[0]]) ? opts[order[0]] : inMap(opts[order[1]]) ? opts[order[1]] : null;
     if (!pick) return { x, y, anchor: a };
@@ -569,11 +584,31 @@
     const steps = wp.tiles.map((t, k) => ({ i: t, tu: many && k < wp.tiles.length - 1 ? wp.tus[k] : null, state: STATES[wp.marks[k]] || 'ok' }));
     const out = wp.marks.some((m) => m === 2);
     // custo e o que sobra (as duas partes dizem o mesmo: UT gastas → UT que ficam)
-    let label = out ? T('hud.path.out', { tu: wp.tu, have: u.tu | 0 }) : T('hud.path', { tu: wp.tu, left: Math.max(0, (u.tu | 0) - wp.tu), energy: Math.max(0, (u.energy | 0) - wp.energy) });
+    const left = Math.max(0, (u.tu | 0) - wp.tu);
+    // destino que come a reserva de UT: o motor recusa-o — dizê-lo já, com o mesmo texto da recusa
+    const res = out ? null : walkReserve(u, wp.tu);
+    let label = out ? T('hud.path.out', { tu: wp.tu, have: u.tu | 0 })
+      : res ? T('hud.path.reserve', { tu: wp.tu, left, res: res.tu, what: res.what })
+        : T('hud.path', { tu: wp.tu, left, energy: Math.max(0, (u.energy | 0) - wp.energy) });
     if (S.lock === i) label = T(confirmVia() === 'tap' ? 'hud.confirmMove.tap' : confirmVia() === 'key' ? 'hud.confirmMove.key' : 'hud.confirmMove') + ' · ' + label;
-    // porta no destino: dizer que ⌥ + clique a abre sem entrar
-    const sub = door && !out ? T(confirmVia() === 'key' ? 'hud.door.hint.key' : isMac() ? 'hud.door.hint.mac' : 'hud.door.hint', { tu: door.tu }) : null;
-    S.view.path = { steps, label, sub, lock: S.lock === i };
+    // porta no destino: ⌥ + clique abre-a sem entrar — com o custo só quando o soldado está ao lado dela (sem ⌥ no toque)
+    let sub = null;
+    if (door && !out && !isTouch()) {
+      const via = confirmVia() === 'key' ? '.key' : isMac() ? '.mac' : '';
+      if (door.ok || door.reason === 'noTU') sub = T('hud.door.hint' + via, { tu: door.tu });
+      else if (door.reason === 'tooFar') sub = T('hud.door.hint.far' + via);
+    }
+    if (res) sub = T(isTouch() ? 'hud.path.reserve.fix.touch' : 'hud.path.reserve.fix');
+    S.view.path = { steps, label, sub, subCol: res ? 'reserve' : null, lock: S.lock === i };
+  }
+  // reserva de UT que um passeio de `tu` UT comeria (a mesma conta do motor: OV.Act.validate → 'reserved') ou null
+  function walkReserve(u, tu) {
+    const r = OV.Act.reserveTU(S.B, u, { standing: true }) | 0;
+    if (!(r > 0 && r <= (u.tu | 0)) || (u.tu | 0) - tu >= r) return null;
+    const parts = [];
+    if (S.B.reserve && S.B.reserve !== 'none') parts.push(T('mode.' + S.B.reserve));
+    if (S.B.reserveKneel) parts.push(T('hud.path.reserve.kneel'));
+    return { tu: r, what: parts.join(' + ') || T('hud.reserve') };
   }
 
   // probabilidade de acerto em cache (RNG próprio da interface: nunca as streams da simulação)
@@ -926,7 +961,16 @@
       return;
     }
     S.lock = -1;
-    act({ type: 'walk', unitId: u.id, to: i });
+    const a = { type: 'walk', unitId: u.id, to: i };
+    const v = OV.Act.validate(S.B, a);
+    if (!v.ok && v.reason === 'reserved') {
+      // o mesmo texto da etiqueta do caminho: quanto está reservado e para quê
+      const wp = OV.Act.walkPreview(S.B, u, i, { reserveMode: reserveMode() });
+      const res = wp ? walkReserve(u, wp.tu) : null;
+      deny(res ? 'hud.path.reserve.deny' + (isTouch() ? '.touch' : '') : 'reserved', res ? { res: res.tu, what: res.what } : null);
+      return;
+    }
+    act(a);
   }
   function needConfirm(pointerType) {
     const m = settings().confirmMove || 'auto';
@@ -967,7 +1011,23 @@
     const b = blastPreview(u, it, i);
     return b && !b.smoke ? b.risk | 0 : 0;
   }
-  function clickTarget(p, mods, pointerType, kbForce) {
+  /* 2.ª confirmação de explosivos com aliados no raio: o 2.º clique de um duplo clique (detail > 1) ou um clique a
+     menos de CONFIRM_GAP ms do que armou a confirmação não conta — a criança que clica depressa vê sempre o aviso */
+  const CONFIRM_GAP = 400;
+  // pura (testada em Node): o clique que chega dt ms depois de armar a confirmação ainda não conta?
+  function confirmEarly(pointerType, detail, dt) {
+    if (pointerType === 'kb') return false;
+    return (detail | 0) > 1 || dt < CONFIRM_GAP;
+  }
+  const confirmTooSoon = (pointerType, detail) => confirmEarly(pointerType, detail, realNow() - (S.tapLockT || 0));
+  function armConfirm(i, risky) {
+    S.tapLock = i;
+    S.tapLockT = realNow();
+    S.hoverKey = '';
+    refreshHover();
+    sfx(risky ? 'ui_deny' : 'ui_click');
+  }
+  function clickTarget(p, mods, pointerType, kbForce, detail) {
     const u = sel();
     if (!u || !S.aim) return;
     const tu = p.unitId !== null && p.unitId !== undefined ? unitOf(p.unitId) : null;
@@ -987,18 +1047,16 @@
     // toque: 1.º toque mostra, 2.º dispara; explosivo com aliados no raio: 2.º clique/Enter no mesmo alvo
     const risky = a.type === 'shoot' && blastRisk(u, itemOf(S.aim.itemId), i) > 0;
     if ((pointerType === 'touch' || isTouch() || risky) && S.tapLock !== i) {
-      S.tapLock = i;
-      S.hoverKey = '';
-      refreshHover();
-      sfx(risky ? 'ui_deny' : 'ui_click');
+      armConfirm(i, risky);
       return;
     }
+    if (risky && confirmTooSoon(pointerType, detail)) return;
     S.tapLock = -1;
     S.lastFire = { unitId: u.id, action: a };
     cancelMode(true);
     act(a);
   }
-  function clickThrow(p, pointerType) {
+  function clickThrow(p, pointerType, detail) {
     const u = sel();
     if (!u || !S.throwPlan) return;
     const i = idxOf(p.x, p.y, p.z);
@@ -1010,12 +1068,10 @@
     }
     const risky = !!(info.blast && !info.blast.smoke && info.blast.risk && blastConfirm(settings(), S.B.mission && S.B.mission.difficulty));
     if ((pointerType === 'touch' || isTouch() || risky) && S.tapLock !== i) {
-      S.tapLock = i;
-      S.hoverKey = '';
-      refreshHover();
-      sfx(risky ? 'ui_deny' : 'ui_click');
+      armConfirm(i, risky);
       return;
     }
+    if (risky && confirmTooSoon(pointerType, detail)) return;
     S.tapLock = -1;
     const plan = S.throwPlan;
     const steps = [];
@@ -1294,9 +1350,10 @@
       return { key: gk('bs.psi.control', u), params: { name: nm(u) }, kind: 'bad', own: true, at: tileOf(u), from: fromOf(u, ev.attackerId) };
     }
     if (ev.t === 'zombify') {
-      const u = find(ev.unitId);
+      // unitId é o zombie novo; fromId é o soldado (ou civil) que se transformou
+      const u = find(ev.fromId);
       if (!mine(u)) return null;
-      return { key: 'bs.ev.zombify', params: { name: nm(u) }, kind: 'bad', own: true, at: tileOf(u), from: -1 };
+      return { key: gk('bs.ev.zombify', u), params: { name: nm(u) }, kind: 'bad', own: true, at: tileOf(find(ev.unitId)), from: -1 };
     }
     return null;
   }
@@ -1316,9 +1373,20 @@
   function closeReport() {
     if (!S || !S.hud || !S.report) return false;
     S.report = null;
+    // o foco estava num botão do painel: devolvê-lo ao jogo (nunca fica num nó removido)
+    if (S.hud.report.contains(document.activeElement)) document.activeElement.blur();
     S.hud.report.classList.add('hidden');
     OV.Dom.clear(S.hud.report);
     return true;
+  }
+  // Tab / ⇧Tab com o painel aberto: percorre Fechar e os «Mostrar» (Enter ou Espaço ativa o botão com foco)
+  function reportTab(dir) {
+    const list = Array.from(S.hud.report.querySelectorAll('button'));
+    if (!list.length) return;
+    const k = list.indexOf(document.activeElement);
+    const n = list[k < 0 ? (dir > 0 ? 0 : list.length - 1) : (k + dir + list.length) % list.length];
+    n.focus({ preventScroll: true });
+    n.scrollIntoView({ block: 'nearest' });
   }
   // kind 'turn' (início do turno: só o que aconteceu aos nossos) ou 'log' (registo inteiro, mais recente primeiro)
   function openReport(kind, list) {
@@ -1379,6 +1447,8 @@
     if (!rows.length) listEl.appendChild(el('div', { class: 'bs-report-none muted', text: T('hud.log.empty') }));
     R.append(head, listEl);
     R.classList.remove('hidden');
+    // quem joga com o teclado fica com o foco no painel (Tab chega aos «Mostrar», Esc fecha)
+    if (S.lastInput === 'kb') close.focus({ preventScroll: true });
     sfx(kind === 'turn' ? 'ui_deny' : 'ui_click', { vol: 0.7 });
   }
   // {i: tile do atacante, flash: o tile dele tem um clarão} se o atacante escondido da entrada está agora à vista
@@ -1826,7 +1896,7 @@
           select(u.id, { centre: false });
         });
         row.addEventListener('dblclick', () => S && centreUnit(u));
-        tip(row, uname(u), null, (rankName(u) ? rankName(u) + ' · ' : '') + T('hud.bar.tu') + ' ' + (u.tu | 0) + ' · ' + T('hud.bar.hp') + ' ' + (u.hp | 0) + ' — ' + T('hud.tip.squad'));
+        tip(row, uname(u), null, (rankName(u) ? rankName(u) + ' · ' : '') + T('hud.bar.tu') + ' ' + (u.tu | 0) + ' · ' + T('hud.bar.hp') + ' ' + (u.hp | 0) + ' — ' + T(tk('hud.tip.squad')));
       } else {
         const st = u.status === 'dead' ? T(gk('bs.ev.kia', u), { name: uname(u) }) : u.mia ? T(gk('bs.status.mia', u)) : T('bs.status.stunned');
         tip(row, uname(u), null, st);
@@ -1848,7 +1918,7 @@
         el('span', { class: 'bs-alien-ic', 'aria-hidden': 'true', html: '<svg viewBox="0 0 24 24"><path d="M12 2.5c-5 0-8 3.6-8 8 0 4.6 4.3 9.6 8 11 3.7-1.4 8-6.4 8-11 0-4.4-3-8-8-8z" fill="currentColor"/><path d="M6.6 10.2c1.9-.2 3.7.8 4.2 2.6-1.9.4-3.7-.6-4.2-2.6zM17.4 10.2c-1.9-.2-3.7.8-4.2 2.6 1.9.4 3.7-.6 4.2-2.6z" fill="#120406"/></svg>' }),
         el('span', { class: 'bs-alien-n', text: String(n) }));
       b.addEventListener('click', () => S && centreAlien(k));
-      tip(b, T('hud.tip.alien', { n, name: uname(u) }), n <= 10 ? String(n % 10) : null, T('hud.tip.alienKeys', { n: n % 10 }));
+      tip(b, T('hud.tip.alien', { n, name: uname(u) }), n <= 10 ? String(n % 10) : null, T(tk('hud.tip.alienKeys'), { n: n % 10 }));
       H.aliens.appendChild(b);
     });
   }
@@ -1870,7 +1940,7 @@
       el('span', { class: 'bs-top-turn', text: T('hud.turn', { n: B.turn }) }),
       el('span', { class: 'bs-top-side ' + B.side, text: T('bs.side.' + B.side) }),
       tip(el('span', { class: 'bs-top-time ' + (phase === 'night' ? 'night' : phase === 'day' ? 'day' : 'dusk'), text: T('hud.' + phase) }),
-        T('hud.' + phase), null, T('hud.tip.' + phase, pars)),
+        T('hud.' + phase), null, T(tk('hud.tip.' + phase), pars)),
       H.bLog);
   }
 
@@ -2361,14 +2431,14 @@
       refreshHover();
       const p = pickAt(ev.x, ev.y);
       if (!p) return true;
-      if (S.mode === 'target') clickTarget(p, ev.mods, ev.pointerType);
-      else if (S.mode === 'throw') clickThrow(p, ev.pointerType);
+      if (S.mode === 'target') clickTarget(p, ev.mods, ev.pointerType, undefined, ev.detail);
+      else if (S.mode === 'throw') clickThrow(p, ev.pointerType, ev.detail);
       else {
         const u = p.unitId !== null && p.unitId !== undefined ? unitOf(p.unitId) : null;
         if (u && u.side === 'xcom') {
           if (u.id !== S.selId) select(u.id);
         } else if (u && u.side === 'alien') {
-          toast('hud.hint.aim', null, 'info');
+          toast(isTouch() || ev.pointerType === 'touch' ? 'hud.hint.aim.touch' : 'hud.hint.aim', null, 'info');
         } else clickMove(p, ev.mods, ev.pointerType);
       }
       S.hoverKey = '';
@@ -2429,6 +2499,14 @@
     }
     if (S.ended) return false;
     S.lastInput = 'kb';
+    // painel do turno/registo aberto: Tab entra nele; Enter/Espaço num botão dele é desse botão (clique nativo)
+    if (S.report && S.hud && !S.menu) {
+      if (key === 'Tab') {
+        reportTab(m.shift ? -1 : 1);
+        return true;
+      }
+      if ((key === 'Enter' || key === ' ') && S.hud.report.contains(document.activeElement)) return false;
+    }
     const arrow = /^Arrow(Left|Right|Up|Down)$/.exec(code);
     if (arrow && !ev.repeat) S.arrowT[code] = realNow();
     if (key === ' ') {
@@ -2580,14 +2658,16 @@
     }
     return isPanKey(code, m);
   }
-  // T: rodar o soldado para o cursor de teclado (como o clique secundário)
+  // T: rodar o soldado para o cursor de teclado ou, sem ele, para a casa debaixo do ponteiro (como o clique secundário)
   function kbTurn() {
     const u = sel();
-    if (!u || !S.kcur.armed) {
-      toast('hud.kb.turnHint', null, 'info');
+    const p = !u ? null : S.kcur.armed ? kbPick() : S.mouse && !isTouch() ? pickAt(S.mouse.x, S.mouse.y) : null;
+    if (!u || !p) {
+      toast(u ? 'hud.kb.turnHint' : 'hud.selectFirst', null, 'info');
       return;
     }
-    const a = { type: 'turn', unitId: u.id, toI: idxOf(S.kcur.x, S.kcur.y, S.view.viewZ) };
+    const t = p.unitId !== null && p.unitId !== undefined ? unitOf(p.unitId) : null;
+    const a = { type: 'turn', unitId: u.id, toI: t && t !== u ? tileOfUnit(t) : idxOf(p.x, p.y, p.z) };
     const v = OV.Act.validate(S.B, a);
     if (v.ok) act(a);
     else if (v.reason !== 'invalid') deny(v.reason);
@@ -2599,7 +2679,11 @@
       const [a, b] = T('hud.keys.' + k).split('|');
       rows.push(el('tr', null, el('td', null, el('kbd', { class: 'key', text: a })), el('td', { text: b || '' })));
     }
-    OV.Dom.modal({ title: T('hud.keys.title'), body: el('table', { class: 'tbl bs-keys' }, el('tbody', null, rows)), wide: true, buttons: [{ label: T('hud.opt.resume'), value: true, kind: 'primary' }] });
+    const body = el('table', { class: 'tbl bs-keys' }, el('tbody', null, rows));
+    OV.Dom.modal({ title: T('hud.keys.title'), body, wide: true, cls: 'bs-keysheet', buttons: [{ label: T('hud.opt.resume'), value: true, kind: 'primary' }] });
+    // o foco no botão (rodapé fixo) não pode deslocar a lista: abre sempre no topo (Setas, Enter primeiro)
+    const box = body.closest('.modal');
+    if (box) box.scrollTop = 0;
   }
   function isPanKey(code, m) {
     if (m && (m.meta || m.ctrl || m.alt)) return false;
@@ -2819,6 +2903,7 @@
         OV.FX.reduceMotion = false;
       }
       document.body.classList.remove('in-battle', 'bs-cvd', 'bs-rm');
+      document.body.style.removeProperty('--bs-bot');
     };
     sc.pause = function () {
       if (S && S.hud) S.hud.root.classList.add('paused');
@@ -2964,7 +3049,7 @@
     },
     openInventory,
     refresh() { if (S) invalidate(); },
-    model: { kbStep, logEntry, blastConfirm, handName },
+    model: { kbStep, logEntry, blastConfirm, handName, confirmEarly },
     debug,
   };
 })(globalThis.OV || (globalThis.OV = {}));

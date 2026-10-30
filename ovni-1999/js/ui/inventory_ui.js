@@ -13,7 +13,8 @@
    OV.InventoryUI.close() ; isOpen() ; refresh() ; debug.state()
    OV.InventoryUI.equipScreen(container, {squad, stores, onChange, night?, selectedId?, researched?}) → controlador
      (researched: G.researched da campanha | null = tudo conhecido; omitido = OV.Game.G.researched)
-   OV.InventoryUI.model = {autoLoadout(soldier, stores, opts) → loadout, armedLo(loadout) → bool (arma que dispara)}
+   OV.InventoryUI.model = {autoLoadout(soldier, stores, opts) → loadout, armedLo(loadout) → bool (arma que dispara),
+     loadPlan(loadout) → {R, L}: {slot, k, type}|null (carregador que entra em cada arma, como BUnits.autoLoad)}
      squad = [{id, name, rank, stats{str,tu,hp…}, armour, portraitSeed, female, nat, loadout{R,L,belt[],pack[]}}]
      stores = {tipoDeItem: quantidade}. Trabalha sobre cópias (sem UT; o armazém é a reserva) e chama
      onChange({loadouts: {id: loadout}, stores}) a cada alteração; quem chama aplica-as ao jogo.
@@ -280,7 +281,9 @@
       }
       return null;
     }
-    // destino de um clique: noutro objeto, só o próprio objeto (recarregar); senão o contentor
+    /* destino de um clique noutro objeto: o próprio objeto (recarregar a arma com o carregador escolhido) ou, se
+       aceitar o objeto escolhido, o contentor onde ele está (tocar numa linha do armazém guarda; munição largada na
+       arma carrega-a). Sem destino válido → null (o clique escolhe esse objeto). Fora de objetos: o contentor. */
     function clickTarget(node) {
       if (!P.sel) return null;
       const srcEl = node && node.closest ? node.closest('[data-src]') : null;
@@ -288,10 +291,17 @@
         if (srcEl.dataset.src === P.sel) return null;
         if (api.canPick(srcEl.dataset.src)) {
           const p = srcEl.dataset.drop ? api.preview(P.sel, srcEl.dataset.drop) : null;
-          return p ? { key: srcEl.dataset.drop, p, el: srcEl } : null;
+          if (p) return { key: srcEl.dataset.drop, p, el: srcEl };
+          const r = resolve(srcEl.parentElement);
+          return r && r.p.ok ? r : null;
         }
       }
       return resolve(node);
+    }
+    // contentor de um objeto que recusa o objeto escolhido (Enter numa casa ocupada: recusar, não trocar a escolha)
+    function refusal(srcEl) {
+      const r = resolve(srcEl.parentElement);
+      return r && !r.p.ok ? r : null;
     }
     function decorate() {
       for (const n of root.querySelectorAll('[data-drop]')) {
@@ -344,8 +354,8 @@
       decorate();
       await api.commit(src, r.key, r.p);
     }
-    // clique (ou Enter) num nó
-    function activate(node) {
+    // clique (ou Enter, kbd = true) num nó
+    function activate(node, kbd) {
       if (api.busy()) return;
       const srcEl = node.closest ? node.closest('[data-src]') : null;
       if (!P.sel) {
@@ -361,6 +371,12 @@
       if (r) {
         if (r.p.ok) commit(r);
         else deny(r.p);
+        return;
+      }
+      // teclado: o objeto escolhido nunca se perde em silêncio — casa ocupada recusa com som e motivo
+      const no = kbd && srcEl && root.contains(srcEl) ? refusal(srcEl) : null;
+      if (no) {
+        deny(no.p.reason ? no.p : { reason: no.p.label });
         return;
       }
       if (srcEl && root.contains(srcEl) && api.canPick(srcEl.dataset.src)) {
@@ -476,6 +492,9 @@
       return r.width > 0 && r.height > 0;
     });
   }
+  /* zonas: cabeçalho, boneco (mãos, cinto, mochila), chão/armazém, painel de informação, equipa. ↑/↓ ficam na
+     zona enquanto houver para onde ir (↓ da mão direita vai ao cinto, não às ações); ←/→ preferem a mesma linha. */
+  const NAV_ZONES = '.inv-head, .inv-doll, .inv-ground, .inv-info, .eq-squad';
   function navMove(scope, cur, dir) {
     const list = navTargets(scope);
     if (!list.length) return null;
@@ -483,19 +502,31 @@
     const a = cur.getBoundingClientRect();
     const ax = a.left + a.width / 2, ay = a.top + a.height / 2;
     const horiz = dir === 'left' || dir === 'right';
-    let best = null, bd = Infinity;
+    const zone = cur.closest(NAV_ZONES);
+    const cands = [];
     for (const n of list) {
       if (n === cur) continue;
       const b = n.getBoundingClientRect();
-      const bx = b.left + b.width / 2, by = b.top + b.height / 2;
-      const dx = bx - ax, dy = by - ay;
+      const dx = b.left + b.width / 2 - ax, dy = b.top + b.height / 2 - ay;
       let main, side;
       if (dir === 'left') { main = -dx; side = Math.abs(dy); } else if (dir === 'right') { main = dx; side = Math.abs(dy); } else if (dir === 'up') { main = -dy; side = Math.abs(dx); } else { main = dy; side = Math.abs(dx); }
       if (main <= 4) continue;
-      // mesma linha (ou coluna) primeiro: sobreposição no eixo perpendicular
+      // sobreposição no eixo perpendicular (mesma linha ou coluna)
       const overlap = horiz ? Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) : Math.min(a.right, b.right) - Math.max(a.left, b.left);
-      const d = overlap > 4 ? main : 100000 + main + side * 3;
-      if (d < bd) { bd = d; best = n; }
+      // ←/→ fora da linha: só dentro de um cone (nunca uma casa muito mais abaixo ou acima)
+      if (horiz && overlap <= 4 && side > main * 2.5) continue;
+      cands.push({ n, main, side, overlap: overlap > 4, same: n.closest(NAV_ZONES) === zone });
+    }
+    // ↑/↓ dentro da zona: a linha mais próxima primeiro (da mão vai-se ao cinto, não à mochila nem às ações) e,
+    // nela, o vizinho mais próximo na horizontal
+    const rowMin = horiz ? 0 : Math.min(Infinity, ...cands.filter((c) => c.same).map((c) => c.main));
+    let best = null, bd = Infinity;
+    for (const c of cands) {
+      let d;
+      if (horiz) d = ((c.overlap ? 0 : 2) + (c.same ? 0 : 1)) * 1e6 + (c.overlap ? c.main : c.main + c.side * 3);
+      else if (c.same) d = (c.main <= rowMin + 12 ? 0 : 1e5 + c.main * 10) + (c.overlap ? 0 : c.side);
+      else d = 2e6 + (c.overlap ? c.main : 1e5 + c.main + c.side * 3);
+      if (d < bd) { bd = d; best = c.n; }
     }
     return best || cur;
   }
@@ -503,23 +534,32 @@
     if (V.focusEl && V.focusEl !== node) V.focusEl.classList.remove('kfocus');
     V.focusEl = node || null;
     V.focusKey = node ? navKey(node) : null;
+    const box = node && node.closest ? node.closest('[data-drop]') : null;
+    V.focusBox = box ? box.dataset.drop : null;
     if (node) {
       node.classList.add('kfocus');
       if (node.scrollIntoView) node.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     }
   }
   const navKey = (n) => n.dataset.src || n.dataset.drop || n.dataset.act || n.dataset.part || n.dataset.pid || null;
+  /* depois de redesenhar: o mesmo nó (pela chave) ou, se mudou (objeto pousado, mão que ficou cheia, casa vazia sem
+     chave), o compartimento onde o foco estava — o objeto que lá chegou (o último) ou a 1.ª casa. Nunca salta para
+     o 1.º botão do ecrã (o Enter seguinte copiaria). */
   function restoreFocus(V, scope) {
-    if (!V.kbd || !V.focusKey) return;
-    const sel = '[data-src="' + V.focusKey + '"],[data-drop="' + V.focusKey + '"],[data-act="' + V.focusKey + '"],[data-part="' + V.focusKey + '"],[data-pid="' + V.focusKey + '"]';
-    const n = scope.querySelector(sel);
-    if (n && n.dataset.nav) {
-      V.focusEl = null;
-      setFocus(V, n);
-    } else {
-      V.focusEl = null;
-      setFocus(V, navTargets(scope)[0] || null);
+    if (!V.kbd || (!V.focusKey && !V.focusBox)) return;
+    const k = V.focusKey;
+    let n = k ? scope.querySelector('[data-src="' + k + '"],[data-drop="' + k + '"],[data-act="' + k + '"],[data-part="' + k + '"],[data-pid="' + k + '"]') : null;
+    if (!(n && n.dataset.nav)) {
+      n = null;
+      const box = V.focusBox ? scope.querySelector('[data-drop="' + V.focusBox + '"]') : null;
+      if (box) {
+        const items = navTargets(box);
+        const srcs = items.filter((x) => x.dataset.src);
+        n = (V.focusBox === 'slot:stores' || V.focusBox === 'slot:ground' ? srcs[0] : srcs[srcs.length - 1]) || items[0] || (box.dataset.nav ? box : null);
+      }
     }
+    V.focusEl = null;
+    setFocus(V, n || navTargets(scope)[0] || null);
   }
 
   /* =============================================================================================================
@@ -1058,7 +1098,7 @@
         return true;
       }
       if (V.focusEl.tagName === 'BUTTON') V.focusEl.click();
-      else P.activate(V.focusEl);
+      else P.activate(V.focusEl, true);
       return true;
     }
     if (key === 'Tab') { switchUnit(m.shift ? -1 : 1); return true; }
@@ -1604,6 +1644,34 @@
     return false;
   }
 
+  /* que carregador vai para dentro de cada arma no início da missão — a mesma escolha de OV.BUnits.autoLoad (mão
+     direita e depois a esquerda; o 1.º carregador compatível do cinto e depois da mochila). → {R, L}: {slot, k, type}|null */
+  function loadPlan(lo) {
+    const used = { belt: new Set(), pack: new Set() };
+    const out = { R: null, L: null };
+    for (const h of ['R', 'L']) {
+      const gd = lo && lo[h] ? defOf(lo[h]) : null;
+      if (!gd || gd.kind !== 'firearm' || !Array.isArray(gd.ammo) || !gd.ammo.length) continue;
+      for (const sl of ['belt', 'pack']) {
+        const k = ((lo && lo[sl]) || []).findIndex((t, j) => !used[sl].has(j) && gd.ammo.indexOf(t) >= 0);
+        if (k >= 0) {
+          used[sl].add(k);
+          out[h] = { slot: sl, k, type: lo[sl][k] };
+          break;
+        }
+      }
+    }
+    return out;
+  }
+  // arma na mão com munição própria: o carregador largado nela vai para o cinto (ou a mochila) → compartimento | null
+  function loadSlot(lo, hand, type) {
+    const gd = lo && lo[hand] ? defOf(lo[hand]) : null;
+    const d = defOf(type);
+    if (!gd || !d || d.kind !== 'ammo' || !Array.isArray(gd.ammo) || gd.ammo.indexOf(type) < 0) return undefined;
+    for (const sl of ['belt', 'pack']) if (D().fitsSlot(type, sl, lo[sl])) return sl;
+    return null;
+  }
+
   function equipScreen(container, options) {
     const o = options || {};
     const squad = (o.squad || []).slice();
@@ -1659,7 +1727,13 @@
       if (to === 'stores') return { ok: true, label: T('hud.equip.toStores') };
       const l = lo();
       if (to === 'R' || to === 'L') {
-        if (l[to]) return { ok: false, label: T('hud.inv.occupied'), reason: T('bs.slotFull') };
+        if (l[to]) {
+          // munição do armazém largada na arma: carrega-a (ou fica de reserva, se a arma já parte carregada)
+          const ls = fromSlot === 'stores' ? loadSlot(l, to, type) : undefined;
+          if (ls === null) return { ok: false, label: T('hud.inv.noFit'), reason: T('bs.noRoom') };
+          if (ls) return { ok: true, label: T(loadPlan(l)[to] ? 'hud.equip.spare' : 'hud.equip.load') };
+          return { ok: false, label: T('hud.inv.occupied'), reason: T('bs.slotFull') };
+        }
         return equipable(type) ? { ok: true, label: '' } : { ok: false, label: T('hud.inv.noFit'), reason: T('bs.noRoom') };
       }
       const contents = l[to].slice();
@@ -1672,12 +1746,15 @@
       const to = drop.slice(5);
       const l = lo();
       if (!type || !l) return;
+      // munição largada numa arma ocupada: vai para o compartimento de onde a arma a carrega
+      const slot = (to === 'R' || to === 'L') && l[to] ? loadSlot(l, to, type) : to;
+      if (!slot) return;
       if (src.startsWith('st:')) {
         if (!take(type)) return;
       } else removeSrc(src);
-      if (to === 'stores') give(type);
-      else if (to === 'R' || to === 'L') l[to] = type;
-      else l[to].push(type);
+      if (slot === 'stores') give(type);
+      else if (slot === 'R' || slot === 'L') l[slot] = type;
+      else l[slot].push(type);
       sfx('ui_click');
       emit();
       draw();
@@ -1739,7 +1816,7 @@
       draw();
     }
     function eqTile(src, type, o2) {
-      const t = tileEl({ src, type, name: T(defOf(type).nameKey), count: o2.count }, o2);
+      const t = tileEl({ src, type, name: T(defOf(type).nameKey), count: o2.count, ammo: o2.ammo }, o2);
       // por investigar: o motor recusa usá-lo em combate
       if (!known(type)) {
         t.classList.add('unk');
@@ -1816,9 +1893,16 @@
         }
         head.appendChild(btns);
         doll.appendChild(head);
+        // a arma parte carregada com o 1.º carregador compatível: indicador «20/20» na mão e «Na arma» nesse carregador
+        const plan = loadPlan(l);
+        const inWeapon = {};
+        for (const h of ['R', 'L']) if (plan[h]) inWeapon[plan[h].slot + ':' + plan[h].k] = true;
         const hand = (h) => {
           const box = el('div', { class: 'inv-hand' + (l[h] ? '' : ' empty'), dataset: { drop: 'slot:' + h } }, el('div', { class: 'inv-cap' }, el('span', { text: T('inv.' + h) })));
-          if (l[h]) box.appendChild(eqTile('lo:' + h + ':0', l[h], { icon: 96, nameOn: true, big: true, cls: 'big' }));
+          const gd = l[h] ? defOf(l[h]) : null;
+          const needs = !!gd && gd.kind === 'firearm' && Array.isArray(gd.ammo) && gd.ammo.length > 0;
+          const ammo = !needs ? undefined : plan[h] ? { type: plan[h].type, rounds: (defOf(plan[h].type) || {}).rounds | 0 } : null;
+          if (l[h]) box.appendChild(eqTile('lo:' + h + ':0', l[h], { icon: 96, nameOn: true, big: true, cls: 'big', ammo }));
           else {
             box.dataset.nav = '1';
             box.appendChild(el('div', { class: 'inv-empty', text: T('hud.hand.empty') }));
@@ -1834,7 +1918,12 @@
           cells.style.setProperty('--cap', String(cap));
           l[slot].forEach((t, k) => {
             used += sizeOf(t);
-            cells.appendChild(eqTile('lo:' + slot + ':' + k, t, { icon: 46, cls: 'cell' }));
+            const c = eqTile('lo:' + slot + ':' + k, t, { icon: 46, cls: 'cell' });
+            if (inWeapon[slot + ':' + k]) {
+              c.classList.add('inweapon');
+              c.appendChild(el('span', { class: 'eq-inw', text: T('hud.equip.inWeapon') }));
+            }
+            cells.appendChild(c);
           });
           for (let k = used; k < cap; k++) {
             const c = el('div', { class: 'inv-slotcell' });
@@ -1871,7 +1960,8 @@
       for (const n of root.querySelectorAll('[data-src]')) {
         const type = srcType(n.dataset.src);
         if (!type) continue;
-        OV.Dom.tooltip(n, () => (picker.sel ? '' : tipHtml(T(defOf(type).nameKey), eqStatLines(type, s))));
+        const extra = n.classList.contains('inweapon') ? T('hud.equip.inWeapon.tip') : n.querySelector('.inv-badge.ammo.empty') ? T('hud.equip.noAmmo.tip') : null;
+        OV.Dom.tooltip(n, () => (picker.sel ? '' : tipHtml(T(defOf(type).nameKey), extra ? [extra].concat(eqStatLines(type, s)) : eqStatLines(type, s))));
         n.addEventListener('mouseenter', () => { E.hoverSrc = n.dataset.src; drawInfo(); });
         n.addEventListener('mouseleave', () => { if (E.hoverSrc === n.dataset.src) { E.hoverSrc = null; drawInfo(); } });
       }
@@ -1913,7 +2003,7 @@
         eat();
         if (e.repeat) return;
         if (E.focusEl.tagName === 'BUTTON') E.focusEl.click();
-        else picker.activate(E.focusEl);
+        else picker.activate(E.focusEl, true);
         return;
       }
       if (key === 'Escape' && picker.sel) {
@@ -1935,10 +2025,16 @@
         if (x) selectSol(x.id);
         return;
       }
-      if ((key === 'Backspace' || key === 'Delete') && E.focusEl && E.focusEl.dataset.src && E.focusEl.dataset.src.startsWith('lo:')) {
-        eat();
-        eqCommit(E.focusEl.dataset.src, 'slot:stores');
-        return;
+      // ⌫ devolve ao armazém o objeto escolhido (rato, toque ou teclado) ou, sem escolha, o que tem o foco do teclado
+      if (key === 'Backspace' || key === 'Delete') {
+        const fsrc = E.kbd && E.focusEl && root.contains(E.focusEl) ? E.focusEl.dataset.src : null;
+        const src = picker.sel ? picker.sel : fsrc;
+        if (src && src.startsWith('lo:')) {
+          eat();
+          picker.select(null, true);
+          eqCommit(src, 'slot:stores');
+          return;
+        }
       }
       const c = EQ_CMDS.find((x) => x[2].toLowerCase() === lk);
       if (c) {
@@ -1979,7 +2075,7 @@
     isOpen: () => !!V,
     refresh() { if (V) render(); },
     equipScreen,
-    model: { autoLoadout, armedLo },
+    model: { autoLoadout, armedLo, loadPlan },
     debug: {
       state() {
         if (!V) return { open: false };

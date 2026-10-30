@@ -346,7 +346,9 @@
     const u = unit(B, ev.unitId);
     if (!isPlayer(u) || B.side !== 'xcom') return;
     if (ev.reason === 'spotted' || ev.reason === 'stopped') return;
-    toast(C, 'bs.' + ev.reason, null, 'warn');
+    // parou para não comer a reserva de UT: dizer porquê e como ir mais longe (a etiqueta do caminho já o avisava)
+    const touch = OV.Input && OV.Input.lastPointerType === 'touch';
+    toast(C, ev.reason === 'reserved' ? (touch ? 'hud.stop.reserved.touch' : 'hud.stop.reserved') : 'bs.' + ev.reason, null, 'warn');
     sfx(C, B, 'ui_deny');
   };
 
@@ -517,8 +519,9 @@
   };
 
   H.zombify = async function (C, B, ev) {
-    const u = unit(B, ev.unitId);
-    if (u) toast(C, 'bs.ev.zombify', { name: name(u) }, 'alert');
+    // o nome é o de quem se transformou (fromId), não o do zombie novo (unitId)
+    const u = unit(B, ev.fromId);
+    if (u) toast(C, gk('bs.ev.zombify', u), { name: name(u) }, 'alert');
     dropEntry(C, ev.unitId);
     await wait(DUR.endBeat);
   };

@@ -3,7 +3,7 @@
      'hover'     {x,y}                      movimento do rato sem botões
      'leave'                                cursor saiu do canvas
      'down'      {x,y,button}               botão primário pressionado (para arrastos)
-     'click'     {x,y,mods,pointerType}     clique primário sem arrasto (toque curto incluído)
+     'click'     {x,y,mods,pointerType,detail}  clique primário sem arrasto (toque curto incluído); detail 2 = 2.º de um duplo
      'dblclick'  {x,y,mods}
      'secondary' {x,y,mods}                 botão direito, ctrl+clique (Mac), toque de dois dedos, toque longo
      'dragstart'/'drag'/'dragend' {x,y,dx,dy,button,pointerType}  arrasto (dx,dy = delta do ponteiro)
@@ -202,7 +202,8 @@
       if (cancelled || pr.button !== 0) return;
       const now = performance.now();
       const isDbl = now - lastClick.t < DBL_MS && Math.hypot(p.x - lastClick.x, p.y - lastClick.y) < 8;
-      emit({ kind: 'click', x: p.x, y: p.y, mods: pr.mods, pointerType: pr.pointerType });
+      // detail: 1 = clique simples, 2 = 2.º clique de um duplo clique (como MouseEvent.detail)
+      emit({ kind: 'click', x: p.x, y: p.y, mods: pr.mods, pointerType: pr.pointerType, detail: isDbl ? 2 : 1 });
       if (isDbl) {
         emit({ kind: 'dblclick', x: p.x, y: p.y, mods: pr.mods, pointerType: pr.pointerType });
         lastClick.t = 0;
