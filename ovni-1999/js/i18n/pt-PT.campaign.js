@@ -138,7 +138,7 @@
     'cp.br.note.waitDay': 'Sugestão: «Esperar pelo dia» (W) deixa a nave no local e volta a perguntar ao amanhecer — de dia os soldados veem tão longe como os alienígenas.',
     'cp.br.note.waitDay.touch': 'Sugestão: o botão «Esperar pelo dia» deixa a nave no local e volta a perguntar ao amanhecer — de dia os soldados veem tão longe como os alienígenas.',
     'cp.br.waitDay.tip': 'Cancelar por agora: a nave fica no local e o Geoscape avisa quando amanhecer',
-    'cp.br.waitDay.toast': 'A nave espera no local. Avisamos quando amanhecer.',
+    'cp.br.waitDay.toast': 'A nave espera no local e o tempo acelera. Avisamos quando amanhecer.',
 
     // ---- equipar ----
     'cp.eq.kicker': 'Equipar · {base}',

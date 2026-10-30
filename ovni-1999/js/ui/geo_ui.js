@@ -121,12 +121,26 @@
     if (!tg) return T('geo.tk.gone');
     if (ref.kind === 'ufo') return ufoName(tg.obj);
     if (ref.kind === 'site') return T('geo.site.terror', { city: cityName(tg.obj.cityId) });
-    if (ref.kind === 'alienBase') return T('geo.alienBase.name', { place: placeName(tg.lon, tg.lat) });
+    if (ref.kind === 'alienBase') return alienBaseName(G, tg.obj);
     if (ref.kind === 'base') return baseName(tg.obj);
     if (ref.kind === 'craft') return craftName(G, tg.obj);
     return '—';
   }
   const raceName = (r) => (r && has('race.' + r) ? T('race.' + r) : T('geo.unknown'));
+  const racePl = (r) => (r && has('race.' + r + '.plural') ? T('race.' + r + '.plural') : raceName(r));
+  /* bases alienígenas: a raça distingue duas bases no mesmo país («Base alienígena (Muton, Nigéria)»); se ainda assim
+     houver duas iguais, leva o número («Base alienígena 2 (Muton, Nigéria)») */
+  function alienBaseTwin(G, a) {
+    const p = placeName(a.lon, a.lat);
+    return (G.alienBases || []).some((o) => o !== a && o.discovered && o.race === a.race && placeName(o.lon, o.lat) === p);
+  }
+  function alienBaseName(G, a) {
+    const p = { place: placeName(a.lon, a.lat), race: racePl(a.race), n: numOf(a.id) };
+    if (!a.race || !has('race.' + a.race)) return T('geo.alienBase.name', p);
+    return T(alienBaseTwin(G, a) ? 'geo.alienBase.nameNum' : 'geo.alienBase.nameRace', p);
+  }
+  // mais alguma base alienígena já conhecida no mesmo país/região? (o alerta diz «outra base alienígena»)
+  const alienBaseOther = (G, a) => (G.alienBases || []).some((o) => o !== a && o.discovered && placeName(o.lon, o.lat) === placeName(a.lon, a.lat));
 
   // ---- estados ----------------------------------------------------------------------------------------------------
   function craftStatusKey(c, G) {
@@ -559,6 +573,14 @@
   }
   // velocidade sugerida para uma viagem de h horas (índice 0..5): 5 min até 1 h, 30 min até 6 h, depois 1 hora
   const suggestSpeed = (h) => (h <= 1 ? 2 : h <= 6 ? 3 : 4);
+  // velocidade para «Esperar pelo dia» (h horas até amanhecer): nunca abaixo de «30 min»
+  const waitSpeed = (h) => (h > 6 ? 4 : 3);
+  // linha do porquê na chegada de noite/crepúsculo; com a pergunta curta por cima, a variante .short não a repete
+  // → chave .short ou null (null: a linha completa)
+  function nightLineKey(ph, nt, asked) {
+    const k = 'geo.ev.arrived.' + ph + (nt.crashed ? '.crash' : nt.safe ? '.safe' : '') + '.short';
+    return asked && has(k) ? k : null;
+  }
 
   // ---- relógio (contrato §6.3) --------------------------------------------------------------------------------------
   // st = {speed:0..5, paused, acc}; handle(events) recebe cada lote escoado de G.events
@@ -733,6 +755,10 @@
     k.push('geo.alert.aboard.one', 'geo.alert.aboard.other', 'geo.short.title', 'geo.short.risk', 'geo.short.board', 'geo.short.go', 'geo.ev.arrived.night.ask', 'geo.ev.arrived.night.fuel', 'geo.ev.arrived.night.safe', 'geo.a.attackNow',
       'geo.a.putAboard', 'geo.ev.delivery.gearHint', 'geo.tm.keys', 'geo.tm.keys.mouse', 'geo.tm.keys.touch', 'geo.dfBanner.text.touch',
       'geo.ev.team.eta.night.flares.touch.one', 'geo.ev.team.eta.night.flares.touch.other', 'geo.idle.toast.touch');
+    // ronda de personas 4: bases alienígenas com raça/número, alerta «outra base», noite sem a pergunta repetida, espera acelerada
+    k.push('geo.alienBase.nameRace', 'geo.alienBase.nameNum', 'geo.alienBase.shortNum', 'geo.toast.waitDay.fast');
+    for (const r of ['patrol', 'agents', 'supply']) k.push('geo.ev.alienBaseFound.' + r + '.another');
+    for (const p of ['night', 'dusk']) for (const v of ['', '.crash', '.safe']) k.push('geo.ev.arrived.' + p + v + '.short');
     for (const id of STEP_IDS) k.push('geo.steps.' + id);
     for (const r of ['sci', 'eng']) k.push('geo.idle.' + r + '.one', 'geo.idle.' + r + '.other');
     // ronda 3 (jogadora casual): nave já a caminho de outra missão, crepúsculo à chegada, caixas de munição, plurais
@@ -755,7 +781,7 @@
     prodName, itemName, researchName, textKeys, ufoVisible, WORLD_REASONS, WORLD_WARNS, MISSION_REASONS,
     groundTarget, teamEta, teamEtaLine, busyLine, nightAt, dayAt, idleStaff, nextSteps, suggestSpeed, dropBaseLosses, logTerror,
     crewEstimate, arrivingSoldiers, squadShort, noAmmo, waitIsDefault, loiterHours, homeTransport, GEAR_KINDS,
-    busyDest, headingText, ammoSuggest,
+    busyDest, headingText, ammoSuggest, alienBaseName, alienBaseTwin, alienBaseOther, waitSpeed, nightLineKey,
   };
 
   // =================================================================================================================
@@ -1082,7 +1108,8 @@
       sec(T('geo.list.ufos'), ufos.length, ufos.map((u) => listRow('k-' + u.status, 'ufo', ufoName(u), T('geo.ufo.st.' + u.status) + ' · ' + ufoWhat(G, u),
         u.status === 'flying' ? fmtKn(u.speed) : placeName(u.lon, u.lat), refOf('ufo', u.id))), T('geo.list.ufos.none'));
       const siteRowsEl = G.sites.map((s) => listRow('k-terror', 'skull', cityName(s.cityId), T('geo.site.kind') + ' · ' + raceName(s.race), fmtDur(Math.max(0, s.leftS) / 3600), refOf('site', s.id)))
-        .concat(abs.map((a) => listRow('k-abase', 'alien', T('geo.alienBase.short'), placeName(a.lon, a.lat), '', refOf('alienBase', a.id))));
+        .concat(abs.map((a) => listRow('k-abase', 'alien', alienBaseTwin(G, a) ? T('geo.alienBase.shortNum', { n: numOf(a.id) }) : T('geo.alienBase.short'),
+          placeName(a.lon, a.lat) + (a.race && has('race.' + a.race) ? ' · ' + racePl(a.race) : ''), '', refOf('alienBase', a.id))));
       sec(T('geo.list.sites'), siteRowsEl.length, siteRowsEl, T('geo.list.sites.none'));
       sec(T('geo.list.crafts'), crafts.length, crafts.map((c) => listRow('k-craft' + (D().crafts[c.type] && D().crafts[c.type].transport ? ' k-transport' : ''), 'craft', craftName(G, c),
         T(craftStatusKey(c, G)) + (c.dest && c.status !== 'returning' ? ' · ' + targetName(G, c.dest) : ''), pct(c.fuel, D().crafts[c.type].fuel) + ' %', refOf('craft', c.id))), T('geo.list.crafts.none'));
@@ -2138,10 +2165,11 @@
             const lines = unarmed ? [Tn('geo.ev.arrived.unarmed', unarmed)] : [];
             // crepúsculo: o mesmo aviso e a mesma escolha, com o que é verdade nessa luz (a visão é a do dia)
             const ph = nt && nt.dusk ? 'dusk' : 'night';
-            if (nt) lines.unshift(T('geo.ev.arrived.' + ph + (nt.crashed ? '.crash' : nt.safe ? '.safe' : ''), { t: fmtDur(nt.h), d: tune('VIEW_DIST', 20) }));
             // em Recruta, ou até à 1.ª missão noturna, esperar pelo dia é o botão por omissão (Enter) — salvo destroços
-            // que não duram até lá; a pergunta curta vem primeiro (o parágrafo do porquê fica por baixo)
+            // que não duram até lá; a pergunta curta vem primeiro e o parágrafo do porquê, por baixo, não a repete (.short)
             const waitDef = !!nt && waitIsDefault(G, tref, nt, c);
+            const nk = nt ? nightLineKey(ph, nt, waitDef) : null, np = nt ? { t: fmtDur(nt.h), d: tune('VIEW_DIST', 20) } : null;
+            if (nt) lines.unshift(nk ? T(nk, np) : T('geo.ev.arrived.' + ph + (nt.crashed ? '.crash' : nt.safe ? '.safe' : ''), np));
             if (waitDef) lines.unshift(T('geo.ev.arrived.night.ask', { t: fmtDur(nt.h) }));
             // sem combustível para esperar: dizê-lo (esperar seria regressar à base sem missão)
             const lh = nt ? loiterHours(G, c) : Infinity;
@@ -2312,7 +2340,7 @@
           const ref = refOf('alienBase', a.id);
           return {
             tone: 'alert', icon: 'alien', title: T('geo.ev.alienBaseFound'), sound: 'ufo_detected', focus: ref,
-            text: T('geo.ev.alienBaseFound.' + (has('geo.ev.alienBaseFound.' + ev.how) ? ev.how : 'agents'), { place: placeName(a.lon, a.lat) }),
+            text: T('geo.ev.alienBaseFound.' + (has('geo.ev.alienBaseFound.' + ev.how) ? ev.how : 'agents') + (alienBaseOther(G, a) ? '.another' : ''), { place: placeName(a.lon, a.lat), race: racePl(a.race) }),
             rows: alienBaseRows(G, a), lines: [T('geo.ev.alienBaseFound.stakes')], buttons: [sendBtn(ref, true), centreBtn(ref), ok],
           };
         }
@@ -2610,9 +2638,13 @@
     function waitForDay(craftId, ref, nt) {
       const L = Array.isArray(G.ui.waitDay) ? G.ui.waitDay.filter((w) => w.craftId !== craftId) : [];
       // until: o mesmo limite das horas anunciadas (nightAt conta até 'day', não até ao fim da noite)
-      L.push({ craftId, kind: ref.kind, id: ref.id, until: G.t + nt.h * 3600 });
+      L.push({ craftId, kind: ref.kind, id: ref.id, until: G.t + nt.h * 3600, sped: true });
       G.ui.waitDay = L;
-      OV.Dom.toast(T('geo.toast.waitDay', { t: fmtDur(nt.h) }), null, 'info');
+      // esperar não é ficar 5 min reais a olhar: o tempo passa a «30 min» (ou «1 hora» para mais de 6 h); o amanhecer
+      // no local para o relógio (checkWaitDay) e a janela «Equipa no local» volta
+      const sp = Math.max(clk.speed, waitSpeed(nt.h));
+      setSpeed(sp);
+      OV.Dom.toast(T('geo.toast.waitDay.fast', { t: fmtDur(nt.h), s: T('geo.speed.' + sp) }), null, 'info');
     }
     function checkWaitDay() {
       const L = G.ui.waitDay;
@@ -3023,6 +3055,9 @@
         S.mood = null;
         updateMood();
         if (Array.isArray(G.events) && G.events.length) handle(G.events.splice(0));
+        // «Esperar pelo dia» pedido no briefing: o tempo acelera aqui, como na janela «Equipa no local»
+        const wd = Array.isArray(G.ui.waitDay) ? G.ui.waitDay.filter((w) => !w.sped) : [];
+        if (wd.length) { for (const w of wd) w.sped = true; setSpeed(Math.max(clk.speed, waitSpeed(0))); }
         S.sigs = {};
         refreshTime(true);
         refreshLists(true);

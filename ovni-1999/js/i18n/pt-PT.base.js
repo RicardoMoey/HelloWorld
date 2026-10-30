@@ -781,5 +781,16 @@
     'base.research.sub.one': '1 projeto disponível',
     'base.research.sub.other': '{n} projetos disponíveis',
     'base.research.hint.finalMission.touch': 'A missão final está disponível: no separador Naves, «Missão final: Cidónia» envia o Vingador com a equipa a bordo.',
+    // ronda de personas 4
+    'base.market.kbdHint.buy': 'Teclado: ↑/↓ mudam de linha (PgUp/PgDn saltam 6), ←/→ a quantidade (⇧ ±10, Início/Fim mínimo/máximo), Enter compra.',
+    'base.market.kbdHint.sell': 'Teclado: ↑/↓ mudam de linha (PgUp/PgDn saltam 6), ←/→ a quantidade (⇧ ±10, Fim = tudo), Enter vende.',
+    'base.market.rowKeys': 'Na linha: ←/→ quantidade, ↑/↓ outra linha.',
+    'base.market.needFor.one': 'Necessário para investigar: {topics}',
+    'base.market.needFor.other': 'Necessário para investigar: {topics}',
+    'base.market.sellLast.title': 'Material para investigar',
+    'base.market.sellLast.body.one': 'Vender {n} × {name} deixa a base sem nenhum: o projeto «{topics}» deixa de se poder investigar até apanhar outro.',
+    'base.market.sellLast.body.other': 'Vender {n} × {name} deixa a base sem nenhum: os projetos {topics} deixam de se poder investigar até apanhar outro.',
+    'base.market.sellLast.keep': 'Guardar',
+    'base.market.sellLast.ok': 'Vender {n} mesmo assim',
   });
 })(globalThis.OV || (globalThis.OV = {}));

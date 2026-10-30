@@ -389,7 +389,20 @@ body:has(.scr.bsc:not(.scr-paused):not(.scr-leaving)) #toasts { top: calc(132px 
   .bsc-topstats .bsc-ts:first-child span { display: none; }
   .bsc-topstats .bsc-ts:first-child b { font-size: 11.5px; white-space: normal; max-width: 7.5em; line-height: 1.25; }
   .bsc-topbtns .btn { padding: 0 10px; }
+  /* fora das Instalações a grelha fica pequena (referência) e o separador ganha a altura: a ficha do soldado, o Mercado
+     e a Investigação não ficam metidos numa caixa de 520 px por baixo de uma grelha de 6×6 e da ficha da instalação */
+  .bsc-body:not([data-tab="facilities"]) { grid-template-rows: minmax(150px, 22%) minmax(0, 1fr); }
+  .bsc-body:not([data-tab="facilities"]) .bsc-info { display: none; }
+  .bsc-body:not([data-tab="facilities"]) .bsc-left { grid-template-columns: minmax(0, 1fr) minmax(240px, 52%); grid-template-rows: minmax(0, 1fr); }
+  .bsc-body:not([data-tab="facilities"]) .bsc-gridhost { grid-row: 1; }
+  .bsc-body:not([data-tab="facilities"]) .bsc-caps { align-self: center; }
 }
+/* teclado: a ajuda do Mercado não aparece no toque */
+@media (hover: none) { .bsc-kbd-hint { display: none; } }
+.bsc-kbd-hint { margin: -4px 0 10px; font-size: 11.5px; }
+/* venda que tira o material de um projeto de investigação */
+.bsc-row-need { margin-top: 2px; font-size: 11.5px; font-weight: 700; color: var(--amber); }
+.bsc-row-need::before { content: '◆ '; }
 /* toque: alvos ≥ 32 px, sem atalhos de teclado à vista */
 @media (hover: none) {
   .bsc .btn.small, .bsc-sheet .btn.small { min-height: 36px; padding: 0 11px; }

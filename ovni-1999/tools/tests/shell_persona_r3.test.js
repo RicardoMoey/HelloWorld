@@ -125,7 +125,7 @@ module.exports = function (OV, t) {
   // ---- base ------------------------------------------------------------------------------------------------------
   t.test('base: Contratar, Despedir, Iniciar (investigação e fabrico) e Interrogar com guarda de duplo clique', () => {
     const src = read('js/ui/base_ui.js');
-    t.ok(/let lastOnceT = -1e9;\s*function oneShot\(e\)/.test(src), 'guarda ao nível do módulo');
+    t.ok(/let lastOnceT = -1e9[^;]*;[\s\S]{0,600}?function oneShot\(e\)/.test(src), 'guarda ao nível do módulo');
     t.ok(/if \(o\.once && !oneShot\(e\)\) return;/.test(src), 'btn({once}) corta o 2.º clique');
     t.ok(/errText\(why\) : null, once: true,\s*on: \(\) => act\(\(\) => BS\(\)\.hire/.test(src), 'Contratar');
     t.ok(/errText\('busy'\) : null, once: true,\s*on: \(\) => act\(\(\) => BS\(\)\.sack/.test(src), 'Despedir');

@@ -1,8 +1,8 @@
 /* Utilitários DOM: criação de elementos, toasts, modais com Promise (foco preso e devolvido), tooltips, barras.
    OV.Dom = { $, el, clear, toast (o mesmo aviso à vista não se repete), clearToasts, modal, anyModalOpen, tooltip (também toque longo no iPad), hideTooltip, hideLongPress, bar,
               download, pickFile,
-              trapFocus(caixa, {keep, returnTo}) → release(restore?) ; trapOpen() ; focusKey(nó) ; refocus(chave, dentro?) ;
-              focusables(caixa) } */
+              trapFocus(caixa, {keep, returnTo}) → release(restore?) ; trapOpen() ; focusKey(nó) → chave única ou null ; refocus(chave, dentro?) ;
+              focusables(caixa) ; ghostClick(event, nascido) → true se for o 2.º clique de um duplo clique num botão acabado de aparecer } */
 (function (OV) {
   'use strict';
 
@@ -71,23 +71,56 @@
   function focusables(box) {
     return [...box.querySelectorAll(FOCUSABLE)].filter((n) => !n.closest('[inert]') && !n.closest('.hidden') && n.offsetParent !== null);
   }
-  // chave estável de um elemento (para o reencontrar depois de um redesenho)
+  /* chave estável de um elemento (para o reencontrar depois de um redesenho). Só serve uma chave que identifique UM nó
+     na página: data-* com identidade, id, aria-label ou a combinação; sem isso, o texto do botão e a ordem entre os
+     iguais («T␟seletor␟texto␟n»). Nunca uma chave genérica que apanhe o primeiro botão qualquer (ex.: «Novo projeto»). */
+  const SEP = '\u241f';
+  const qv = (v) => String(v).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  const txtOf = (n) => (n.textContent || '').replace(/\s+/g, ' ').trim();
   function focusKey(n) {
-    if (!n || n === document.body || !n.getAttribute) return null;
+    if (!n || n === document.body || !n.getAttribute || !n.tagName) return null;
+    const tag = n.tagName.toLowerCase();
+    const doc = n.ownerDocument || document;
+    const unique = (sel) => { try { return doc.querySelectorAll(sel).length === 1; } catch (e) { return false; } };
     const ds = n.dataset ? Object.keys(n.dataset) : [];
-    if (ds.length) return n.tagName.toLowerCase() + ds.map((k) => '[data-' + k.replace(/[A-Z]/g, (c) => '-' + c.toLowerCase()) + '="' + String(n.dataset[k]).replace(/"/g, '\\"') + '"]').join('');
-    if (n.id) return '#' + n.id;
+    const dsSel = ds.map((k) => '[data-' + k.replace(/[A-Z]/g, (c) => '-' + c.toLowerCase()) + '="' + qv(n.dataset[k]) + '"]').join('');
     const lbl = n.getAttribute('aria-label');
-    if (lbl) return n.tagName.toLowerCase() + '[aria-label="' + lbl.replace(/"/g, '\\"') + '"]';
-    return null;
+    const lblSel = lbl ? '[aria-label="' + qv(lbl) + '"]' : '';
+    const cands = [];
+    if (dsSel) cands.push(tag + dsSel);
+    if (n.id && /^[A-Za-z][\w-]*$/.test(n.id)) cands.push('#' + n.id);
+    if (lblSel) cands.push(tag + lblSel);
+    if (dsSel && lblSel) cands.push(tag + dsSel + lblSel);
+    for (const c of cands) if (unique(c)) return c;
+    const base = tag + dsSel + lblSel;
+    const txt = txtOf(n);
+    if (!txt && !dsSel && !lblSel) return null;
+    let same = [];
+    try { same = [...doc.querySelectorAll(base)].filter((x) => txtOf(x) === txt); } catch (e) { return null; }
+    const i = same.indexOf(n);
+    return i < 0 ? null : 'T' + SEP + base + SEP + txt + SEP + i;
   }
   function refocus(key, within) {
     if (!key) return false;
     let n = null;
-    try { n = (within || document).querySelector(key); } catch (e) { n = null; }
+    if (key.charAt(0) === 'T' && key.charAt(1) === SEP) {
+      const [, base, txt, i] = key.split(SEP);
+      try { n = [...document.querySelectorAll(base)].filter((x) => txtOf(x) === txt)[+i] || null; } catch (e) { n = null; }
+      if (n && within && !within.contains(n)) n = null;
+    } else {
+      try { n = (within || document).querySelector(key); } catch (e) { n = null; }
+    }
     if (!n || n.closest('[inert]') || n.disabled) return false;
     n.focus({ preventScroll: true });
     return document.activeElement === n;
+  }
+  /* clique fantasma: o 2.º clique de um duplo clique (event.detail ≥ 2) que cai num botão acabado de aparecer (ecrã
+     novo no mesmo sítio do anterior) não o ativa. born = instante em que o botão nasceu (performance.now()) */
+  const GHOST_MS = 600;
+  function ghostClick(e, born) {
+    if (!e || (e.detail | 0) < 2) return false;
+    const t = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    return t - (born || 0) < GHOST_MS;
   }
   function trapFocus(box, opts) {
     const o = opts || {};
@@ -249,9 +282,10 @@
     lpHideT = setTimeout(hideLongPress, 2600);
     if (OV.audio && OV.audio.play) OV.audio.play('ui_click', { vol: 0.4 });
   }
+  // nós que já têm o toque longo (fora do DOM: um data-* aqui poluía as chaves de foco de todos os botões)
+  const lpDone = typeof WeakSet !== 'undefined' ? new WeakSet() : null;
   function longPress(node, html) {
-    if (node.dataset.lp) return;
-    node.dataset.lp = '1';
+    if (lpDone) { if (lpDone.has(node)) return; lpDone.add(node); }
     let timer = 0, fired = false, x0 = 0, y0 = 0;
     node.addEventListener('pointerdown', (e) => {
       if (e.pointerType !== 'touch') return;
@@ -310,5 +344,5 @@
     });
   }
 
-  OV.Dom = { $, el, clear, toast, clearToasts, modal, anyModalOpen, tooltip, hideTooltip, hideLongPress, bar, download, pickFile, trapFocus, trapOpen, focusKey, refocus, focusables };
+  OV.Dom = { $, el, clear, toast, clearToasts, modal, anyModalOpen, tooltip, hideTooltip, hideLongPress, bar, download, pickFile, trapFocus, trapOpen, focusKey, refocus, focusables, ghostClick };
 })(globalThis.OV || (globalThis.OV = {}));

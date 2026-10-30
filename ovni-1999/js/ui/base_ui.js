@@ -13,6 +13,7 @@
                               equip: craftId → Naves com o equipamento desse transporte aberto («Pôr na nave»)
      close()                  volta ao ecrã anterior (Geoscape) ; isOpen() → bool ; refresh()
      errText(reason) → texto pt-PT de 'base.err.<reason>'
+     lostTopics(G, base, itemId, n) → [topicId] que deixam de se poder investigar se se venderem n (Mercado › Vender avisa e pede confirmação)
      groupDeliveries(G, deliveries) → [{kind, itemId, n, h}] (mesmo tipo + mesma hora somados) ; nextTen(v) → dezena seguinte
      debug: { state(), cellCenter(x, y) → {x, y} px do centro de uma célula, scene() }
    }
@@ -92,12 +93,33 @@
   // botão com dica e razão de bloqueio: bloqueado fica cinzento e o clique explica porquê (com zumbido)
   /* ações que mudam G e recriam o próprio botão (contratar, despedir, comprar, iniciar): o 2.º clique de um duplo
      clique (event.detail ≥ 2) ou um clique a menos de 400 ms do anterior não as repete */
-  let lastOnceT = -1e9;
+  /* o teclado (click com event.detail 0) nunca é travado: cada Enter/Espaço novo é uma ordem pedida de propósito; só a
+     repetição automática de uma tecla mantida premida não repete a ação */
+  let lastOnceT = -1e9, keyRepeat = false;
+  if (typeof document !== 'undefined' && document.addEventListener) {
+    document.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') keyRepeat = !!e.repeat; }, true);
+    document.addEventListener('keyup', () => { keyRepeat = false; }, true);
+  }
   function oneShot(e) {
     const t = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    if (e && (e.detail | 0) === 0 && e.isTrusted !== false) {
+      if (keyRepeat) return false;
+      lastOnceT = t;
+      return true;
+    }
     if ((e && e.detail > 1) || t - lastOnceT < 400) return false;
     lastOnceT = t;
     return true;
+  }
+  /* tópicos disponíveis na base b que deixam de o estar se se venderem n unidades de id (needItem sem outra unidade):
+     cadáveres, armas alienígenas… → [topicId]. Só lê G. */
+  function lostTopics(g, b, id, n) {
+    const avail = C().availableResearch(g, b.id);
+    if (!avail.length || !(n > 0)) return [];
+    const st = Object.assign({}, b.stores);
+    st[id] = Math.max(0, (st[id] | 0) - n);
+    const after = D().researchAvailable(g.researched, g.flags, st, b.aliens);
+    return avail.filter((t) => after.indexOf(t) < 0);
   }
   // nome acessível de um botão repetido com o contexto da linha: «Atribuir mais 1 cientista — Kit Médico»
   const ctxName = (what, name) => T('base.aria.ctx', { what, name });
@@ -105,11 +127,11 @@
     o = o || {};
     // nome acessível com contexto («Iniciar: Armas Laser», «Comprar 1 × Stingray»); bloqueado não é paragem do Tab
     const aria = o.aria || (o.title && o.title !== label ? o.title : null);
-    const b = el('button', { type: 'button', class: 'btn ' + (o.cls || ''), 'aria-disabled': o.why ? 'true' : null, 'aria-label': aria ? aria + (o.why ? ' — ' + o.why : '') : null, 'aria-keyshortcuts': o.key || null, dataset: o.data || null });
+    const b = el('button', { type: 'button', class: 'btn ' + (o.cls || ''), 'aria-disabled': o.why ? 'true' : null, 'aria-label': aria ? aria + (o.why ? ' — ' + o.why : '') : null, 'aria-keyshortcuts': o.key || null, 'aria-pressed': o.pressed === undefined ? null : o.pressed ? 'true' : 'false', dataset: o.data || null });
     if (o.icon) b.appendChild(o.icon);
     b.appendChild(document.createTextNode(label));
-    if (o.key) b.appendChild(el('kbd', { text: o.key }));
-    if (o.why) { b.classList.add('disabled'); b.tabIndex = -1; }
+    if (o.key && !o.noTab) b.appendChild(el('kbd', { text: o.key }));
+    if (o.why || o.noTab) { if (o.why) b.classList.add('disabled'); b.tabIndex = -1; }
     b.addEventListener('click', (e) => {
       e.stopPropagation();
       if (o.why) { deny(o.why); return; }
@@ -579,6 +601,7 @@
       S.hlFac = null; // a linha sob o rato desaparece sem mouseleave
       r.content.dataset.tab = S.tab;
       r.panel.dataset.tab = S.tab;
+      r.body.dataset.tab = S.tab; // retrato: fora das Instalações a grelha encolhe e o separador fica com a altura (basescape.css)
       const fn = { facilities: tabFacilities, research: tabResearch, production: tabProduction, personnel: tabPersonnel, stores: tabStores, crafts: tabCrafts, soldiers: tabSoldiers, market: tabMarket, containment: tabContainment }[S.tab];
       r.content.appendChild(fn());
       r.content.scrollTop = same ? keep : S.scroll[S.tab] || 0;
@@ -588,6 +611,15 @@
         if (t) t.focus({ preventScroll: true });
       }
       if (S.focusSol) { S.focusSol = false; const tr = r.content.querySelector('tr[data-sol].sel'); if (tr) tr.focus({ preventScroll: true }); }
+      // soldado escolhido com o rato/toque: a ficha (renomear, armadura, nave) entra na área visível se estiver abaixo
+      if (S.revealSol) { S.revealSol = false; revealDetail(); }
+    }
+    function revealDetail() {
+      const box = S.r.content, d = box.querySelector('.bsc-sol-detail');
+      if (!d) return;
+      const top = d.getBoundingClientRect().top - box.getBoundingClientRect().top;
+      // só quando o topo da ficha não se vê (no ecrã largo a ficha já está à vista ao lado da lista)
+      if (top > box.clientHeight - 72) box.scrollTop += Math.min(top - 8, top - box.clientHeight + Math.min(d.offsetHeight, box.clientHeight) + 8);
     }
     function head(title, sub, ...right) {
       return el('div', { class: 'bsc-head' },
@@ -602,21 +634,6 @@
       const g = S.G, b = base();
       const wrap = el('div', { class: 'bsc-tab-fac' });
       wrap.appendChild(head(T('base.tab.facilities'), T('base.fac.sub', { n: b.grid.length })));
-      const building = b.grid.filter((f) => f.daysLeft > 0);
-      if (building.length) {
-        const list = el('div', { class: 'bsc-list' });
-        for (const f of building) {
-          const def = D().facilities[f.type];
-          const pct = def.days > 0 ? 1 - f.daysLeft / def.days : 1;
-          const row = el('div', { class: 'bsc-row bsc-build-row' }, facIcon(f.type, 36),
-            el('div', { class: 'bsc-row-main' }, el('div', { class: 'bsc-row-name', text: facName(f.type) }),
-              el('div', { class: 'bsc-prog' }, el('i', { style: { width: (pct * 100).toFixed(0) + '%' } }))),
-            el('div', { class: 'bsc-row-val warn', text: Tn('base.build.daysLeft', f.daysLeft) }));
-          row.addEventListener('mouseenter', () => { S.sel = { x: f.x, y: f.y }; S.dirty = true; renderInfo(); });
-          list.appendChild(row);
-        }
-        wrap.appendChild(section(T('base.fac.underway'), list));
-      }
       const list = el('div', { class: 'bsc-list bsc-buildlist' });
       const types = Object.keys(D().facilities).filter((t) => OV.T.has(D().facilities[t].nameKey));
       for (const type of types) {
@@ -647,6 +664,22 @@
         list.appendChild(row);
       }
       wrap.appendChild(section(T('base.build.title'), note(T('base.build.rules')), list));
+      // obras em curso por baixo da lista de construção: iniciar uma obra não empurra a lista (o clique seguinte cai no mesmo sítio)
+      const building = b.grid.filter((f) => f.daysLeft > 0);
+      if (building.length) {
+        const ul = el('div', { class: 'bsc-list' });
+        for (const f of building) {
+          const def = D().facilities[f.type];
+          const pct = def.days > 0 ? 1 - f.daysLeft / def.days : 1;
+          const row = el('div', { class: 'bsc-row bsc-build-row' }, facIcon(f.type, 36),
+            el('div', { class: 'bsc-row-main' }, el('div', { class: 'bsc-row-name', text: facName(f.type) }),
+              el('div', { class: 'bsc-prog' }, el('i', { style: { width: (pct * 100).toFixed(0) + '%' } }))),
+            el('div', { class: 'bsc-row-val warn', text: Tn('base.build.daysLeft', f.daysLeft) }));
+          row.addEventListener('mouseenter', () => { S.sel = { x: f.x, y: f.y }; S.dirty = true; renderInfo(); });
+          ul.appendChild(row);
+        }
+        wrap.appendChild(section(T('base.fac.underway'), ul));
+      }
       return wrap;
     }
 
@@ -1404,7 +1437,7 @@
           ...['tu', 'hp', 'fire', 'react', 'brav'].map((st) => el('td', { class: 'c-' + st + ' mono' + (s.stats[st] > s.initial[st] ? ' up' : ''), text: String(s.stats[st]) })),
           el('td', { class: 'c-wound mono' + (s.woundDays > 0 ? ' bad' : ' muted'), text: s.woundDays > 0 ? String(s.woundDays) : '—' }),
           el('td', { class: 'c-craft', text: c ? craftName(c) : '—' }));
-        tr.addEventListener('click', () => { S.solSel = s.id; S.focusSol = true; sfx('ui_select'); renderContent(); });
+        tr.addEventListener('click', () => { S.solSel = s.id; S.focusSol = true; S.revealSol = true; sfx('ui_select'); renderContent(); });
         tbody.appendChild(tr);
       }
       S.solOrder = sols.map((x) => x.id);
@@ -1511,22 +1544,81 @@
       const nm = itemName(id);
       const k = (tag || 'q') + ':' + id;
       return el('div', { class: 'bsc-stepper qty' },
-        btn('−', { cls: 'small', title: T('base.market.less'), aria: T('base.market.lessOf', { name: nm }), why: v <= 1 ? T('base.market.minQty') : null, data: { qty: k + ':-1' }, on: () => set(v - 1) }),
+        btn('−', { cls: 'small', title: T('base.market.less'), aria: T('base.market.lessOf', { name: nm }), key: '←', noTab: true, why: v <= 1 ? T('base.market.minQty') : null, data: { qty: k + ':-1' }, on: () => set(v - 1) }),
         el('b', { class: 'bsc-step-v', text: String(v) }),
-        btn('+', { cls: 'small', title: T('base.market.more'), aria: T('base.market.moreOf', { name: nm }), why: max && v >= max ? T('base.market.maxQty') : null, data: { qty: k + ':+1' }, on: () => set(v + 1) }),
-        btn('+10', { cls: 'small', title: T('base.market.more10'), aria: T('base.market.more10Of', { name: nm }), why: max && v >= max ? T('base.market.maxQty') : null, data: { qty: k + ':+10' }, on: () => set(nextTen(v)) }));
+        btn('+', { cls: 'small', title: T('base.market.more'), aria: T('base.market.moreOf', { name: nm }), key: '→', noTab: true, why: max && v >= max ? T('base.market.maxQty') : null, data: { qty: k + ':+1' }, on: () => set(v + 1) }),
+        btn('+10', { cls: 'small', title: T('base.market.more10'), aria: T('base.market.more10Of', { name: nm }), key: '⇧→', noTab: true, why: max && v >= max ? T('base.market.maxQty') : null, data: { qty: k + ':+10' }, on: () => set(nextTen(v)) }));
+    }
+    // vender: o último exemplar de que a investigação precisa pede confirmação (Cancelar é o botão por omissão)
+    async function sellNow(id, n) {
+      const g = S.G, b = base();
+      const it = D().items[id] || {};
+      const lost = lostTopics(g, b, id, n);
+      if (lost.length) {
+        const ret = document.activeElement;
+        const ok = await OV.Dom.modal({
+          title: T('base.market.sellLast.title'), cls: 'alert',
+          body: el('div', { class: 'bsc-confirm' }, itemIcon(id, 48), el('p', { class: 'modal-text', text: Tn('base.market.sellLast.body', lost.length, { n, name: itemName(id), topics: lost.map(topicName).join(', ') }) })),
+          buttons: [{ label: T('base.market.sellLast.keep'), value: false, kind: 'primary' }, { label: T('base.market.sellLast.ok', { n }), value: true, kind: 'danger' }],
+        });
+        if (!S.root || base() !== b) return;
+        if (!ok) { if (ret && ret.isConnected) ret.focus({ preventScroll: true }); return; }
+      }
+      S.sellQty[id] = 1;
+      act(() => BS().sell(g, b.id, id, n), T('base.toast.sold', { n, name: itemName(id), money: money(it.sell * n) }));
+    }
+    // Mercado ao teclado: ↑/↓ PgUp/PgDn mudam de linha; ←/→ quantidade (⇧ ±10), Início/Fim mínimo/máximo; Enter compra/vende
+    function marketKey(k, m) {
+      const a = document.activeElement;
+      if (!a || !a.closest || !S.r.content.contains(a)) return false;
+      const row = a.closest('.bsc-mrow[data-buy], .bsc-mrow[data-sell]');
+      if (!row) return false;
+      const buy = !!row.dataset.buy, id = buy ? row.dataset.buy : row.dataset.sell;
+      const actSel = '[data-act="' + (buy ? 'buy' : 'sell') + '"]';
+      if (k === 'ArrowUp' || k === 'ArrowDown' || k === 'PageUp' || k === 'PageDown') {
+        const rows = [...S.r.content.querySelectorAll(buy ? '.bsc-mrow[data-buy]' : '.bsc-mrow[data-sell]')].filter((r) => r.querySelector(actSel));
+        const i = rows.indexOf(row);
+        const d = k === 'ArrowUp' ? -1 : k === 'ArrowDown' ? 1 : k === 'PageUp' ? -6 : 6;
+        const j = Math.max(0, Math.min(rows.length - 1, i + d));
+        if (j !== i) {
+          const nb = rows[j].querySelector(actSel);
+          nb.focus({ preventScroll: true });
+          rows[j].scrollIntoView({ block: 'nearest' });
+          sfx('ui_click');
+        }
+        return true;
+      }
+      if (k !== 'ArrowLeft' && k !== 'ArrowRight' && k !== 'Home' && k !== 'End') return false;
+      const g = S.G, b = base();
+      const map = buy ? S.qty : S.sellQty;
+      const isCraft = buy && !!D().crafts[id];
+      const price = isCraft ? D().crafts[id].buy : (D().items[id] || {}).buy || 0;
+      const max = buy ? (isCraft ? 3 : Math.max(1, Math.min(999, price > 0 ? Math.floor(g.funds / price) : 999))) : Math.max(1, b.stores[id] | 0);
+      const v = Math.max(1, Math.min(buy ? (isCraft ? 3 : 999) : max, map[id] || 1));
+      const step = m && m.shift ? 10 : 1;
+      let nv = k === 'Home' ? 1 : k === 'End' ? max : v + (k === 'ArrowRight' ? step : -step);
+      nv = Math.max(1, Math.min(buy ? (isCraft ? 3 : 999) : max, nv));
+      if (nv === v) { sfx('ui_deny'); return true; }
+      map[id] = nv;
+      sfx('ui_click');
+      renderContent();
+      return true;
     }
     function tabMarket() {
       const g = S.G, b = base();
       const caps = BS().capacities(g, b.id);
       const wrap = el('div', { class: 'bsc-tab-market' });
       const seg = el('div', { class: 'bsc-seg' },
-        btn(T('base.market.buy'), { cls: 'small seg' + (S.market === 'buy' ? ' on' : ''), title: T('base.market.buy'), tip: T('base.market.buyTip'), data: { mode: 'buy' }, on: () => { S.market = 'buy'; sfx('ui_select'); renderContent(); } }),
-        btn(T('base.market.sell'), { cls: 'small seg' + (S.market === 'sell' ? ' on' : ''), title: T('base.market.sell'), tip: T('base.market.sellTip'), data: { mode: 'sell' }, on: () => { S.market = 'sell'; sfx('ui_select'); renderContent(); } }));
+        btn(T('base.market.buy'), { cls: 'small seg' + (S.market === 'buy' ? ' on' : ''), title: T('base.market.buy'), tip: T('base.market.buyTip'), pressed: S.market === 'buy', data: { mode: 'buy' }, on: () => { S.market = 'buy'; sfx('ui_select'); renderContent(); } }),
+        btn(T('base.market.sell'), { cls: 'small seg' + (S.market === 'sell' ? ' on' : ''), title: T('base.market.sell'), tip: T('base.market.sellTip'), pressed: S.market === 'sell', data: { mode: 'sell' }, on: () => { S.market = 'sell'; sfx('ui_select'); renderContent(); } }));
+      seg.setAttribute('role', 'group');
+      seg.setAttribute('aria-label', T('base.tab.market'));
       wrap.appendChild(head(T('base.tab.market'), T('base.market.sub', { money: money(g.funds) }), seg));
       wrap.appendChild(el('div', { class: 'bsc-meters2' },
         meter(T('base.cap.storage'), caps.storage.used, caps.storage.cap, { fmt: dec1 }),
         meter(T('base.cap.crafts'), caps.crafts.used, caps.crafts.cap)));
+      // teclado: uma paragem do Tab por linha (o botão Comprar/Vender); setas mudam de linha e de quantidade
+      wrap.appendChild(note(T('base.market.kbdHint.' + S.market), 'muted bsc-kbd-hint'));
       if (S.market === 'buy') wrap.append(marketBuy(), deliveriesSection((d) => d.kind === 'item' || d.kind === 'craft'));
       else wrap.appendChild(marketSell());
       return wrap;
@@ -1568,7 +1660,7 @@
             qtyCtl(S.qty, id, isCraft ? 3 : 0, renderContent, 'buy'),
             el('div', { class: 'bsc-mtotal mono' + (g.funds < def.buy * n ? ' bad' : ''), text: money(def.buy * n) }),
             btn(T('base.market.buy'), {
-              cls: 'small primary', title: T('base.market.buyN', { n, name: itemName(id) }), tip: T('base.market.buyEta', { h: eta }), why: why ? errText(why) : null, data: { act: 'buy', id },
+              cls: 'small primary', title: T('base.market.buyN', { n, name: itemName(id) }), tip: T('base.market.buyEta', { h: eta }) + ' ' + T('base.market.rowKeys'), why: why ? errText(why) : null, data: { act: 'buy', id },
               on: (e) => {
                 if (!oneShot(e)) return;
                 S.qty[id] = 1;
@@ -1595,16 +1687,19 @@
           const have = b.stores[id];
           const n = Math.min(have, S.sellQty[id] || 1);
           const why = !(it.sell > 0) ? errText('unsellable') : null;
-          list.appendChild(el('div', { class: 'bsc-row bsc-mrow' + (why ? ' locked' : ''), dataset: { sell: id } }, itemIcon(id, 36),
+          // tópicos que deixam de se poder investigar se se vender tudo (cadáver, arma alienígena…)
+          const need = why ? [] : lostTopics(g, b, id, have);
+          list.appendChild(el('div', { class: 'bsc-row bsc-mrow' + (why ? ' locked' : '') + (need.length ? ' need' : ''), dataset: { sell: id } }, itemIcon(id, 36),
             el('div', { class: 'bsc-row-main' }, el('div', { class: 'bsc-row-name', text: itemName(id) }),
-              el('div', { class: 'bsc-row-sub', text: why ? why : T('base.market.sellLine', { price: money(it.sell), have }) + ' · ' + T('base.market.frees', { u: dec1((it.storage || 0.1) * n) }) })),
+              el('div', { class: 'bsc-row-sub', text: why ? why : T('base.market.sellLine', { price: money(it.sell), have }) + ' · ' + T('base.market.frees', { u: dec1((it.storage || 0.1) * n) }) }),
+              need.length ? el('div', { class: 'bsc-row-need', text: Tn('base.market.needFor', need.length, { topics: need.map(topicName).join(', ') }) }) : null),
             why ? el('span') : qtyCtl(S.sellQty, id, have, renderContent, 'sell'),
             el('div', { class: 'bsc-mtotal mono good', text: why ? '' : money(it.sell * n) }),
             el('div', { class: 'bsc-row-btns' },
-              why ? null : btn(T('base.market.all'), { cls: 'small', title: T('base.market.allTip'), aria: T('base.market.allOf', { name: itemName(id) }), data: { sellAll: id }, on: () => { S.sellQty[id] = have; renderContent(); } }),
+              why ? null : btn(T('base.market.all'), { cls: 'small', title: T('base.market.allTip'), aria: T('base.market.allOf', { name: itemName(id) }), key: 'Fim', noTab: true, data: { sellAll: id }, on: () => { S.sellQty[id] = have; renderContent(); } }),
               btn(T('base.market.sell'), {
-                cls: 'small', title: T('base.market.sellN', { n, name: itemName(id) }), tip: T('base.market.sellNow'), why, data: { act: 'sell', id },
-                on: (e) => { if (!oneShot(e)) return; S.sellQty[id] = 1; act(() => BS().sell(g, b.id, id, n), T('base.toast.sold', { n, name: itemName(id), money: money(it.sell * n) })); },
+                cls: 'small', title: T('base.market.sellN', { n, name: itemName(id) }), tip: T('base.market.sellNow') + ' ' + T('base.market.rowKeys'), why, data: { act: 'sell', id },
+                on: (e) => { if (!oneShot(e)) return; sellNow(id, n); },
               }))));
         }
         box.appendChild(section(T('base.cat.' + cat), list));
@@ -1942,6 +2037,7 @@
         if (k === 'ArrowDown') { moveCursor(0, 1); return true; }
         if (k === 'Enter' && S.kcur) { tryPlace(S.kcur, !!m.shift); return true; }
       }
+      if (S.tab === 'market' && marketKey(k, m)) return true;
       if (ev.repeat) return false;
       if (/^[1-9]$/.test(k) && !m.shift) { setTab(TABS[+k - 1], false, true); return true; }
       const lk = k.length === 1 ? k.toLowerCase() : k;
@@ -2121,7 +2217,7 @@
     close,
     isOpen: () => !!active,
     refresh() { if (active) active.refresh(); },
-    errText, groupDeliveries, nextTen,
+    errText, groupDeliveries, nextTen, lostTopics,
     debug: {
       scene: () => active,
       state: () => (active ? active.debugState() : null),

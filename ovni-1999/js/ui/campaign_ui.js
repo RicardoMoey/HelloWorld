@@ -9,7 +9,7 @@
      afterBattle(G, B, result) (uma só vez por batalha) ; resume({G, B}) → bool ; openGeo(G) ; popToGeo(G)
      equip(G, craftId, onDone?) ; monthReport(G, report) → Promise ; gameOver(G, reason) ; victory(G)
      baseDefence(G, ev) → Promise (resultado de um ataque à base) ; saveDialog(G) ; loadDialog()
-     autosave(G, {silent?}) → {ok, reason?} ; saveLabel(G) → texto ; errText(err) → texto
+     autosave(G, {silent?}) → {ok, reason?} ; saveLabel(G) → texto ; errText(err) → texto ; fmtDec1(v) → «51,2»
      launchCydonia(G, craftId?) → Promise(bool)   confirmação «sem regresso» e briefing da missão final
      cydoniaState(G, craftId) → {ok, reason} ; cydoniaPick(G, baseId?) → {ok, reason, craftId} ; cydoniaWhy(reason) → texto
      cydoniaCapable(craft) → bool ; monthAlienSplit(G, report) → [{key, n?, pts}] ; fundingTotals(report) → {before, delta, after}
@@ -45,6 +45,8 @@
   const esc = (s) => OV.U.esc(String(s));
   const money = (n) => OV.U.fmtMoney(n | 0);
   const signed = (n) => (n > 0 ? '+' : '') + OV.U.fmtInt(n | 0);
+  // décima em pt-PT («51,2»; «50» sem «,0»), como os medidores da base
+  const fmtDec1 = (v) => { const r = Math.round((+v || 0) * 10) / 10; return Number.isInteger(r) ? String(r) : r.toFixed(1).replace('.', ','); };
   const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
   const uiRng = OV.RNG.create((Date.now() ^ 0x0c4a7e15) >>> 0);
   const settings = () => (OV.Game && OV.Game.settings) || {};
@@ -104,8 +106,11 @@
     const b = el('button', { type: 'button', class: 'btn ' + (opts.cls || ''), dataset: opts.data || null }, label);
     if (opts.key) b.setAttribute('aria-keyshortcuts', opts.key);
     if (opts.aria) b.setAttribute('aria-label', opts.aria);
+    // o 2.º clique de um duplo clique no ecrã anterior (ex.: «Repetir a missão») não ativa o botão novo no mesmo sítio
+    const born = typeof performance !== 'undefined' ? performance.now() : Date.now();
     b.addEventListener('click', (e) => {
       if (b.disabled) return;
+      if (OV.Dom.ghostClick && OV.Dom.ghostClick(e, born)) return;
       if (opts.sound !== false) sfx(opts.sound || 'ui_click');
       if (opts.onClick) opts.onClick(e);
     });
@@ -590,7 +595,7 @@
     };
     const view = { lon: LISBON.lon + 6, lat: LISBON.lat - 4, zoom: 2.1, w: 1, h: 1, dpr: 1, time: 0, mode: 'placeBase', cursor: null, t: 0, selection: null, hover: null, highlights: [] };
     const cam = globeCam(view);
-    let sc = null, panel = null, nextBtn = null, foundBtn = null, nameInp = null, info = null, diffSeg = null, layoutDirty = true;
+    let sc = null, panel = null, nextBtn = null, foundBtn = null, nameInp = null, info = null, diffSeg = null, layoutDirty = true, recentre = false, lastWH = '';
 
     function infoOf(p) {
       const G = OV.GMath;
@@ -855,7 +860,16 @@
     sc.draw = function (ctx, v) {
       if (st.step !== 'place' || !GR) { baseDraw(ctx, v); return; }
       syncView(view);
-      if (layoutDirty && panel && panel.isConnected) { centreBeside(view, panel); layoutDirty = false; }
+      // dimensões novas (rodar o iPad, mudar a janela) enquanto se escolhe o local: recentrar no local escolhido
+      const wh = view.w + 'x' + view.h;
+      if (lastWH && wh !== lastWH) { recentre = true; layoutDirty = true; }
+      lastWH = wh;
+      if (layoutDirty && panel && panel.isConnected) {
+        centreBeside(view, panel);
+        layoutDirty = false;
+        // rodar o iPad (ou mudar a janela) muda o sítio livre do globo: o local escolhido volta ao centro à vista
+        if (recentre) { recentre = false; GR.rotateTo(view, st.chosen.lon, st.chosen.lat, 260); }
+      }
       if (st.kbd) st.hover = centrePick();
       view.cursor = st.hover || st.chosen;
       view.placeValid = view.cursor ? OV.GMath.isLand(view.cursor.lon, view.cursor.lat) : null;
@@ -1524,7 +1538,7 @@
         model.craftLost ? el('p', { class: 'cp-note bad', text: T('cp.db.craftLost') })
           : Object.keys(stored).length ? itemsGrid(stored, 36) : el('p', { class: 'scr-muted', text: T('scr.db.nothing') }),
         Object.keys(lost).length && !model.craftLost ? el('div', { class: 'cp-lost' }, el('div', { class: 'cp-k', text: T('bs.debrief.equipmentLost') }), itemsGrid(lost, 26)) : null,
-        model.storage && model.storage.over ? el('p', { class: 'cp-note bad', text: T('cp.db.storageOver', { used: model.storage.used, cap: model.storage.cap }) }) : null);
+        model.storage && model.storage.over ? el('p', { class: 'cp-note bad', text: T('cp.db.storageOver', { used: fmtDec1(model.storage.used), cap: fmtDec1(model.storage.cap) }) }) : null);
 
       // investigação que o material recuperado abriu (o momento «e agora?»)
       const rs = p.research && p.research.topics.length && model.outcome === 'continue' && OV.BaseUI ? p.research : null;
@@ -2217,6 +2231,6 @@
     cydoniaState, cydoniaPick, cydoniaWhy, cydoniaCapable, launchCydonia, monthAlienSplit, fundingTotals,
     monthReport, gameOver, victory, baseDefence, saveDialog, loadDialog, autosave, saveLabel, errText,
     armedLo, idleFit, unarmedAboard, boardAll, autoKit, crewUp, leftAtBase, emptyHands, noAmmoCount, loadAmmo, crewText, starterKit, buyStarterKit, orderStarterKit,
-    markUfoKnown, saveBeforeMission, preMissionFor, retryMission, EXTRA_SLOTS, extraSummary, loadExtra, reseedOnLoad, alsoPromotedKey,
+    markUfoKnown, saveBeforeMission, preMissionFor, retryMission, EXTRA_SLOTS, extraSummary, loadExtra, reseedOnLoad, alsoPromotedKey, fmtDec1,
   });
 })(globalThis.OV || (globalThis.OV = {}));

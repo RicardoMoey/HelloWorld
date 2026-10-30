@@ -545,5 +545,19 @@
     'geo.int.noAmmo.coming.one': '(1 já vem a caminho.)',
     'geo.int.noAmmo.coming.other': '({n} já vêm a caminho.)',
     'geo.a.buyAmmoN': 'Comprar munição (×{n})',
+    // ronda de personas 4
+    'geo.alienBase.nameRace': 'Base alienígena ({race}, {place})',
+    'geo.alienBase.nameNum': 'Base alienígena {n} ({race}, {place})',
+    'geo.alienBase.shortNum': 'Base alienígena {n}',
+    'geo.ev.alienBaseFound.patrol.another': 'Uma patrulha localizou outra base alienígena ({place}), desta vez de {race}.',
+    'geo.ev.alienBaseFound.agents.another': 'Os nossos agentes localizaram outra base alienígena ({place}), desta vez de {race}.',
+    'geo.ev.alienBaseFound.supply.another': 'Seguimos uma nave de abastecimento até outra base alienígena ({place}), desta vez de {race}.',
+    'geo.toast.waitDay.fast': 'A nave espera no local e o tempo passa a «{s}». Avisamos quando amanhecer (cerca de {t}).',
+    'geo.ev.arrived.night.short': 'Os soldados só veem bem perto das luzes, e o OVNI pode descolar entretanto.',
+    'geo.ev.arrived.night.safe.short': 'Os soldados só veem bem perto das luzes. Nestes primeiros meses, um OVNI que aterra de noite fica no chão até amanhecer.',
+    'geo.ev.arrived.night.crash.short': 'Os soldados só veem bem perto das luzes. Esperar só vale a pena se os destroços durarem até lá.',
+    'geo.ev.arrived.dusk.short': 'Lá é crepúsculo: o mapa fica mais escuro, mas os soldados veem até {d} casas, como de dia. Esperar só muda a luz, e o OVNI pode descolar entretanto.',
+    'geo.ev.arrived.dusk.safe.short': 'Lá é crepúsculo: o mapa fica mais escuro, mas os soldados veem até {d} casas, como de dia. Esperar só muda a luz (nestes primeiros meses, o OVNI fica no chão até amanhecer).',
+    'geo.ev.arrived.dusk.crash.short': 'Lá é crepúsculo: o mapa fica mais escuro, mas os soldados veem até {d} casas, como de dia. Esperar só muda a luz, se os destroços durarem até lá.',
   });
 })(globalThis.OV || (globalThis.OV = {}));
