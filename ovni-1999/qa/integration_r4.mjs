@@ -3,7 +3,8 @@
    B) iPad: as Opções do combate não mostram a roda nem o deslizar pelas margens (com rato mostram);
    C) Geoscape: velocidade do tempo com tabindex móvel (uma paragem de Tab, ← → mudam a velocidade);
    D) «Esperar pelo dia»: um alerta alheio baixa o tempo a 5 seg e, fechada a janela, a espera volta a «30 min»;
-   E) relatório rápido: dica do pânico (2+ episódios) e nota «Centro de controlo destruído…» numa vitória pelo objetivo;
+   E) relatório rápido: dica do pânico (2+ episódios) e nota «Centro de controlo destruído…» numa vitória pelo objetivo
+      (desde a ronda 5: centro destruído e saída com a equipa na nave);
    F) relatório da campanha: alienígenas rendidos em linha própria («rendeu-se»), separados dos capturados.
    Falha com qualquer erro de consola/página ou chave ⟦…⟧. Uso: node ovni-1999/qa/integration_r4.mjs [--out <pasta>] */
 import { createRequire } from 'module';
@@ -304,13 +305,16 @@ try {
         const d = OV.BMap.def(B.map, i, p);
         if (d && d.special === 'OBJECTIVE') B.map.parts[i * 4 + p] = 0;
       }
+      // regra orig (persona r5): o centro destruído não acaba a batalha; sair (abortar com a equipa na nave) é a vitória
+      window.__mid = OV.Battle.outcome(B);
+      OV.Battle.abort(B);
       window.__out = OV.Battle.outcome(B);
       OV.Scenes.push('debrief', { B, mission, meta, quick: meta.quick });
     });
     await page.waitForSelector('.scr-debrief .scr-result');
     await sleep(400);
-    r = await page.evaluate(() => ({ out: window.__out, res: document.querySelector('.scr-result').textContent, good: [...document.querySelectorAll('.scr-deb-cause .scr-cause.good')].map((n) => n.textContent).join(' | ') }));
-    check(r.out === 'win' && /VITÓRIA/i.test(r.res) && /^Centro de controlo destruído/.test(r.good), view + ': vitória pelo objetivo: «' + r.good + '»');
+    r = await page.evaluate(() => ({ mid: window.__mid, out: window.__out, res: document.querySelector('.scr-result').textContent, good: [...document.querySelectorAll('.scr-deb-cause .scr-cause.good')].map((n) => n.textContent).join(' | ') }));
+    check(r.mid === null && r.out === 'win' && /VITÓRIA/i.test(r.res) && /^Centro de controlo destruído/.test(r.good), view + ': vitória pelo objetivo: «' + r.good + '»');
     await shot(page, 'E-objective-' + view);
     await noMissing(page, 'objetivo ' + view);
     await ctx.close();
@@ -340,7 +344,7 @@ try {
     await page.waitForSelector('.cp-deb .scr-result');
     await sleep(400);
     const li = await page.evaluate(() => [...document.querySelectorAll('.cp-deb .cp-warns li')].map((n) => n.textContent));
-    const sur = li.filter((x) => /rendeu-se ao tomarmos a base/.test(x));
+    const sur = li.filter((x) => /rendeu-se quando tomámos a base/.test(x));
     const cont = li.filter((x) => /: para a contenção/.test(x));
     check(sur.length === 2 && sur.some((x) => x.indexOf(r.cmd + ' ×1') === 0) && sur.some((x) => x.indexOf(r.lead + ' ×1') === 0), 'rendidos: ' + JSON.stringify(sur));
     check(cont.length === 1 && cont[0].indexOf(r.lead + ' ×1') === 0, 'capturados pela equipa (2 − 1 rendido): ' + JSON.stringify(cont));

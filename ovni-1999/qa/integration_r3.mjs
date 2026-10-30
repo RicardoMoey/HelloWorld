@@ -343,8 +343,9 @@ try {
   let e = await eqBox();
   log(e.head && e.foot && e.head.h + e.foot.h <= 200, '1024×560: cabeçalho + rodapé ≤ 200 px (' + (e.head && e.head.h) + ' + ' + (e.foot && e.foot.h) + ')');
   log(e.hands && e.belt && e.doll && e.hands.t >= e.doll.t - 1 && e.belt.b <= e.doll.b + 1, '1024×560: mãos e cinto à vista ao abrir ' + JSON.stringify({ hands: e.hands, belt: e.belt, doll: e.doll }));
-  const hint = await page.evaluate(() => { const n = document.querySelector('.cp-eq > footer .scr-hint'); return n ? { sw: n.scrollWidth, cw: n.clientWidth, ws: getComputedStyle(n).whiteSpace } : null; });
-  log(!hint || hint.ws === 'nowrap', '1024×560: a dica do rodapé fica numa linha ' + JSON.stringify(hint));
+  // ronda 5: a dica do rodapé ocupa até 2 linhas ao lado do botão (inteira, sem reticências)
+  const hint = await page.evaluate(() => { const n = document.querySelector('.cp-eq > footer .scr-hint'); return n ? { sh: n.scrollHeight, ch: n.clientHeight, clamp: getComputedStyle(n).webkitLineClamp, ell: getComputedStyle(n).textOverflow } : null; });
+  log(!hint || (hint.clamp === '2' && hint.ell !== 'ellipsis' && hint.sh <= hint.ch + 2), '1024×560: a dica do rodapé cabe em 2 linhas, inteira ' + JSON.stringify(hint));
   await shot('equip_1024x560');
   await noMissing('equipar 1024×560');
   // iPad retrato

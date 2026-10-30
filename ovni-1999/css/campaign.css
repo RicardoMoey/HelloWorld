@@ -287,8 +287,9 @@ body:has(.cp-mr) #toasts { display: none; }
 .cp-mr-body:focus-visible { outline: 2px solid var(--cyan); outline-offset: -2px; }
 /* equipamento fora da base: o que ficou no armazém */
 .cp-eq-left { margin: 0 16px 8px; padding: 5px 10px; font-size: 12px; line-height: 1.35; }
-/* ecrãs baixos (1024×560): a nota não rouba altura ao soldado — duas linhas, o resto na dica */
-@media (max-height: 700px) { .cp-eq-left { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin-bottom: 4px; } }
+/* ecrãs baixos (1024×560): a nota não rouba altura ao soldado — duas linhas, o resto na dica. O espaço de baixo é uma
+   borda transparente (o overflow corta no limite do padding: com padding a 3.ª linha espreitava) */
+@media (max-height: 700px) { .cp-eq-left { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin-bottom: 4px; max-height: calc(2.7em + 10px); padding-bottom: 0; border-bottom: 5px solid transparent; } }
 
 /* ---- integração da ronda 3 ---------------------------------------------------------------------------------------- */
 /* «Equipar» (campanha e Batalha Rápida) em janelas baixas (1024×560): cabeçalho e rodapé compactos, mãos e cinto à vista */
@@ -296,7 +297,8 @@ body:has(.cp-mr) #toasts { display: none; }
   .cp-eq .scr-head { padding-bottom: 6px; }
   .cp-eq .scr-chips { margin-top: 4px; }
   .cp-eq > footer { padding-block: 8px; }
-  .cp-eq > footer .scr-hint { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cp-eq > footer { flex-wrap: nowrap; }
+  .cp-eq > footer .scr-hint { flex: 1 1 0; min-width: 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; white-space: normal; line-height: 1.3; }
 }
 /* retrato (iPad 834×1194): o painel usa a altura toda em vez de parar nos 900 px */
 @media (orientation: portrait) and (max-width: 900px) { .cp-eq { height: 100%; } }

@@ -182,7 +182,7 @@ module.exports = function (OV, t) {
     const fighter = Object.keys(G.crafts).map((id) => G.crafts[id]).find((c) => !D.crafts[c.type].transport);
     if (fighter) t.eq(M.groundTransport(G, fighter), false, 'intercetor');
     const src = read('js/ui/geo_ui.js');
-    t.ok(/for \(const ev of evs\) if \(ev\.t === 'ufoLiftOff' \|\| ev\.t === 'landedUfoGone'\) transportsHome\(ev\.ufoId\);/.test(src), 'ao levantar voo');
+    t.ok(/for \(const ev of evs\) if \(ev\.t === 'ufoLiftOff' \|\| ev\.t === 'landedUfoGone'\) transportsHome\(ev\.ufoId, ev\.recalled\);/.test(src), 'ao levantar voo');
     t.ok(/const r = W\(\)\.recall\(G, c\.id\);\s*if \(r && r\.ok\) addToast\(\{ t: 'transportHome'/.test(src), 'via World.recall');
     t.ok(/const home = groundTransport\(G, c\);/.test(src) && /buttons: home \? \[recallB,/.test(src), '«Regressar à base» primeiro');
     t.ok(/key: home \? 'Enter' : 'R', cls: home \? 'primary' : '', def: home/.test(src), 'e por omissão');

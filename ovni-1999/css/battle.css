@@ -65,6 +65,10 @@ body.in-battle:has(.bs-report:not(.hidden)) #toasts { top: auto; bottom: calc((v
 /* pânico: ícone + texto (forma e palavra, não só a cor da risca) */
 .bs-sq-st { grid-column: 1 / -1; display: flex; align-items: center; gap: 4px; margin-top: 1px; font: 800 calc(10px * var(--k)) var(--sans); letter-spacing: 1.2px; text-transform: uppercase; color: #e4d0ff; }
 .bs-sq-st b { font-size: calc(11px * var(--k)); color: #fff; }
+/* ferido a sangrar: ✚ no canto (forma, não só cor) */
+.bs-sq.bleeding { padding-right: 18px; }
+.bs-sq-bleed { position: absolute; right: 5px; top: 3px; color: var(--red); font-weight: 900; font-size: calc(12px * var(--k)); line-height: 1; pointer-events: none; }
+.bs-hud.cvd .bs-sq-bleed { color: #ff9ae8; }
 .bs-sq.gone { opacity: 0.42; cursor: default; }
 .bs-sq.gone .bs-sq-name { text-decoration: line-through; }
 .bs-sq-rank { font: 800 calc(11.5px * var(--k)) var(--sans); letter-spacing: 0.5px; text-transform: uppercase; color: #9aa4ae; }
@@ -284,6 +288,12 @@ body.in-battle:has(.bs-report:not(.hidden)) #toasts { top: auto; bottom: calc((v
 .bs-opt-keys { margin: 6px 0 0; font-size: 11.5px; line-height: 1.5; color: var(--muted); }
 .bs-opt-keys b { color: var(--amber); }
 .bs-check { display: flex; align-items: center; gap: 6px; margin-top: 10px; font-size: 12.5px; color: var(--muted); cursor: pointer; min-height: 28px; }
+/* base alienígena: centro de controlo destruído — Abortar é a saída vitoriosa (verde, pulsa; cvd segue --green) */
+.bs-btn.danger.exit-win { color: var(--green); border-color: var(--green); animation: bsExitWin 0.9s ease-in-out infinite alternate; }
+@keyframes bsExitWin { from { box-shadow: 0 0 0 1px var(--green); } to { box-shadow: 0 0 0 2px var(--green), 0 0 16px var(--green); } }
+.bs-rm .bs-btn.exit-win, body.bs-rm .bs-btn.exit-win { animation: none; box-shadow: 0 0 0 2px var(--green); }
+@media (prefers-reduced-motion: reduce) { .bs-btn.exit-win { animation: none; box-shadow: 0 0 0 2px var(--green); } }
+.bs-abort-win { color: var(--green); font-weight: 700; padding: 6px 10px; border: 1px solid var(--green); border-radius: 3px; }
 .bs-abort-lose { color: #ff9a8f; font-weight: 700; padding: 6px 10px; border: 1px solid #8f2a22; border-radius: 3px; background: rgba(60, 12, 10, 0.5); }
 .bs-keys td:first-child { white-space: nowrap; padding-right: 14px; }
 /* folha de teclas: o botão fica num rodapé fixo, por isso o foco nele não desloca a lista para o fundo */

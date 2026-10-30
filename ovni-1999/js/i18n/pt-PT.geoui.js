@@ -344,6 +344,12 @@
     'geo.ev.baseDefence.casualties.other': 'Baixas: {n} soldados.',
     'geo.ev.baseDefence.craftsLost.one': 'Perdeu-se {n} nave no hangar.',
     'geo.ev.baseDefence.craftsLost.other': 'Perderam-se {n} naves nos hangares.',
+    'geo.ev.baseDefence.held': 'Aguentámos a custo: {list} ficaram destruídas e voltam a obra.',
+    'geo.ev.baseDefence.held.none': 'Aguentámos a custo: a guarnição sofreu muitas baixas.',
+    'geo.ev.baseAttack.odds': 'Estimativa: perder a base {lost} % · repelir {repel} % · aguentar a custo {hold} %.',
+    'geo.ev.baseAttack.short.one': 'Guarnição insuficiente: falta ~{n} soldado',
+    'geo.ev.baseAttack.short.other': 'Guarnição insuficiente: faltam ~{n} soldados',
+    'geo.ev.baseAttack.shortMd': ' (ou {m} Defesas de Mísseis)',
 
     // ---- toasts
     'geo.toast.ufoLiftOff': '{ufo} levantou voo.',

@@ -550,6 +550,28 @@
     let moved = 0;
     for (const dir of v.steps) {
       const s = OV.Path.stepCost(B, u, cur, dir, { run });
+      const doorAt = s && (s.door || (s.opensUfoDoor !== null && s.opensUfoDoor !== undefined));
+      if (s && s.occupant !== null && doorAt && OV.Env) {
+        // alguém (não visto) logo atrás da porta: como no original, abre-a e pára
+        const dTU = tune('TU_DOOR', 4);
+        const rd = tuReason(u, a, dTU, reserve);
+        if (rd) {
+          yield interrupt(B, u, rd);
+          return { ok: false, reason: rd, moved };
+        }
+        const evs = s.door ? OV.Env.openDoor(B, u, s.door.i, s.door.part) : OV.Env.openDoor(B, u, s.opensUfoDoor, 3);
+        if (!evs.length) {
+          yield interrupt(B, u, 'blocked');
+          return { ok: false, reason: 'blocked', moved };
+        }
+        if (!a.free) u.tu -= dTU;
+        if (dir < 8) u.dir = dir;
+        for (const e of evs) yield e;
+        yield* settle(B, evs, true);
+        newSpots(B, u);
+        yield interrupt(B, u, 'spotted');
+        return { ok: false, reason: 'spotted', moved, door: true };
+      }
       if (!s || s.occupant !== null) {
         yield interrupt(B, u, 'blocked');
         return { ok: false, reason: 'blocked', moved };

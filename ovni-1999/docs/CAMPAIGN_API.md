@@ -421,7 +421,7 @@ and stays paused while the popup is open (only the top scene thinks). **stop:fal
 | `ufoDetected` | ✔ | `ufoId, hyper` | World | popup: size, altitude, heading, speed (type, race and mission only if `hyper`); «Interceptar» / «Centrar» (GeoUI) | `ev.ufoDetected` |
 | `ufoLost` | ✔ | `ufoId` | World | popup (GeoUI) | `ev.ufoLost` |
 | `ufoLanded` | ✔ (only if detected) | `ufoId` | Missions | popup with «Enviar equipa» (GeoUI) | `ev.ufoLanded` |
-| `ufoLiftOff` | – | `ufoId` | Missions | toast | `ev.ufoLiftOff` |
+| `ufoLiftOff` | – | `ufoId`, `recalled` (ids of ground transports sent home) | Missions | toast | `ev.ufoLiftOff` |
 | `ufoCrashed` | ✔ | `ufoId, craftId, lon, lat` | Missions.onUfoDown | popup «OVNI abatido» + «Enviar equipa» (GeoUI; DogfightUI closes) | `ev.ufoCrashed` |
 | `ufoDestroyed` | ✔ | `ufoId, craftId, type, score` | Missions.onUfoDown | popup (also when it crashed into the sea) | `ev.ufoDestroyed` |
 | `ufoEscaped` | ✔ | `ufoId, craftId` | Dogfight | popup «O OVNI fugiu» | `ev.ufoEscaped` |
@@ -446,7 +446,7 @@ and stays paused while the popup is open (only the top scene thinks). **stop:fal
 | `terrorSite` | ✔ | `siteId, cityId, lon, lat, race` | Missions | red popup with siren, «Enviar equipa» | `ev.terrorSite` |
 | `terrorSiteExpired` | ✔ | `siteId, cityId, points` | Missions | popup (−`points`: 500 in months 0–1, 1 000 after; the UI shows `points`, and `Missions.expiredPoints(G)` gives the current stake for the `terrorSite` popup) | `ev.terrorSiteExpired` |
 | `crashSiteExpired` | – | `ufoId` | Missions | toast | `ev.crashSiteExpired` |
-| `landedUfoGone` | – | `ufoId` | Missions | toast (a landed UFO we targeted lifted off and was lost) | `ev.landedUfoGone` |
+| `landedUfoGone` | – | `ufoId`, `recalled` | Missions | toast (a landed UFO we targeted lifted off and was lost) | `ev.landedUfoGone` |
 | `alienBaseFound` | ✔ | `alienBaseId, how:'patrol'\|'agents'\|'supply'` | World / Missions | popup + centre the globe | `ev.alienBaseFound` |
 | `alienBaseBuilt` | – | `alienBaseId` | Missions | nothing (hidden); debug toast | — |
 | `retaliation` | – | `missionId, region` | Missions | nothing (hidden) unless `G.debug` | — |

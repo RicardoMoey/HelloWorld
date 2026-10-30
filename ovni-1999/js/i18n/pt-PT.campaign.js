@@ -163,7 +163,7 @@
     // ---- relatório da missão (campanha) ----
     'cp.db.scoreTo': 'Pontos somados à região: {region}.',
     'cp.db.contained': '{name} ×{n}: para a contenção de {base}.',
-    'cp.db.surrendered': '{name} ×{n}: rendeu-se ao tomarmos a base — para a contenção de {base}.',
+    'cp.db.surrendered': '{name} ×{n}: o posto de comando rendeu-se quando tomámos a base — para a contenção de {base}.',
     'cp.db.containLost': '{name} ×{n}: capturado (os pontos contam), mas sem espaço na contenção não sobreviveu. Construa uma Contenção Alienígena para os manter vivos e interrogar.',
     'cp.db.capturedLine': 'Alienígenas capturados (×{n} morreram sem contenção)',
     'cp.db.capturedDied': 'Capturados · morreram',
@@ -373,6 +373,8 @@
     'cp.ng.kbd.touch': '',
     'cp.br.warn.unarmed.one': '{n} soldado vai SEM ARMA.',
     'cp.br.warn.unarmed.other': '{n} soldados vão SEM ARMA.',
+    'cp.br.leftHeavy.one': 'Ficaram armas pesadas em {base} ({list}) e {n} soldado vai só com pistola. Da próxima vez, antes de partir, prepare-os na base (Naves › Equipar): quem tem Força leva a arma pesada e a munição.',
+    'cp.br.leftHeavy.other': 'Ficaram armas pesadas em {base} ({list}) e {n} soldados vão só com pistola. Da próxima vez, antes de partir, prepare-os na base (Naves › Equipar): quem tem Força leva a arma pesada e a munição.',
     'cp.br.warn.upgrade.one': 'Há uma arma melhor a bordo: {list}.',
     'cp.br.warn.upgrade.other': 'Há armas melhores a bordo para {n} soldados: {list}.',
     'cp.br.upgrade': 'Trocar armas',

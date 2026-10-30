@@ -644,6 +644,8 @@
       const g = S.G, b = base();
       const wrap = el('div', { class: 'bsc-tab-fac' });
       wrap.appendChild(head(T('base.tab.facilities'), T('base.fac.sub', { n: b.grid.length })));
+      const dfn = defenceBar(g, b);
+      if (dfn) wrap.appendChild(dfn);
       const list = el('div', { class: 'bsc-list bsc-buildlist' });
       const types = Object.keys(D().facilities).filter((t) => OV.T.has(D().facilities[t].nameKey));
       for (const type of types) {
@@ -691,6 +693,35 @@
         wrap.appendChild(section(T('base.fac.underway'), ul));
       }
       return wrap;
+    }
+
+    /* defesa da base contra um assalto (OV.Campaign.defenceOdds: Couraçado da raça mais forte do mês, ou da retaliação
+       que já visa esta base): força da guarnição / força exigida e risco de perder a base; tom mau com risco, aviso
+       quando pode aguentar só a custo. Diz quantos soldados (ou Defesas de Mísseis) faltam. */
+    function defenceBar(g, b) {
+      if (!C().defenceOdds) return null;
+      let o;
+      try { o = C().defenceOdds(g, b.id); } catch (e) { return null; }
+      const race = D().races[o.race];
+      const raceName = race ? T(race.pluralKey || race.nameKey) : o.race;
+      // ataque previsto: uma retaliação já visa esta base; sem ela a barra é só a estimativa do pior caso do mês
+      const threat = (g.alienMissions || []).some((m) => m.targetBaseId === b.id && D().alienMissions[m.type] && D().alienMissions[m.type].objective === 'retaliation');
+      const tone = o.lostPct > 0 ? (threat ? 'bad' : 'warn') : o.holdPct > 0 ? 'warn' : 'good';
+      const pct = o.need > 0 ? Math.min(100, Math.round((100 * o.strength) / Math.max(1, Math.round((o.need * 3) / 2)))) : 100;
+      const lines = [];
+      if (o.soldiersShort > 0) lines.push(o.defencesShort > 0 ? Tn('base.def.short.md', o.soldiersShort, { m: o.defencesShort }) : Tn('base.def.short', o.soldiersShort));
+      const box = el('div', { class: 'bsc-def ' + tone, role: 'group', 'aria-label': T('base.def.title') },
+        el('div', { class: 'bsc-meter-t' }, el('span', { text: T('base.def.title') }),
+          el('b', { text: T('base.def.value', { s: int(o.strength), need: int(o.need), race: raceName }) })),
+        el('div', { class: 'bsc-def-bar' }, el('i', { style: { width: pct + '%' } }), el('u', { style: { left: Math.round((100 * 2) / 3) + '%' } })),
+        el('div', { class: 'bsc-def-odds' },
+          el('span', { class: o.lostPct > 0 ? 'bad' : '', text: T('base.def.lost', { n: o.lostPct }) }),
+          el('span', { text: T('base.def.repel', { n: o.repelPct }) }),
+          o.holdPct > 0 ? el('span', { class: 'warn', text: T('base.def.hold', { n: o.holdPct }) }) : null),
+        lines.length ? el('div', { class: 'bsc-def-short', text: lines.join(' ') }) : null,
+        el('div', { class: 'bsc-def-note' + (threat ? ' bad' : ''), text: T(threat ? 'base.def.threat' : 'base.def.noThreat') }));
+      OV.Dom.tooltip(box, () => tipHtml(T('base.def.title'), [esc(Tn('base.def.tip.garrison', o.garrison)), esc(T('base.def.tip.how')), o.defences ? esc(Tn('base.def.tip.defences', o.defences)) : '']));
+      return box;
     }
 
     // ---- construção e desmantelamento ---------------------------------------------------------------------------

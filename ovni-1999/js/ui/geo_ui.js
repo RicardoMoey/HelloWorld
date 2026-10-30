@@ -783,6 +783,7 @@
     for (const r of ['dogfight', 'mission', 'base']) k.push('geo.ev.craftLost.body.' + r);
     for (const r of ['patrol', 'agents', 'supply']) k.push('geo.ev.alienBaseFound.' + r);
     for (const r of ['ufoDestroyed', 'repelled', 'lost']) k.push('geo.ev.baseDefence.' + r);
+    k.push('geo.ev.baseDefence.held', 'geo.ev.baseDefence.held.none', 'geo.ev.baseAttack.odds', 'geo.ev.baseAttack.short.one', 'geo.ev.baseAttack.short.other', 'geo.ev.baseAttack.shortMd');
     for (const r of ['item', 'craft']) k.push('geo.ev.delivery.' + r);
     for (const r of ['soldier', 'scientist', 'engineer']) k.push('geo.ev.delivery.' + r + '.one', 'geo.ev.delivery.' + r + '.other');
     for (const r of ['council', 'debt', 'baseLost', 'cydonia']) k.push('geo.end.' + r);
@@ -2040,7 +2041,7 @@
       const firstAt = new Map();
       for (const ev of evs) if (ev.t === 'deliveryArrived' && !firstAt.has(ev.baseId)) firstAt.set(ev.baseId, ev);
       for (const [baseId, ev] of firstAt) crewOnDelivery(ev, evs.filter((e) => e.t === 'deliveryArrived' && e.baseId === baseId).map((e) => e.kind));
-      for (const ev of evs) if (ev.t === 'ufoLiftOff' || ev.t === 'landedUfoGone') transportsHome(ev.ufoId);
+      for (const ev of evs) if (ev.t === 'ufoLiftOff' || ev.t === 'landedUfoGone') transportsHome(ev.ufoId, ev.recalled);
       // nave de volta ao hangar ou soldado curado: os aptos que ficaram na base voltam a embarcar (lugares de baixas)
       const boardAt = new Set();
       for (const ev of evs) {
@@ -2065,7 +2066,9 @@
     }
     /* um OVNI aterrado levantou voo: os transportes que iam para lá (ou esperavam pelo dia no local) não o perseguem
        — regressam à base (World.recall) e o aviso diz porquê */
-    function transportsHome(ufoId) {
+    function transportsHome(ufoId, recalled) {
+      // a simulação já os mandou regressar (Missions.onUfoLiftOff → ev.recalled): só falta dizer porquê
+      for (const id of recalled || []) if (G.crafts[id]) addToast({ t: 'transportHome', craftId: id, ufoId });
       for (const id of Object.keys(G.crafts)) {
         const c = G.crafts[id];
         if (!c || !c.dest || c.dest.kind !== 'ufo' || c.dest.id !== ufoId || c.dogfightId || !groundTransport(G, c)) continue;
@@ -2493,9 +2496,17 @@
         }
         case 'baseAttack': {
           const base = C().findBase(G, ev.baseId);
+          // a guarnição chega? (OV.Campaign.defenceOdds com o OVNI que ataca, enquanto ainda existe)
+          const lines = [];
+          let o = null;
+          try { o = base && C().defenceOdds && C().findUfo(G, ev.ufoId) ? C().defenceOdds(G, base.id, { ufoId: ev.ufoId }) : null; } catch (e) { o = null; }
+          if (o) {
+            lines.push(T('geo.ev.baseAttack.odds', { lost: o.lostPct, repel: o.repelPct, hold: o.holdPct }));
+            if (o.lostPct > 0 && o.soldiersShort > 0) lines.push(Tn('geo.ev.baseAttack.short', o.soldiersShort) + (o.defencesShort > 0 ? T('geo.ev.baseAttack.shortMd', { m: o.defencesShort }) : ''));
+          }
           return {
             tone: 'terror', icon: 'base', title: T('geo.ev.baseAttack'), sound: 'siren', focus: base ? refOf('base', base.id) : null,
-            text: T('geo.ev.baseAttack.body', { base: baseName(base) }), buttons: [ok],
+            text: T('geo.ev.baseAttack.body', { base: baseName(base) }), lines, buttons: [ok],
           };
         }
         case 'baseDefence': {
@@ -2505,6 +2516,11 @@
           if (shots.length) lines.push(T('geo.ev.baseDefence.shots', { hits, n: shots.length }));
           if ((ev.soldiersLost || []).length) lines.push(Tn('geo.ev.baseDefence.casualties', ev.soldiersLost.length));
           if (ev.craftsLost) lines.push(Tn('geo.ev.baseDefence.craftsLost', ev.craftsLost));
+          // aguentada a custo: radares/defesas voltam a obra (o código continua 'repelled')
+          if (ev.held) {
+            const dmg = (ev.facilitiesDamaged || []).map((f) => (D().facilities[f] ? T(D().facilities[f].nameKey) : f));
+            lines.push(dmg.length ? T('geo.ev.baseDefence.held', { list: dmg.join(', ') }) : T('geo.ev.baseDefence.held.none'));
+          }
           return {
             tone: ev.result === 'lost' ? 'terror' : 'good', icon: 'base', title: T('geo.ev.baseDefence'), sound: ev.result === 'lost' ? 'ui_deny' : 'ui_confirm',
             text: T('geo.ev.baseDefence.' + ev.result, { base: baseName(C().findBase(G, ev.baseId)) }), lines, buttons: [ok],

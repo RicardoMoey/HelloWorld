@@ -34,6 +34,7 @@
     'hud.btn.flare': 'Lançar sinalizador',
     'hud.tip.endTurn': 'Os alienígenas jogam a seguir.',
     'hud.tip.abort': 'Só regressa quem estiver dentro da nave.',
+    'hud.tip.abort.exitWin': 'Centro de controlo destruído: sair com a equipa na nave é a vitória.',
     'hud.tip.grenade': 'Ativa (espoleta 0) e lança a melhor granada do cinto.',
     'hud.tip.squad': 'Clique para selecionar; duplo clique para centrar.',
     'hud.tip.squad.touch': 'Toque para selecionar; toque duplo para centrar.',
@@ -240,6 +241,12 @@
     'hud.abort.onCraft.other': '{n} soldados estão na nave.',
     'hud.abort.loseCraft': 'Ninguém está na nave: a nave fica no terreno e perde-se (−200 pontos).',
     'hud.abort.loseCraftBtn': 'Abortar e perder a nave',
+    'hud.abort.exitTitle': 'Sair — vitória',
+    'hud.abort.exitWin': 'O centro de controlo está destruído: sair agora conta como VITÓRIA (base destruída). Quem não estiver na nave fica para trás.',
+    'hud.abort.exitWinBtn': 'Sair — base destruída',
+    'hud.abort.exitNoOne': 'O centro de controlo está destruído, mas ninguém está na nave: sem ninguém a bordo não há vitória e a nave perde-se. Leve a equipa à nave primeiro.',
+    'hud.exit.title': 'Centro de controlo destruído',
+    'hud.exit.toast': 'Centro de controlo destruído — volte à nave e aborte para vencer',
 
     // ---- fim da batalha (resumo quando não há ecrã de debriefing)
     'hud.end.continue': 'Continuar',
@@ -331,6 +338,7 @@
     'hud.sq.panic': 'Pânico',
     'hud.sq.panic.aria': '{name} — em pânico, sem UT neste turno',
     'hud.sq.aria': '{name} — {tu} UT, {hp} de saúde',
+    'hud.sq.bleeding': ', ferido a sangrar',
     'hud.sq.spent.aria': '{name} — sem UT para agir',
     'hud.sq.gone.aria': '{name} — {st}',
     'hud.panicSkip.one': '1 soldado em pânico não pode agir neste turno',

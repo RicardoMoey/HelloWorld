@@ -28,6 +28,10 @@
 /* ---- corpo: lista + artigo --------------------------------------------------------------------- */
 .up-body { display: grid; grid-template-columns: 270px minmax(0, 1fr); min-height: 0; }
 .up-nav { min-height: 0; padding: 10px 0 18px; border-right: 1px solid var(--line); background: linear-gradient(90deg, rgba(4, 9, 15, 0.55), rgba(4, 9, 15, 0.2)); }
+/* cabeçalhos fixos por grupo (.up-nav-group): o da secção seguinte empurra o anterior em vez de o tapar */
+.up-nav-group { position: relative; }
+.up-nav-group + .up-nav-group { margin-top: 2px; }
+.up-nav-item { scroll-margin-top: 40px; }
 .up-nav-sec { position: sticky; top: -10px; z-index: 1; display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 12px 16px 6px; background: #0a121b; box-shadow: 0 6px 8px -6px rgba(0, 0, 0, 0.8); }
 .up-nav-sec-t { font: 800 10.5px var(--sans); letter-spacing: 2.2px; text-transform: uppercase; color: var(--amber); }
 .up-nav-sec-n { font: 600 10.5px var(--mono); color: var(--dim); }

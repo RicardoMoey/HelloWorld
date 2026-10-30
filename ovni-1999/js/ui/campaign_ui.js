@@ -206,7 +206,9 @@
       const fits = (id, slot) => w + weightOf(id) <= str && D().fitsSlot(id, slot, visIn(lo, slot));
       const put = (id, slot) => { if (!fits(id, slot) || !take(id)) return false; lo[slot].push(id); w += weightOf(id); return true; };
       const ammoFor = (g) => { const a = D().items[g].ammo; return Array.isArray(a) && a.length ? a.filter((x) => usable(G, x) && (st[x] | 0) > 0) : null; };
-      const guns = PREF_GUNS.concat(Object.keys(st).filter((id) => D().items[id] && D().items[id].kind === 'firearm' && PREF_GUNS.indexOf(id) < 0).sort((a, b) => weightOf(a) - weightOf(b)));
+      // ordem da simulação (espingardas, depois pesadas com munição pela potência, só então pistolas): um recruta leva o
+      // Lança-Foguetes guardado em vez de uma pistola (persona r5)
+      const guns = C().kitGuns ? C().kitGuns(G, st) : PREF_GUNS.concat(Object.keys(st).filter((id) => D().items[id] && D().items[id].kind === 'firearm' && PREF_GUNS.indexOf(id) < 0).sort((a, b) => weightOf(a) - weightOf(b)));
       let gun = null;
       for (const g of guns) {
         if (!(st[g] > 0) || !usable(G, g) || !D().items[g] || D().items[g].kind !== 'firearm') continue;
@@ -225,7 +227,8 @@
         if (Array.isArray(ammo) && ammo.length) {
           for (let n = 0; n < 2; n++) {
             const clip = ammo.find((x) => usable(G, x) && (st[x] | 0) > 0);
-            if (!clip || !put(clip, 'belt')) break;
+            // foguetes não cabem no cinto: vão na mochila
+            if (!clip || !(put(clip, 'belt') || put(clip, 'pack'))) break;
           }
         }
         if (!put('grenade', 'belt')) put('grenade', 'pack');
@@ -1217,7 +1220,31 @@
     // armas melhores a bordo (fabricadas ou compradas) que os soldados armados ainda não levam: oferecer a troca
     const up = gunUpgrades(G, mission.craftId);
     if (up.length) out.push({ cls: 'info', id: 'upgrade', text: Tn('cp.br.warn.upgrade', up.length, { list: upgradeText(up) }) });
+    /* armas pesadas (Lança-Foguetes, canhões) com munição que ficaram no armazém enquanto há soldados só com pistola (ou
+       sem arma): longe do hangar já não se podem levar (Campaign.equipPool) — diz-se para a próxima vez */
+    const weak = squad.filter((sq) => ![sq.loadout && sq.loadout.R, sq.loadout && sq.loadout.L].some((id) => id && D().items[id] && D().items[id].kind === 'firearm' && D().items[id].twoHanded)).length;
+    const heavy = craft && weak ? heavyLeft(G, craft) : [];
+    if (heavy.length) {
+      const base = C().findBase(G, craft.baseId);
+      out.push({ cls: 'info', text: Tn('cp.br.leftHeavy', weak, { list: heavy.map((x) => x.n + ' × ' + itemName(x.id)).join(', '), base: base ? baseName(base) : '—' }) });
+    }
     return out;
+  }
+  /* armas de duas mãos (fora as de atordoar e o Blaster) investigadas, no armazém da base e nenhuma a bordo, com
+     munição na base ou a bordo → [{id, n}] (a ordem de OV.Campaign.kitGuns: a mais potente primeiro) */
+  function heavyLeft(G, craft) {
+    const b = C().findBase(G, craft.baseId);
+    if (!b || !b.stores) return [];
+    let pool = null;
+    try { pool = C().equipPool(G, craft.id); } catch (e) { pool = null; }
+    if (!pool) return [];
+    const all = leftAtBaseAll(G, craft, pool, {});
+    const ids = all.filter((x) => x.ab === 0 && D().items[x.id] && D().items[x.id].kind === 'firearm' && D().items[x.id].twoHanded).map((x) => x.id);
+    if (!ids.length) return [];
+    const st = Object.assign({}, b.stores);
+    for (const k of Object.keys(pool.stores || {})) st[k] = (st[k] | 0) + (pool.stores[k] | 0);
+    const order = C().kitGuns ? C().kitGuns(G, st) : ids;
+    return order.filter((id) => ids.indexOf(id) >= 0 && PREF_GUNS.indexOf(id) < 0).map((id) => ({ id, n: b.stores[id] | 0 }));
   }
 
   // o OVNI aterrado do briefing levou dano antes de aterrar?
@@ -1800,6 +1827,8 @@
 
       // baixas
       const fallen = (deb.dead || []).map((sid) => ({ sid, kia: true })).concat((deb.mia || []).map((sid) => ({ sid, kia: false })));
+      // como morreu cada um (o texto do registo do combate: «granada alienígena», «tiro de Sectoide»…)
+      const causes = OV.BattleUI && OV.BattleUI.causesFor ? OV.BattleUI.causesFor(B) : {};
       const lossSec = ui.panelSection(T('scr.db.losses'),
         fallen.length ? el('div', { class: 'scr-memorial' },
           el('div', { class: 'scr-mem-title', text: T('scr.db.memorial') }),
@@ -1808,7 +1837,7 @@
             return el('div', { class: 'scr-mem' }, ui.portraitEl({ portraitSeed: w.portraitSeed, female: w.female, nat: w.nat, armour: w.armour, rank: w.rankBefore }, 48, 'mem'),
               el('div', null,
                 el('div', { class: 'scr-mem-name' }, el('span', { class: 'scr-rank r' + w.rankBefore, text: rankLabel(w.rankBefore) }), el('b', { text: w.name })),
-                el('div', { class: 'scr-muted', text: [T(gk(f.kia ? 'scr.db.kia' : 'scr.db.mia', w)), Tn('cp.db.missions', w.missions + 1), w.kills ? Tn('bs.debrief.soldier.kills', w.kills) : null].filter(Boolean).join(' · ') })));
+                el('div', { class: 'scr-muted', text: [T(gk(f.kia ? 'scr.db.kia' : 'scr.db.mia', w)) + (f.kia && causes[f.sid] ? ' — ' + causes[f.sid] : ''), Tn('cp.db.missions', w.missions + 1), w.kills ? Tn('bs.debrief.soldier.kills', w.kills) : null].filter(Boolean).join(' · ') })));
           })) : el('p', { class: 'scr-good-note', text: T('scr.db.noLosses') }));
 
       // feridos (dias na enfermaria)
@@ -2519,7 +2548,7 @@
     launchMission, startBattle, afterBattle, resume, openGeo, popToGeo, equip,
     cydoniaState, cydoniaPick, cydoniaWhy, cydoniaCapable, launchCydonia, monthAlienSplit, fundingTotals,
     monthReport, gameOver, victory, baseDefence, saveDialog, loadDialog, autosave, saveLabel, errText,
-    armedLo, idleFit, unarmedAboard, boardAll, autoKit, landedHurt, fieldKitPlan, fieldKit, fieldKitText, crewUp, leftAtBase, leftAtBaseAll, leftText, gunPower, gunUpgrades, upgradeKit, upgradeText, emptyHands, noAmmoCount, loadAmmo, crewText, starterKit, buyStarterKit, orderStarterKit,
+    armedLo, idleFit, unarmedAboard, boardAll, autoKit, heavyLeft, landedHurt, fieldKitPlan, fieldKit, fieldKitText, crewUp, leftAtBase, leftAtBaseAll, leftText, gunPower, gunUpgrades, upgradeKit, upgradeText, emptyHands, noAmmoCount, loadAmmo, crewText, starterKit, buyStarterKit, orderStarterKit,
     markUfoKnown, saveBeforeMission, preMissionFor, retryMission, EXTRA_SLOTS, extraSummary, loadExtra, reseedOnLoad, alsoPromotedKey, fmtDec1,
   });
 })(globalThis.OV || (globalThis.OV = {}));

@@ -1209,7 +1209,8 @@
           navRows.set(a.id, li);
           ul.appendChild(li);
         }
-        nav.append(head, ul);
+        // cada secção no seu grupo: o cabeçalho fixo só se cola dentro dela e o seguinte empurra-o (não se sobrepõem)
+        nav.appendChild(el('div', { class: 'up-nav-group' }, head, ul));
       }
       if (G) {
         const all = articles().length, open = list.length;

@@ -1032,6 +1032,20 @@
     // mortes a sangrar com um kit médico a bordo: a dica das feridas também aparece
     const kit = B.brought ? (B.brought.medikit | 0) > 0 : (B.items || []).some((it) => it.type === 'medikit');
     if (out.wounds && kit && out.tip !== 'scr.db.tip.wounds') out.tip2 = 'scr.db.tip.wounds';
+    /* soldados juntos mortos no mesmo turno alienígena (OV.Battle.clusteredDeaths, ≤ 2 casas): espalhar a equipa — os
+       tiros falhados e as granadas apanham o do lado. Passa à frente da dica genérica; equipa pequena e corpo a corpo
+       continuam primeiro */
+    out.clustered = OV.Battle && OV.Battle.clusteredDeaths ? OV.Battle.clusteredDeaths(B) | 0 : 0;
+    if (out.clustered >= 2 && best === 'enemy') {
+      if (out.tip === 'scr.db.tip.outnumbered' || out.tip === 'scr.db.tip.melee') {
+        if (!out.tip2) out.tip2 = 'scr.db.tip.clustered';
+        else if (!out.tip3) out.tip3 = 'scr.db.tip.clustered';
+      } else {
+        if (out.tip2 && !out.tip3) out.tip3 = out.tip2;
+        out.tip2 = out.tip;
+        out.tip = 'scr.db.tip.clustered';
+      }
+    }
     // pânico em cadeia (2+ episódios X-COM): explicar a moral — oficial na equipa, não avançar todos de uma vez
     out.panics = (B.stats && B.stats.xcomPanics) | 0;
     if (out.panics >= 2) {
@@ -1780,6 +1794,7 @@
 
         // baixas (memorial)
         const fallen = (deb.dead || []).map((sid) => ({ sid, kia: true })).concat((deb.mia || []).map((sid) => ({ sid, kia: false })));
+        const causes = B && OV.BattleUI && OV.BattleUI.causesFor ? OV.BattleUI.causesFor(B) : {};
         const lossSec = panelSection(T('scr.db.losses'),
           fallen.length ? el('div', { class: 'scr-memorial' },
             el('div', { class: 'scr-mem-title', text: T('scr.db.memorial') }),
@@ -1789,7 +1804,7 @@
               return el('div', { class: 'scr-mem' }, portraitEl(w, 48, 'mem'),
                 el('div', null,
                   el('div', { class: 'scr-mem-name' }, el('span', { class: 'scr-rank r' + (w.rank | 0), text: rank ? T(rank.abbrKey) : '' }), el('b', { text: w.name })),
-                  el('div', { class: 'scr-muted', text: T(gk(f.kia ? 'scr.db.kia' : 'scr.db.mia', w)) + (w.kills ? ' · ' + Tn('bs.debrief.soldier.kills', w.kills) : '') })));
+                  el('div', { class: 'scr-muted', text: T(gk(f.kia ? 'scr.db.kia' : 'scr.db.mia', w)) + (f.kia && causes[f.sid] ? ' — ' + causes[f.sid] : '') + (w.kills ? ' · ' + Tn('bs.debrief.soldier.kills', w.kills) : '') })));
             })) : el('p', { class: 'scr-good-note', text: T('scr.db.noLosses') }));
 
         // feridos

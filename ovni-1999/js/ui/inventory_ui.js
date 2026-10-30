@@ -1675,7 +1675,8 @@
   /* Auto-equipar um soldado (puro; tira do armazém `stores`, que muda). o = {night, researched, squad}.
      Só armas investigadas e com munição no armazém, cujo peso com um carregador caiba na Força; munição no cinto
      ou, se não couber (foguetes), na mochila — o motor carrega a arma no início da missão; granadas e sinalizador
-     só se o peso continuar dentro da Força; kit médico para o soldado com mais saúde. → loadout */
+     só se o peso continuar dentro da Força; kit médico para o soldado com mais saúde (ou para quem já o levava:
+     o.keepMed). → loadout */
   function autoLoadout(s, stores, o) {
     const opt = o || {};
     const known = knownTo(opt.researched);
@@ -1733,7 +1734,7 @@
     }
     if (opt.night && have('electro_flare') && w + weightOf('electro_flare', null) <= str) place('electro_flare');
     const best = squad.slice().sort((a, b) => ((b.stats && b.stats.hp) | 0) - ((a.stats && a.stats.hp) | 0))[0];
-    if (best && best.id === s.id && have('medikit') && w + weightOf('medikit', null) <= str && D().fitsSlot('medikit', 'pack', visibleIn(lo, 'pack')) && take('medikit')) {
+    if ((opt.keepMed || (best && best.id === s.id)) && have('medikit') && w + weightOf('medikit', null) <= str && D().fitsSlot('medikit', 'pack', visibleIn(lo, 'pack')) && take('medikit')) {
       lo.pack.push('medikit');
       w += weightOf('medikit', null);
     }
@@ -1967,8 +1968,9 @@
       background: () => {},
     });
 
-    function autoFor(s) {
-      return autoLoadout(s, E.stores, { night: !!o.night, researched, squad });
+    // keepMed: quem já levava o kit médico continua a levá-lo (o AUTO-EQUIPAR não o tira)
+    function autoFor(s, keepMed) {
+      return autoLoadout(s, E.stores, { night: !!o.night, researched, squad, keepMed: !!keepMed });
     }
     function emptyInto(id) {
       for (const t of loTypes(E.loadouts[id])) give(t);
@@ -1999,8 +2001,9 @@
         sfx('ui_confirm');
         emit();
       } else if (kind === 'auto') {
+        const hadMed = loTypes(E.loadouts[s.id] || emptyLo()).indexOf('medikit') >= 0;
         emptyInto(s.id);
-        E.loadouts[s.id] = autoFor(s);
+        E.loadouts[s.id] = autoFor(s, hadMed);
         // sem arma que dispare (ou sem munição para ela): dizer onde se compra em vez de deixar o soldado desarmado
         if (!armedLo(E.loadouts[s.id])) {
           sfx('ui_deny');

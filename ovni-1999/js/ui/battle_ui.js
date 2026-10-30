@@ -1105,6 +1105,7 @@
       finishBattle();
       return;
     }
+    exitHint();
     // toque: a pré-visualização só vive entre o 1.º e o 2.º toque (nada de caminhos «fantasma» no último toque)
     if (isTouch()) S.mouse = null;
     ensureSelection();
@@ -1811,7 +1812,7 @@
     if (ev.t === 'death') {
       const u = find(ev.unitId);
       if (!u) return null;
-      if (mine(u)) return { key: gk('hud.log.kia', u), params: { name: nm(u), how: how(u, ev.killerId) }, kind: 'bad', own: true, at: tileOf(u), from: fromOf(u, ev.killerId), hid: hidOf(u, ev.killerId) };
+      if (mine(u)) return { key: gk('hud.log.kia', u), params: { name: nm(u), how: how(u, ev.killerId) }, kind: 'bad', own: true, at: tileOf(u), from: fromOf(u, ev.killerId), hid: hidOf(u, ev.killerId), uid: u.id };
       const k = find(ev.killerId);
       if (u.origSide === 'alien' && k && mine(k)) return { key: 'hud.log.alienKilled', params: { name: nm(u), by: nm(k) }, kind: 'good', own: false, at: tileOf(u), from: -1 };
       if (u.origSide === 'civ' && ev.vis) return { key: 'hud.log.civKilled', params: { name: nm(u) }, kind: 'warn', own: false, at: tileOf(u), from: -1 };
@@ -2007,22 +2008,49 @@
     try { S.onPlayerTurn(S.B); } catch (e) { console.warn('onPlayerTurn', e); }
   }
 
+  /* base alienígena com o centro de controlo destruído (regra do original): a batalha não acaba sozinha — sair
+     (Abortar com alguém na nave) é a vitória. Diz-se uma vez, fica no registo (N) com «Mostrar» a apontar a nave, e o
+     botão Abortar passa a verde. */
+  function exitHint() {
+    if (!S || S.ended || S.exitHinted || !OV.Battle.exitWin || !OV.Battle.exitWin(S.B)) return;
+    S.exitHinted = true;
+    if (S.hud && S.hud.bAbort) S.hud.bAbort.classList.add('exit-win');
+    const ct = S.B.craftTiles || [];
+    const row = { key: 'bs.obj.exitWin', params: null, kind: 'good', ic: '✓', at: ct.length ? ct[0] : -1, from: -1 };
+    pushLog(Object.assign({}, row, { own: false }));
+    toast('hud.exit.toast', null, 'good');
+    // um relatório já aberto (turno alienígena) não é substituído: o aviso fica no registo e no botão
+    if (!S.report) openReport('turn', [row], 'hud.exit.title');
+  }
   async function abortMission() {
     if (!S || S.playing || S.ended) return;
     const craft = new Set(S.B.craftTiles || []);
     const n = squad().filter((u) => selectable(u) && OV.BUnits.unitTiles(u, S.B.map).some((i) => craft.has(i))).length;
-    const body = el('div', null, el('p', { class: 'modal-text', text: T('bs.abort.confirm') }), el('p', { class: 'modal-text muted', text: Tn('hud.abort.onCraft', n) }));
+    // centro de controlo destruído e alguém a bordo: sair conta como vitória (OV.Battle.abort → B.result 'win')
+    const exit = !!(OV.Battle.exitWin && OV.Battle.exitWin(S.B)) && n > 0;
+    const body = el('div', null, el('p', { class: 'modal-text' + (exit ? ' bs-abort-win' : ''), text: T(exit ? 'hud.abort.exitWin' : 'bs.abort.confirm') }), el('p', { class: 'modal-text muted', text: Tn('hud.abort.onCraft', n) }));
     // ninguém a bordo: a nave fica no terreno e perde-se (o relatório desconta-a)
-    if (!n) body.appendChild(el('p', { class: 'modal-text bs-abort-lose', text: T('hud.abort.loseCraft') }));
+    if (!n) body.appendChild(el('p', { class: 'modal-text bs-abort-lose', text: T(OV.Battle.exitWin && OV.Battle.exitWin(S.B) ? 'hud.abort.exitNoOne' : 'hud.abort.loseCraft') }));
     const ok = await OV.Dom.modal({
-      title: T('hud.abort.title'), body, cls: 'alert',
-      buttons: [{ label: T('common.cancel'), value: false }, { label: T(n ? 'bs.abort' : 'hud.abort.loseCraftBtn'), value: true, kind: 'danger' }],
+      title: T(exit ? 'hud.abort.exitTitle' : 'hud.abort.title'), body, cls: exit ? '' : 'alert',
+      buttons: [{ label: T('common.cancel'), value: false }, { label: T(exit ? 'hud.abort.exitWinBtn' : n ? 'bs.abort' : 'hud.abort.loseCraftBtn'), value: true, kind: exit ? 'primary' : 'danger' }],
     });
     if (!ok || !S || S.ended) return;
     OV.Battle.abort(S.B);
     finishBattle();
   }
 
+  // soldierId (ou id da unidade) → «granada alienígena», «tiro de Sectoide»… a partir das entradas de morte do registo
+  let lastCauses = null;
+  function deathCauses() {
+    const out = {};
+    for (const e of S.log) {
+      if (e.uid === undefined || !/^hud\.log\.kia/.test(e.key) || !e.params || !e.params.how) continue;
+      const u = unitOf(e.uid);
+      if (u) out[u.soldierId !== null && u.soldierId !== undefined ? u.soldierId : u.id] = e.params.how;
+    }
+    return out;
+  }
   async function finishBattle() {
     if (!S || S.ended) return;
     S.ended = true;
@@ -2047,6 +2075,8 @@
       if (!S || S.B !== B) return;
     }
     const debrief = OV.Battle.debrief(B);
+    // causa de cada morte (o mesmo texto do registo) para o memorial do relatório: OV.BattleUI.causesFor(B)
+    lastCauses = { B, map: deathCauses() };
     const result = { outcome, debrief, B };
     if (S.onExit) {
       S.onExit(result);
@@ -2218,7 +2248,7 @@
     H.bGrenade = btn('', 'grenade', T('hud.btn.grenade'), 'G', () => cmdQuickThrow('grenade'), T('hud.tip.grenade'));
     H.bFlare = btn('', 'flare', T('hud.btn.flare'), 'L', () => cmdQuickThrow('flare'));
     H.bOpts = btn('', 'options', T('hud.btn.options'), 'Esc', openOptions);
-    H.bAbort = btn('danger', 'abort', T('hud.btn.abort'), 'X', abortMission, T('hud.tip.abort'));
+    H.bAbort = btn('danger', 'abort', T('hud.btn.abort'), 'X', abortMission, () => T(S && S.exitHinted ? 'hud.tip.abort.exitWin' : 'hud.tip.abort'));
     H.grid = el('div', { class: 'bs-grid' }, H.bKneel, H.bInv, H.bReload, H.bGrenade, H.bFlare, H.bMap, H.bPrev, H.bNext, H.bDone, H.bCentre, H.bOpts, H.bAbort);
     H.tools.append(H.level, H.grid);
 
@@ -2422,19 +2452,23 @@
   function renderSquad() {
     const H = S.hud;
     const list = squad();
-    const sig = list.map((u) => [u.id, u.tu, u.hp, u.status, u.done, u.side, u.onMap ? 1 : 0, u.id === S.selId ? 1 : 0].join(':')).join('|');
+    const bleeding = (u) => (u.wounds || []).some((w) => w > 0);
+    const sig = list.map((u) => [u.id, u.tu, u.hp, u.status, u.done, u.side, u.onMap ? 1 : 0, u.id === S.selId ? 1 : 0, bleeding(u) ? 1 : 0].join(':')).join('|');
     if (S.sig.squad === sig) return;
     S.sig.squad = sig;
     OV.Dom.clear(H.squad);
     for (const u of list) {
       const alive = selectable(u);
-      const row = el('button', { class: 'bs-sq' + (u.id === S.selId ? ' sel' : '') + (alive ? '' : ' gone') + (alive && !hasTU(u) ? ' spent' : '') + (u.status === 'panic' ? ' panic' : ''), type: 'button' });
+      const bleed = alive && bleeding(u);
+      const row = el('button', { class: 'bs-sq' + (u.id === S.selId ? ' sel' : '') + (alive ? '' : ' gone') + (alive && !hasTU(u) ? ' spent' : '') + (u.status === 'panic' ? ' panic' : '') + (bleed ? ' bleeding' : ''), type: 'button' });
       const tuPct = u.tuMax ? Math.max(0, Math.min(100, ((u.tu | 0) / u.tuMax) * 100)) : 0;
       const hpPct = u.hpMax ? Math.max(0, Math.min(100, ((u.hp | 0) / u.hpMax) * 100)) : 0;
       row.append(
         el('span', { class: 'bs-sq-rank r' + (u.rank | 0), text: rankAbbr(u) || '·' }),
         el('span', { class: 'bs-sq-name', text: uname(u) }),
         el('span', { class: 'bs-sq-bars' }, el('i', { class: 'tu', style: { width: tuPct.toFixed(0) + '%' } }), el('i', { class: 'hp', style: { width: hpPct.toFixed(0) + '%' } })));
+      // ferido a sangrar: marca de forma (✚), não só cor; o nome acessível di-lo também
+      if (bleed) row.appendChild(el('span', { class: 'bs-sq-bleed', 'aria-hidden': 'true', text: '✚' }));
       // pânico: ícone e texto (não só a cor da risca), também para leitores de ecrã
       const panic = alive && u.status === 'panic';
       if (panic) row.appendChild(el('span', { class: 'bs-sq-st', 'aria-hidden': 'true' }, el('b', { text: '⚠' }), T('hud.sq.panic')));
@@ -2451,14 +2485,14 @@
           select(u.id, { centre: false });
         });
         row.addEventListener('dblclick', () => S && centreUnit(u));
-        tip(row, uname(u), null, (rankName(u) ? rankName(u) + ' · ' : '') + T('hud.bar.tu') + ' ' + (u.tu | 0) + ' · ' + T('hud.bar.hp') + ' ' + (u.hp | 0) + ' — ' + T(tk('hud.tip.squad')));
+        tip(row, uname(u), null, (rankName(u) ? rankName(u) + ' · ' : '') + T('hud.bar.tu') + ' ' + (u.tu | 0) + ' · ' + T('hud.bar.hp') + ' ' + (u.hp | 0) + (bleed ? T('hud.sq.bleeding') : '') + ' — ' + T(tk('hud.tip.squad')));
       } else {
         tip(row, uname(u), null, st);
       }
       tipRight(row);
       // nome acessível com o estado (depois de tip, que o põe só com o nome)
       row.setAttribute('aria-label', !alive ? (u.status === 'dead' ? st : T('hud.sq.gone.aria', { name: uname(u), st }))
-        : panic ? T('hud.sq.panic.aria', { name: uname(u) }) : hasTU(u) ? T('hud.sq.aria', { name: uname(u), tu: u.tu | 0, hp: u.hp | 0 }) : T('hud.sq.spent.aria', { name: uname(u) }));
+        : (panic ? T('hud.sq.panic.aria', { name: uname(u) }) : hasTU(u) ? T('hud.sq.aria', { name: uname(u), tu: u.tu | 0, hp: u.hp | 0 }) : T('hud.sq.spent.aria', { name: uname(u) })) + (bleed ? T('hud.sq.bleeding') : ''));
       H.squad.appendChild(row);
     }
   }
@@ -3453,7 +3487,7 @@
         lastFire: null, miniOn: false, mood: null, hudDirty: true, mapDirty: true, force: false, spaceDown: false, spaceDragged: false,
         clickFast: false, perf: OV.Game && OV.Game.debug ? { draw: [], at: [], shown: 0, last: null } : null,
         kcur: { x: 0, y: 0, armed: false, anchor: null, hold: null }, arrowT: {}, alt: false, lastInput: 'ptr', mouse0: null, aimLabel: '',
-        log: [], logSeq: 0, endNo: null, logCtx: { last: {}, seenAt: {} }, report: null, alienNades: new Set(), contactTurn: B.turn | 0, ufoHinted: false,
+        log: [], logSeq: 0, endNo: null, logCtx: { last: {}, seenAt: {} }, report: null, alienNades: new Set(), contactTurn: B.turn | 0, ufoHinted: false, exitHinted: false,
       };
       S.pctx = {
         view: S.view, anim, side: 'xcom', followId: () => (S ? S.selId : null),
@@ -3605,7 +3639,7 @@
         pathSub: S.view.path ? S.view.path.sub || null : null, hint: S.hud ? S.hud.hint.textContent : '',
         targetLabel: S.view.target && S.view.targetLabel ? Object.assign({}, S.view.targetLabel) : null,
         report: S.report ? { kind: S.report.kind, rows: Array.from(S.hud.report.querySelectorAll('.bs-report-txt')).map((n) => n.textContent) } : null,
-        contactTurn: S.contactTurn, ufoHinted: !!S.ufoHinted, queued: S.queuedN | 0,
+        contactTurn: S.contactTurn, ufoHinted: !!S.ufoHinted, exitHinted: !!S.exitHinted, queued: S.queuedN | 0,
         arcTiles: S.view.arcTiles ? S.view.arcTiles.tiles.reduce((n, v) => n + v, 0) : 0,
       };
     },
@@ -3678,6 +3712,8 @@
     refresh() { if (S) invalidate(); },
     // abortar a missão (com a confirmação de sempre): botão do HUD, tecla X e o painel Opções (Esc)
     abort() { if (S) abortMission(); },
+    // causas das mortes da última batalha terminada (para o memorial): {soldierId: texto} | {}
+    causesFor(B) { return lastCauses && lastCauses.B === B ? lastCauses.map : {}; },
     model: { kbStep, logEntry, blastConfirm, lineRisk, lineConfirm, blastLineRisk, blastWho, handName, confirmEarly, reportSummary, turnReportRows, ufoHintDue, ufoHintTurns, UFO_HINT_TURNS, reserveWhat, arcTiles, ufoEntry },
     debug,
   };

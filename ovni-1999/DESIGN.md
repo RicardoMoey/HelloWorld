@@ -1393,3 +1393,26 @@ Scope (25k lines) vs one session; iso art legibility of procedural sprites; LOS/
 - **January terror is smaller**: month-0 terror sites use the crew table one difficulty lower and one terrorist fewer
   (Veterano 4 aliens). With the starting kit Veterano won 60 % of them with 5 dead per battle, so ignoring the terror
   (−500) was the best move.
+
+**Persona round 5 integration (ours; UI over the sim changes above)**:
+- **Door with someone behind it (engine)**: a walk whose next step is a closed door (swing or UFO) with an unseen unit
+  right behind it now opens the door (TU_DOOR, facing the door), refreshes sight and stops as when spotting — as in the
+  original. The AI and the bots get the same behaviour; the Battlescape's pre-check (walk up, then «abrir porta») stays.
+- **Transports stop chasing a UFO that lifts off (sim)**: `Missions.onUfoLiftOff` recalls every ground transport (no
+  weapons, or with soldiers aboard) heading for it; `ufoLiftOff`/`landedUfoGone` carry `recalled` and the Geoscape only
+  explains it with a toast. Interceptors keep chasing.
+- **Alien-base exit win in the HUD**: once the control centre is gone, a panel (also in the log, N) says to regroup in
+  the craft and press Abortar; the Abort button turns green and its confirmation says the exit counts as a VICTORY.
+- **Debriefing**: soldiers killed together in the same alien turn (`clusteredDeaths` ≥ 2) give the «espalhe os soldados»
+  tip first; the memorial names how each soldier died (the battle log's wording).
+- **Base defence on screen**: Instalações shows strength / need, the loss / repel / hold odds and how many soldiers
+  (or Missile Defences) are missing, marked as a worst-case estimate until a retaliation actually targets the base;
+  the attack alert shows the odds for the attacking UFO, and a defence «held at a cost» lists the facilities rebuilt.
+- **Auto-kit** follows `Campaign.kitGuns` (rifles, then heavy weapons with ammo, then pistols; rockets go in the
+  backpack); AUTO-EQUIPAR keeps the medikit on whoever carried it.
+- **Balance check (campaign bot, 240 days, after all round-5 changes)**: Recruta 12/12 (seeds 1–12, median day 136.5,
+  0 council defeats, 7/7 base attacks repelled). Veterano 13/24 = 54 % (seeds 1–12 7/12, 13–24 6/12; round 4 was
+  11/24), 0 council defeats, 43/43 base attacks repelled, endings 13 victories / 7 Cydonia losses / 4 timeouts. Battle
+  sweep (veteran bot, Veterano, 40 seeds): small/large scout, harvester, abductor and terror 100 %, medium scout and
+  battleship 95 %, supply ship 98 %, terror ship 90 %, alien base 93 % (4.3 dead), Cydonia 80 % (6.7 dead). Veterano
+  improved and no council defeat appeared, so no tuning knob was changed.

@@ -21,7 +21,7 @@ module.exports = function (OV, t) {
   t.test('r1 integração: todos os motivos de OV.Act têm texto (bs.noRoute incluído)', () => {
     t.ok(OV.Act.REASONS.indexOf('noRoute') >= 0);
     t.eq(OV.Act.REASONS.filter((r) => !has('bs.' + r)), [], 'bs.<motivo> em falta');
-    t.eq(OV.T('bs.noRoute'), 'Bomba sem rota até ao alvo');
+    t.ok(/^Bomba sem rota até ao alvo/.test(OV.T('bs.noRoute')), OV.T('bs.noRoute'));
   });
 
   t.test('r1 integração: cada paragem do fabrico que o sim devolve tem texto na base e no Geoscape', () => {

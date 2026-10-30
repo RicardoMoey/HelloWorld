@@ -559,8 +559,27 @@
     if (def && def.objective === 'score') score(G, 'alien', D().scoring.missionPoints[m.type], ufo.lon, ufo.lat);
     if (def && def.objective === 'supply' && ufo.objective) supplyAt(G, ufo, m);
     ufo.dest = zonePoint(G, ufo, m, ufo.wp);
-    if (ufo.detected) ev(G, 'ufoLiftOff', { ufoId: ufo.id });
-    else if (craftsAfter(G, ufo.id)) ev(G, 'landedUfoGone', { ufoId: ufo.id });
+    const after = craftsAfter(G, ufo.id);
+    // transportes de tropas a caminho do OVNI aterrado voltam à base (não perseguem uma nave em voo)
+    const recalled = recallTransports(G, ufo.id);
+    if (ufo.detected) ev(G, 'ufoLiftOff', { ufoId: ufo.id, recalled });
+    else if (after) ev(G, 'landedUfoGone', { ufoId: ufo.id, recalled });
+  }
+  /* transporte em terra: sem armas, ou com soldados a bordo (o mesmo critério de OV.GeoUI.model.groundTransport);
+     fora do hangar, sem combate aéreo em curso → World.recall. Devolve os ids recolhidos (ordem estável). */
+  function recallTransports(G, ufoId) {
+    const out = [];
+    if (!OV.World || !OV.World.recall) return out;
+    for (const id of Object.keys(G.crafts).sort()) {
+      const c = G.crafts[id];
+      const def = c && D().crafts[c.type];
+      if (!def || !def.transport || !c.dest || c.dest.kind !== 'ufo' || c.dest.id !== ufoId || c.dogfightId) continue;
+      if ((def.weapons | 0) > 0 && !(c.soldiers || []).length) continue;
+      if (c.status !== 'out' && c.status !== 'patrol') continue;
+      const r = OV.World.recall(G, c.id);
+      if (r && r.ok) out.push(c.id);
+    }
+    return out;
   }
   function craftsAfter(G, ufoId) {
     for (const id in G.crafts) {
