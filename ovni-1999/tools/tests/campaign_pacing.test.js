@@ -43,7 +43,7 @@ module.exports = function (OV, t) {
 
   t.test('afinação: chaves novas do contrato em OV.TUNE (§8)', () => {
     t.eq(T.MISSION_ARRIVE_NM, 5);
-    t.eq([T.BASE_DEFENCE_BASE, T.BASE_DEFENCE_PER_COEF, T.BASE_DEFENCE_FACILITY_PCT, T.RETALIATION_WARNING_MIN], [850, 100, 100, 1440]);
+    t.eq([T.BASE_DEFENCE_CREW_PCT, T.BASE_DEFENCE_TIER_PCT, T.BASE_DEFENCE_FACILITY_PCT, T.BASE_DEFENCE_FACILITY_CAP_PCT, T.BASE_DEFENCE_CASUALTY_PCT, T.RETALIATION_WARNING_MIN], [50, 20, 25, 66, 40, 1440]);
     t.eq(T.ALIEN_BASE_SURRENDER, ['commander', 'leader', 'leader']);
     t.eq(D.missionRules.terrorNearBaseWeightMul, 4);
     t.eq(D.missionRules.crashCoastNm, 180);
@@ -93,42 +93,52 @@ module.exports = function (OV, t) {
     t.ok(G2.ufopaedia.indexOf('ufo_medium_scout') < 0);
   });
 
-  t.test('defesa da base: guarnição inicial repele um Couraçado em Recruta; o casco perdido e as defesas contam', () => {
-    // força exigida = (BASE + PER_COEF·coef) × casco que resta; a guarnição de 8 recrutas chega em Recruta
+  t.test('defesa da base: guarnição inicial repele um Couraçado em Recruta; o casco perdido e as defesas contam (até 66 % dos soldados)', () => {
+    // exigência = BASE_DEFENCE_CREW_PCT % da tripulação esperada × casco que resta (contrato §5.9, persona r4)
+    const powerOf = (list) => list.reduce((s, x) => s + C.defenderPower(x), 0);
     for (const seed of [3, 4, 5, 6]) {
       const G = freshG(seed, 0);
-      const strength = Object.values(G.soldiers).reduce((s, x) => s + x.stats.tu + x.stats.fire + x.stats.hp, 0);
-      t.ok(strength >= T.BASE_DEFENCE_BASE, 'guarnição inicial ' + strength + ' ≥ ' + T.BASE_DEFENCE_BASE);
+      G.month = 3;
       const u = placeUfo(G, 'flying', 'battleship', G.bases[0].lon, G.bases[0].lat);
+      const need = Math.floor((C.assaultForce(G, u) * T.BASE_DEFENCE_CREW_PCT) / 100);
+      t.ok(powerOf(Object.values(G.soldiers)) >= need, 'guarnição inicial ≥ ' + need);
       const r = C.baseDefence(G, 'b1', u.id);
       t.eq(r.result, 'repelled', 'semente ' + seed);
       t.ok(r.soldiersLost.length >= 1 && r.soldiersLost.length <= 3);
     }
-    // Veterano (exigência 1 050): 3 soldados sozinhos não chegam; com duas defesas de mísseis (+500 cada) sim
-    const vet = (withDefences) => {
+    // Veterano, mês 3: 5 soldados em casa não chegam, nem com duas Defesas de Mísseis; os 10 iniciais sim
+    const vet = (atHome, withDefences) => {
       const G = freshG(9, 1);
+      G.month = 3;
       const sky = skyOf(G);
-      sky.status = 'out'; // 5 soldados estão fora na Skyranger
-      for (const sid of sky.soldiers.slice(0, 3)) {
-        OV.Campaign.removeById(sky.soldiers, sid);
-        G.soldiers[sid].craftId = null;
+      sky.status = 'out';
+      const all = Object.values(G.soldiers);
+      for (const s of all) {
+        if (s.craftId) OV.Campaign.removeById(sky.soldiers, s.id);
+        s.craftId = null;
+      }
+      for (const s of all.slice(atHome)) {
+        s.craftId = sky.id;
+        sky.soldiers.push(s.id);
       }
       if (withDefences) G.bases[0].grid.push({ type: 'missile_defence', x: 5, y: 0, daysLeft: 0 }, { type: 'missile_defence', x: 5, y: 1, daysLeft: 0 });
-      const home = Object.values(G.soldiers).filter((s) => !s.craftId);
-      const strength = home.reduce((s, x) => s + x.stats.tu + x.stats.fire + x.stats.hp, 0);
+      const strength = powerOf(all.slice(0, atHome));
       const u = placeUfo(G, 'flying', 'battleship', G.bases[0].lon, G.bases[0].lat);
       const r = C.baseDefence(G, 'b1', u.id);
       const shot = r.shots.reduce((s, x) => s + x.dmg, 0);
-      const need = Math.floor((1050 * (D.ufos.battleship.hp - shot)) / D.ufos.battleship.hp);
+      const full = Math.floor((C.assaultForce(G, u) * T.BASE_DEFENCE_CREW_PCT) / 100);
+      const need = Math.floor((full * (D.ufos.battleship.hp - shot)) / D.ufos.battleship.hp);
       return { r, strength, need };
     };
-    t.eq(T.BASE_DEFENCE_BASE + T.BASE_DEFENCE_PER_COEF * 2, 1050);
-    const bare = vet(false);
-    t.ok(bare.strength < bare.need, 'só 3 soldados: ' + bare.strength);
+    const bare = vet(5, false);
+    t.ok(bare.strength < bare.need, 'só 5 soldados: ' + bare.strength + ' < ' + bare.need);
     t.eq(bare.r.result, 'lost');
-    const def = vet(true);
-    t.eq(def.r.result, def.strength + 1000 >= def.need ? 'repelled' : 'lost');
-    t.eq(def.r.result, 'repelled', 'defesas contam: ' + (def.strength + 1000) + ' vs ' + def.need);
+    const def = vet(5, true);
+    const bonus = Math.min(2 * Math.floor((D.facilities.missile_defence.defence * T.BASE_DEFENCE_FACILITY_PCT) / 100), Math.floor((def.strength * T.BASE_DEFENCE_FACILITY_CAP_PCT) / 100));
+    t.eq(def.r.result, def.strength + bonus >= def.need ? 'repelled' : 'lost');
+    t.eq(def.r.result, 'lost', 'as defesas não substituem a guarnição: ' + (def.strength + bonus) + ' vs ' + def.need);
+    const full = vet(10, false);
+    t.eq(full.r.result, 'repelled', 'os 10 iniciais: ' + full.strength + ' vs ' + full.need);
   });
 
   t.test('queda no mar a ≤ 180 mn da costa cai em terra; no alto mar o OVNI é destruído', () => {
@@ -147,7 +157,7 @@ module.exports = function (OV, t) {
     t.ok(G.events.some((e) => e.t === 'ufoDestroyed' && e.ufoId === v.id));
   });
 
-  t.test('base alienígena tomada: comandante e dois líderes rendem-se se houver contenção; sem contenção, nada', () => {
+  t.test('base alienígena tomada: comandante e líderes (até aos da tripulação) rendem-se se houver contenção; sem contenção, nada', () => {
     const mk = (withContainment) => {
       const G = freshG(17, 1);
       if (withContainment) G.bases[0].grid.push({ type: 'alien_containment', x: 5, y: 3, daysLeft: 0 });
@@ -160,11 +170,13 @@ module.exports = function (OV, t) {
     };
     const { G, model } = mk(true);
     t.eq(model.debrief.result, 'win');
-    t.ok((G.bases[0].aliens.sectoid_commander | 0) >= 1 && (G.bases[0].aliens.sectoid_leader | 0) >= 2, JSON.stringify(G.bases[0].aliens));
-    t.ok(model.capturedStored.sectoid_commander >= 1 && model.capturedStored.sectoid_leader >= 2);
-    t.ok(G.stats.aliensCaptured >= 3);
+    // Veterano: a tripulação da base tem 1 comandante e 1 líder (persona r4: não 2 líderes de uma tripulação com 1)
+    t.eq(G.bases[0].aliens, { sectoid_commander: 1, sectoid_leader: 1 });
+    t.eq(model.capturedStored, { sectoid_commander: 1, sectoid_leader: 1 });
+    t.eq(model.surrendered, { sectoid_commander: 1, sectoid_leader: 1 }, 'rendição à parte no modelo do relatório');
+    t.ok(G.stats.aliensCaptured >= 2);
     t.eq(G.alienBases.length, 0);
-    // a cadeia da história fica ao alcance: um líder dá «interrogado», o outro a bandeira depois das Origens e o
+    // a cadeia da história fica ao alcance: o líder dá «interrogado» (e, retroativamente, a bandeira das Origens) e o
     // comandante a sua depois da Solução Marciana
     t.ok(C.availableResearch(G, 'b1').indexOf('interrogate_sectoid_leader') >= 0);
     const none = mk(false);

@@ -430,9 +430,11 @@ module.exports = function (OV, t) {
       t.eq(s.loadout.belt, ['rifle_clip', 'rifle_clip', 'grenade']);
       t.ok(s.name && s.stats.tu >= 50 && s.stats.tu <= 60 && D.soldierGen.nationalities[s.nat]);
     }
-    const night = BT.quickMission({ ufoType: 'medium_scout', terrain: 'FARM', night: true, month: 4, seed: 9 });
+    // equipamento da progressão da campanha (persona r4): mês 1–2 laser + armadura, 3–5 plasma pesado, 6+ fato energético
+    const night = BT.quickMission({ ufoType: 'medium_scout', terrain: 'FARM', night: true, month: 1, seed: 9 });
     t.ok(night.squad[0].loadout.R === 'laser_rifle' && night.squad[0].loadout.belt.indexOf('electro_flare') >= 0 && night.squad[0].armour === 'personal_armour');
-    t.eq(BT.quickMission({ month: 7, seed: 1 }).squad[0].loadout.R, 'plasma_rifle');
+    t.eq([BT.quickMission({ month: 4, seed: 1 }).squad[0].loadout.R, BT.quickMission({ month: 4, seed: 1 }).squad[0].armour], ['heavy_plasma', 'personal_armour']);
+    t.eq([BT.quickMission({ month: 7, seed: 1 }).squad[0].loadout.R, BT.quickMission({ month: 7, seed: 1 }).squad[0].armour], ['heavy_plasma', 'power_suit']);
     const B = BT.create(m);
     t.eq(B.turn, 1);
     t.eq(B.side, 'xcom');

@@ -124,12 +124,14 @@
     return true;
   }
 
-  // vitória: nenhum alienígena consciente (atordoados contam como neutralizados) ou o Cérebro destruído;
-  // derrota: nenhuma unidade X-COM consciente no mapa (tem prioridade); 'abort' quando B.aborted
+  // vitória: nenhum alienígena consciente (atordoados contam como neutralizados), o Cérebro ou o centro de controlo da
+  // base alienígena destruídos (OBJECTIVE_KINDS; ours para a base, como diz o briefing); derrota: nenhuma unidade X-COM
+  // consciente no mapa (tem prioridade); 'abort' quando B.aborted
+  const OBJECTIVE_KINDS = { cydonia: 1, alienBase: 1 };
   function outcome(B) {
     if (B.aborted) return 'abort';
     if (!B.units.some((u) => u.side === 'xcom' && LIVE[u.status] && u.onMap)) return 'loss';
-    if (B.mission.kind === 'cydonia' && objectiveDestroyed(B)) return 'win';
+    if (OBJECTIVE_KINDS[B.mission.kind] === 1 && objectiveDestroyed(B)) return 'win';
     if (!B.units.some((u) => u.side === 'alien' && LIVE[u.status])) return 'win';
     return null;
   }
@@ -290,7 +292,7 @@
       turn: 1, side: 'xcom', phase: 'setup', cheat: false, aborted: false, reserve: 'none', reserveKneel: false,
       rng: { map: streams.map, combat: streams.combat, ai: streams.ai },
       units: [], items: [],
-      stats: { civSaved: 0, civKilledByAliens: 0, civKilledByXcom: 0, aliensKilled: 0, aliensStunned: 0, xcomKilled: 0, crashDead: 0 },
+      stats: { civSaved: 0, civKilledByAliens: 0, civKilledByXcom: 0, aliensKilled: 0, aliensStunned: 0, xcomKilled: 0, crashDead: 0, xcomPanics: 0 },
       log: [], pendingExplosions: [], flashes: [], nextId: 1, crew: [],
       // opções da batalha (Granadas instantâneas) e tópicos investigados (equipamento alienígena utilizável)
       settings: Object.assign({ instantGrenades: !!tune('INSTANT_GRENADES_DEFAULT', true) }, mission.settings || {}),
@@ -425,18 +427,21 @@
   const RACES_BY_MONTH = [['sectoid', 'floater'], ['sectoid', 'floater'], ['sectoid', 'floater', 'snakeman'],
     ['sectoid', 'floater', 'snakeman'], ['sectoid', 'floater', 'snakeman', 'muton'], ['sectoid', 'floater', 'snakeman', 'muton', 'ethereal']];
 
-  // equipamento por mês: 0–2 espingarda; 3–5 laser + armadura pessoal; 6+ plasma + fato energético
+  /* Equipamento por mês, alinhado com a progressão real da campanha (bot de campanha, Veterano, sementes 1–3: lasers e
+     Armadura Pessoal nos dias 22–28, Plasma Pesado a partir do dia ≈ 90, poucos fatos energéticos antes de Cidónia):
+     0 espingarda + fato de combate; 1–2 Espingarda Laser + Armadura Pessoal; 3–5 Plasma Pesado + Armadura Pessoal;
+     6+ Plasma Pesado + Fato Energético. quickMission junta um kit médico ao soldado com mais Saúde. */
   function quickLoadout(month, night) {
     let lo, armour;
-    if (month < 3) {
+    if (month < 1) {
       lo = { R: 'rifle', L: null, belt: ['rifle_clip', 'rifle_clip', 'grenade'], pack: [] };
       armour = 'coveralls';
-    } else if (month < 6) {
+    } else if (month < 3) {
       lo = { R: 'laser_rifle', L: null, belt: ['grenade', 'grenade'], pack: [] };
       armour = 'personal_armour';
     } else {
-      lo = { R: 'plasma_rifle', L: null, belt: ['plasma_rifle_clip', 'plasma_rifle_clip', 'grenade'], pack: [] };
-      armour = 'power_suit';
+      lo = { R: 'heavy_plasma', L: null, belt: ['heavy_plasma_clip', 'heavy_plasma_clip', 'grenade'], pack: [] };
+      armour = month < 6 ? 'personal_armour' : 'power_suit';
     }
     if (night) lo.belt.push('electro_flare');
     return { lo, armour };
@@ -809,7 +814,8 @@
         returned:{tipo:n}, equipmentLost:{tipo:n}, lost:[soldierId], dead:[…], mia:[…], wounded:{soldierId:hp},
         exp:{soldierId:{…}}, soldiers:[{soldierId, unitId, status, hpLost, kills, exp}], civilians:{saved, killedByAliens,
         killedByXcom}, craftLost, turns, aliensLeft:[unitId] (sem vitória: alienígenas que ficam no local),
-        leftOnField:{tipo:n} (sem vitória: material que fica no terreno)}
+        leftOnField:{tipo:n} (sem vitória: material que fica no terreno), objective (vitória pelo objetivo com alienígenas
+        ainda de pé: não contam como abatidos e o que levam não é recuperado), panics (episódios de pânico X-COM)}
      Vitória numa base alienígena: dep.artefacts × dispositivos intactos; num local revisitado: + mission.garrison.leftovers. */
   function debrief(B, ctx) {
     const Data = D();
@@ -821,8 +827,13 @@
     const fates = xcomFates(B, result);
     const craft = new Set(B.craftTiles || []);
     const find = (id) => BU().findUnit(B, id);
+    // vitória pelo objetivo (centro de controlo / Cérebro): os alienígenas ainda de pé fogem com o que levam
+    const holder = (it) => (it.owner !== null && it.owner !== undefined ? find(it.owner) : null);
     const recoverable = (it) => {
-      if (result === 'win') return true;
+      if (result === 'win') {
+        const h = holder(it);
+        return !(h && h.origSide === 'alien' && h.side === 'alien' && LIVE[h.status]);
+      }
       if (result === 'loss') return false;
       return it.owner !== null ? fates.get(it.owner) === 'ok' : craft.has(it.at);
     };
@@ -984,9 +995,13 @@
       }
     }
     const score = lines.reduce((s, l) => s + l.points, 0);
+    // objective: vitória com o objetivo destruído e alienígenas ainda de pé ; panics: episódios de pânico/berserk X-COM
+    const objective = result === 'win' && OBJECTIVE_KINDS[M.kind] === 1 && objectiveDestroyed(B)
+      && B.units.some((u) => u.origSide === 'alien' && u.side === 'alien' && LIVE[u.status]);
     return {
       result, score, lines, kills: killed.length, captured, recovered, returned, equipmentLost, lost, dead, mia, wounded, exp, soldiers,
       civilians: { saved, killedByAliens: byAliens, killedByXcom: byXcom }, craftLost, turns: B.turn, aliensLeft, leftOnField,
+      objective, panics: (B.stats && B.stats.xcomPanics) | 0,
     };
   }
 

@@ -160,7 +160,7 @@ module.exports = function (OV, t) {
     t.eq(G.activeMission, null);
     t.eq(G.score.month.xcom.total - xBefore, deb.score, 'pontuação da batalha somada');
     t.eq(model.scoreAdded, deb.score);
-    t.eq(Object.keys(model).sort(), ['capturedLost', 'capturedStored', 'craftLost', 'debrief', 'meta', 'mission', 'outcome', 'progression', 'promotions', 'scoreAdded', 'storage', 'stored']);
+    t.eq(Object.keys(model).sort(), ['capturedLost', 'capturedStored', 'craftLost', 'debrief', 'meta', 'mission', 'outcome', 'progression', 'promotions', 'scoreAdded', 'storage', 'stored', 'surrendered']);
     if (deb.result === 'win') {
       t.eq(G.ufos.length, 0, 'OVNI removido');
       t.eq(G.stats.missionsWon, 1);
@@ -452,9 +452,10 @@ module.exports = function (OV, t) {
     // 2) guarnição de 16 soldados (10 iniciais + 6) contra um Couraçado em Recruta: repelido, 1–3 baixas
     G = freshG(41, 0);
     for (let k = 0; k < 6; k++) C.addSoldier(G, C.makeSoldier(G, { baseId: 'b1' }));
-    const strength = Object.values(G.soldiers).reduce((s, x) => s + x.stats.tu + x.stats.fire + x.stats.hp, 0);
-    t.ok(strength >= OV.TUNE.BASE_DEFENCE_BASE || strength >= 1800, 'guarnição forte: ' + strength);
+    const strength = Object.values(G.soldiers).reduce((s, x) => s + C.defenderPower(x), 0);
     u = placeUfo(G, 'landed', 'battleship', G.bases[0].lon, G.bases[0].lat);
+    const need = Math.floor((C.assaultForce(G, u) * OV.TUNE.BASE_DEFENCE_CREW_PCT) / 100);
+    t.ok(strength >= 2 * need, 'guarnição forte: ' + strength + ' vs ' + need);
     const xBefore = G.score.month.xcom.total;
     r = C.baseDefence(G, 'b1', u.id);
     t.eq(r.result, 'repelled');

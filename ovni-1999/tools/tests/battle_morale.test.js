@@ -19,6 +19,12 @@ module.exports = function (OV, t) {
     BT.rebuildDerived(B);
     return B;
   }
+  // Veterano: perdas de moral orig e sem pausa no pânico (Recruta: MORALE_LOSS_PCT 50, PANIC_COOLDOWN_TURNS 1)
+  function fixtureVet(w, h, seed) {
+    const B = fixture(w, h, seed);
+    B.mission.difficulty = 1;
+    return B;
+  }
   const I = (B, x, y, z) => BM.idx(B.map, x, y, z || 0);
   const tileOf = (B, u) => BU.unitTile(B, u);
   let sid = 1;
@@ -98,7 +104,7 @@ module.exports = function (OV, t) {
   });
 
   t.test('Moral: dano −100·(p·B/10)/teamMod, feridas −n, grandes imunes, limite 0', () => {
-    const B = fixture();
+    const B = fixtureVet();
     const u = soldier(B, 1, 1, { stats: { brav: 30 } });
     let ev = M.onHit(B, u, 15);
     t.eq(u.morale, 88, 'B=8, p=15, sem líder: −12');
@@ -124,20 +130,20 @@ module.exports = function (OV, t) {
   });
 
   t.test('Moral: morte de recruta −16 e de comandante −28 (Bravura 30, sem líder)', () => {
-    const B = fixture();
+    const B = fixtureVet();
     const a = soldier(B, 1, 1, { stats: { brav: 30 } });
     const b = soldier(B, 2, 1, { stats: { brav: 30 } });
     const v = soldier(B, 3, 1);
     v.status = 'dead';
     M.onDeath(B, v, null);
     t.eq([a.morale, b.morale], [84, 84], 'recruta');
-    const B2 = fixture();
+    const B2 = fixtureVet();
     const o = soldier(B2, 1, 1, { stats: { brav: 30 } });
     const cmd = soldier(B2, 2, 1, { rank: 5 });
     M.onDeath(B2, cmd, null); // ainda 'ok': a vítima nunca conta como líder
     t.eq(o.morale, 72, 'comandante: 175·200·8/100/100');
     // sargento morto com um capitão presente: 120·200·8/115/100 = 16; Bravura 100 ⇒ B=1
-    const B3 = fixture();
+    const B3 = fixtureVet();
     const p = soldier(B3, 1, 1, { stats: { brav: 30 } });
     const brave = soldier(B3, 4, 1, { stats: { brav: 100 } });
     soldier(B3, 2, 1, { rank: 3 });
@@ -149,7 +155,7 @@ module.exports = function (OV, t) {
   });
 
   t.test('Moral: inimigo morto, assassino, fogo amigo, civis, grandes imunes, assassino conhecido', () => {
-    const B = fixture();
+    const B = fixtureVet();
     const sgt = soldier(B, 1, 1, { rank: 2 }); // líder 110
     const k = soldier(B, 2, 1);
     const al = alien(B, 'sectoid_soldier', 8, 8);
@@ -167,13 +173,13 @@ module.exports = function (OV, t) {
     t.eq(civ.morale, 61, 'civis ficam do lado vencedor');
     t.eq(k.turnsSinceSpotted, 0, 'assassino de alien fica conhecido');
     // fogo amigo: −2000/mod e ainda a perda da equipa
-    const B2 = fixture();
+    const B2 = fixtureVet();
     const s1 = soldier(B2, 1, 1, { stats: { brav: 30 } });
     const s2 = soldier(B2, 2, 1);
     s2.status = 'dead';
     M.onDeath(B2, s2, s1.id);
     t.eq(s1.morale, 100 - 20 - 16);
-    const B3 = fixture();
+    const B3 = fixtureVet();
     const s3 = soldier(B3, 1, 1, { stats: { brav: 30 } });
     soldier(B3, 3, 3, { rank: 5 });
     const s4 = soldier(B3, 2, 1);
@@ -181,7 +187,7 @@ module.exports = function (OV, t) {
     M.onDeath(B3, s4, s3.id);
     t.eq(s3.morale, 100 - 13 - 10, 'com comandante: −2000/150 e −16000·…/150');
     // civis: X-COM −1000/mod, alien +10; sem efeito na equipa
-    const B4 = fixture();
+    const B4 = fixtureVet();
     const x = soldier(B4, 1, 1);
     const y = soldier(B4, 2, 1);
     const a = alien(B4, 'sectoid_soldier', 8, 8);
@@ -198,7 +204,7 @@ module.exports = function (OV, t) {
     M.onDeath(B4, c1, x.id);
     t.eq(x.morale, 42, 'com coronel: −1000/125');
     // alien mata soldado: assassino +20, aliens +10, X-COM perde
-    const B5 = fixture();
+    const B5 = fixtureVet();
     const s5 = soldier(B5, 1, 1, { stats: { brav: 30 } });
     const s6 = soldier(B5, 2, 1);
     const ak = alien(B5, 'sectoid_soldier', 8, 8);
@@ -255,7 +261,7 @@ module.exports = function (OV, t) {
   });
 
   t.test('Pânico: paralisia — UT 0, moral +15, estado panic até ao próximo turno do lado', () => {
-    const B = fixture();
+    const B = fixtureVet();
     const u = soldier(B, 4, 4);
     u.morale = 0;
     const { evs, ret } = drain(M.panicPhase(B, 'xcom', scripted([1, 50, 99])));
@@ -403,7 +409,7 @@ module.exports = function (OV, t) {
   });
 
   t.test('Pânico: distribuição berserk 33 % / paralisia / fuga (Monte Carlo)', () => {
-    const B = fixture();
+    const B = fixtureVet();
     const u = soldier(B, 5, 5);
     const rng = OV.RNG.create(12345);
     const n = 3000;

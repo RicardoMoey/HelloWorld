@@ -10,13 +10,16 @@
      assassino:         +20·mod/100 (inimigo) ; −2000/mod (amigo) ; civil: X-COM −1000/mod, outros +10
      pânico/berserk:    chance = 100 − 2·moral; 33 % berserk, senão 50 % paralisa / 50 % larga as armas e foge;
                         depois UT = 0, moral +15; passar com chance > 1 ⇒ exp. de bravura +1
+     dificuldade (ours): as perdas do dano e das mortes no lado X-COM × TUNE.MORALE_LOSS_PCT[dif] / 100 (Recruta 50 %);
+                        TUNE.PANIC_COOLDOWN_TURNS[dif] turnos sem novo pânico para o soldado X-COM que acabou de ter um
+                        episódio (u.panicTurn = B.turn); cada episódio X-COM soma 1 a B.stats.xcomPanics (relatório)
      psi:               ataque = PsiStr·PsiSkill/50 − dist + RNG(0,55) ; defesa = PsiStr + 10 + PsiSkill/5 (+20 MC)
 
    API (OV.Morale):
      leaderMod(B, side, exclude?) → 100|110|115|125|150 (patente mais alta X-COM consciente; exclude = unidade|id
        ignorada, p. ex. a vítima) ; outros lados → 100
      teamMod(B, u, exclude?) ; rankWeight(u) → 100..175 ; bravFactor(u) → B ; panicChance(morale) → 0..100
-     moraleChange(B, u, delta) → variação aplicada (0 se imune)
+     moraleChange(B, u, delta) → variação aplicada (0 se imune) ; lossPct(B, u) → % das perdas (100 fora do lado X-COM)
      onHit(B, u, damage) → events ; onWounds(B, u, n) → events ; painkiller(B, u) → events
      onDeath(B, victim, killerId) → events (também killer.turnsSinceSpotted = 0 quando a vítima é alienígena)
        events de variação: {t:'morale', kind:'change', unitId, delta, morale} (informativos: sem pos/vis)
@@ -108,6 +111,14 @@
   const rankWeight = (u) => (u.side === 'xcom' && isSoldier(u) ? rankTable('RANK_WEIGHT', DEF_WEIGHT, u.rank) : 100);
   const bravFactor = (u) => Math.max(0, U.idiv(110 - ((u && u.stats ? u.stats.brav : 0) | 0), 10));
   const panicChance = (morale) => U.clamp(100 - 2 * (morale | 0), 0, 100);
+  const diffOf = (B) => U.clamp(((B && B.mission && B.mission.difficulty) | 0), 0, 2);
+  const byDiff = (B, key, def) => {
+    const t = tune(key, def);
+    return (Array.isArray(t) ? t[Math.min(diffOf(B), t.length - 1)] : t) | 0;
+  };
+  // ours (persona r4): perdas de moral do lado X-COM escaladas pela dificuldade (Recruta 50 %)
+  const lossPct = (B, u) => (u && u.origSide === 'xcom' ? byDiff(B, 'MORALE_LOSS_PCT', [50, 100, 100]) : 100);
+  const lossOf = (B, u, loss) => U.idiv(Math.max(0, loss | 0) * lossPct(B, u), 100);
 
   // ---- variações de moral ----------------------------------------------------------------------------------
   function moraleChange(B, u, delta) {
@@ -126,7 +137,7 @@
     const out = [];
     const p = Math.max(0, damage | 0);
     if (!u || !p) return out;
-    change(B, u, -U.idiv(100 * U.idiv(p * bravFactor(u), 10), teamMod(B, u)), out);
+    change(B, u, -lossOf(B, u, U.idiv(100 * U.idiv(p * bravFactor(u), 10), teamMod(B, u))), out);
     return out;
   }
 
@@ -162,8 +173,8 @@
       if ((victim.origSide === 'xcom' && killer.side === 'alien') || (victim.origSide === 'alien' && killer.side === 'xcom')) {
         change(B, killer, U.idiv(20 * mod, 100), out);
       }
-      if (victim.origSide === killer.origSide) change(B, killer, -U.idiv(2000, mod), out);
-      if (victim.origSide === 'civ') change(B, killer, killer.origSide === 'xcom' ? -U.idiv(1000, mod) : 10, out);
+      if (victim.origSide === killer.origSide) change(B, killer, -lossOf(B, killer, U.idiv(2000, mod)), out);
+      if (victim.origSide === 'civ') change(B, killer, killer.origSide === 'xcom' ? -lossOf(B, killer, U.idiv(1000, mod)) : 10, out);
     }
     if (victim.side !== 'civ') {
       const w = rankWeight(victim);
@@ -172,7 +183,7 @@
       const winnerMod = victim.side === 'alien' ? xmod : 100;
       for (const u of B.units) {
         if (u === victim || !conscious(u) || !fearable(u)) continue;
-        if (u.origSide === victim.origSide) change(B, u, -U.idiv(U.idiv(w * 200 * bravFactor(u), loserMod), 100), out);
+        if (u.origSide === victim.origSide) change(B, u, -lossOf(B, u, U.idiv(U.idiv(w * 200 * bravFactor(u), loserMod), 100)), out);
         else change(B, u, U.idiv(10 * winnerMod, 100), out);
       }
       // quem matou um alienígena fica conhecido dos alienígenas
@@ -234,6 +245,10 @@
   }
   // fim de episódio: UT 0, +15 de moral, estado 'panic' até ao próximo turno do lado
   function endEpisode(B, u) {
+    if (u.origSide === 'xcom') {
+      u.panicTurn = B.turn | 0;
+      if (B.stats) B.stats.xcomPanics = (B.stats.xcomPanics | 0) + 1;
+    }
     if (!conscious(u)) return;
     u.status = 'panic';
     u.tu = 0;
@@ -392,6 +407,13 @@
     endEpisode(B, u);
   }
 
+  // soldado X-COM com um episódio há ≤ PANIC_COOLDOWN_TURNS turnos (Recruta: 1) não volta a rolar (não consome RNG)
+  function coolingDown(B, u) {
+    if (u.origSide !== 'xcom' || u.panicTurn === undefined || u.panicTurn === null) return false;
+    const cd = byDiff(B, 'PANIC_COOLDOWN_TURNS', [1, 0, 0]);
+    return cd > 0 && (B.turn | 0) - (u.panicTurn | 0) <= cd;
+  }
+
   /* Fase de pânico no início do turno de `side` (depois da recuperação de UT). Repõe 'panic' → 'ok' das unidades do
      lado, depois rola por unidade consciente no mapa (ordem de B.units). Só consome RNG quando chance > 0. */
   function* panicPhase(B, side, rng) {
@@ -404,7 +426,7 @@
       if (over(B)) break;
       if (u.side !== side || !active(u)) continue;
       const chance = panicChance(moraleOf(u));
-      if (chance <= 0) continue;
+      if (chance <= 0 || coolingDown(B, u)) continue;
       if (r.int(1, 100) > chance) {
         if (chance > 1) gainExp(u, 'brav');
         continue;
@@ -522,7 +544,7 @@
   }
 
   OV.Morale = {
-    leaderMod, teamMod, rankWeight, bravFactor, panicChance, moraleChange, onHit, onWounds, onDeath, painkiller,
+    leaderMod, teamMod, rankWeight, bravFactor, panicChance, lossPct, moraleChange, onHit, onWounds, onDeath, painkiller,
     panicPhase, runBerserk, berserkWeapon, nearestVisibleEnemy, psiAttack, revertControl, psiAttackStrength,
     psiDefense, tileDist, psiChance, controlOdds, gainExp, improveStat, postMission, EXP_KINDS,
   };

@@ -1333,3 +1333,26 @@ Scope (25k lines) vs one session; iso art legibility of procedural sprites; LOS/
   «orig» by mistake; it is a pacing compression that goes with research ×0.25 (§14). Measured with the original costs
   (campaign bot, Veterano, seeds 1–24): 7/24 victories and 2 council defeats against 12/24 and none with the cheaper
   hire. A strong player is not constrained either way (≈ $9 M at the end of January), a weak one is.
+
+**Persona round 4 deviations (ours; sim/data fixer, numbers in `docs/CAMPAIGN_API.md` §11.11)**:
+- **Morale losses scale with difficulty** (`TUNE.MORALE_LOSS_PCT` [50, 100, 100]): on Recruta an X-COM soldier loses
+  half the original morale from wounds, a comrade's death, killing a friend or a civilian. On Recruta a soldier who
+  panicked or went berserk does not roll again on the next X-COM turn (`TUNE.PANIC_COOLDOWN_TURNS` [1, 0, 0]). The
+  original had no difficulty factor; an 11-year-old's rookie squad on Recruta chain-panicked from 2–3 deaths into total
+  losses (10/10 dead in 2 of the first 4 missions). Veterano and Super-humano keep the original rules. Every X-COM
+  episode is counted (`B.stats.xcomPanics`, `debrief.panics`) so the debriefing can explain the panic.
+- **Base defence auto-resolve weighs the attacking crew**: the garrison (stats + worn armour) is compared with half the
+  expected strength of the assault UFO's crew for its race, the difficulty and the month's alien weapon tier (×
+  hull left). Defence facilities fire at the hull first and then add only 25 % of their power, capped at 66 % of the
+  soldiers' strength; the dead of a win grow with need / strength. Before, a fixed 850–1 250 was compared with the
+  garrison plus 100 % of the facilities' power, so one recruit and two Missile Defences beat any Battleship. Soldiers
+  away on a craft still do not defend (as in the original).
+- **Destroying the alien base's control centre wins the assault** (as the briefing says; like Cydonia's Brain). The
+  aliens still standing are neither killed nor captured, and what they carry is not recovered. In OpenXcom the battle
+  goes on and an abort then counts as a success; ours ends it at once so the briefing's promise holds.
+- **The alien-base surrender is capped by the crew**: at most as many commanders and leaders surrender as the battle
+  crew had (Veterano: 1 + 1; Super-humano 1 + 2), minus those captured in the battle, and the debriefing model lists
+  them apart (`model.surrendered`). One commander is enough for the whole story chain (retroactive interrogation flags).
+- **The balance tool's monthly kit follows the campaign** (`Battle.quickLoadout`): month 0 rifles, months 1–2 Laser Rifle
+  and Personal Armour, months 3–5 Heavy Plasma, 6+ also Power Suits. It used rifles until month 2, which showed a false
+  difficulty wall in month 2 (terror 13 %, alien base 13 %).

@@ -81,6 +81,11 @@
     BERSERK_RANDOM_RADIUS: 6,
     LEADER_MOD: [100, 100, 110, 115, 125, 150], // por patente: recruta, soldado, sargento, capitão, coronel, comandante
     RANK_WEIGHT: [100, 100, 120, 130, 150, 175],
+    // ours (persona r4, DESIGN §22): % das perdas de moral do lado X-COM (feridas, mortes de aliados) por dificuldade
+    // 0/1/2 — em Recruta 2–3 baixas já não arrastam a equipa inteira para o pânico em cadeia
+    MORALE_LOSS_PCT: [50, 100, 100],
+    // ours: turnos X-COM seguintes a um episódio de pânico/berserk em que o mesmo soldado não volta a entrar em pânico
+    PANIC_COOLDOWN_TURNS: [1, 0, 0],
 
     // ---- granadas (ours)
     GRENADE_FUSE_MAX: 5,
@@ -140,11 +145,15 @@
     GEO_FRAME_BUDGET_MS: 12,
     AUTOSAVE_DAYS: [1, 10, 20], // dias do mês com gravação automática
     LOW_FUEL_MARGIN_10M: 1, // margem (passos de 10 min) no regresso por falta de combustível
-    BASE_DEFENCE_BASE: 850, // defesa automática da base: força necessária (Σ UT+Pontaria+Saúde da guarnição)…
-    BASE_DEFENCE_PER_COEF: 100, // …+100 por coeficiente (0/2/4) ⇒ 850/1050/1250 × casco que resta ao OVNI; 8 recrutas em casa
-    // (1105–1198) aguentam em Veterano; em Super-humano é preciso uma defesa ou soldados melhores
+    // defesa automática da base (ours, persona r4; contrato §5.9 / §11.11): exigência = CREW_PCT % da força esperada da
+    // tripulação do OVNI (Σ UT+Pontaria+Saúde+armadura frontal por raça, dificuldade e mês) × casco que resta, contra a
+    // força da guarnição (Σ UT+Pontaria+Saúde+armadura frontal dos soldados em casa)…
+    BASE_DEFENCE_CREW_PCT: 50,
+    BASE_DEFENCE_TIER_PCT: 20, // …+20 % por nível médio de armamento alienígena do mês (mês 3: +18 %, mês 4+: +34 %, Etéreos +40 %)
     RETALIATION_WARNING_MIN: 1440, // ours: base encontrada (baseSpotted) ⇒ pelo menos 24 h até o Couraçado do ataque partir
-    BASE_DEFENCE_FACILITY_PCT: 100, // cada defesa concluída soma o seu poder à força da guarnição (precisa de ≥ 1 soldado)
+    BASE_DEFENCE_FACILITY_PCT: 25, // …+25 % do poder de cada defesa concluída (que já atirou ao casco na salva)…
+    BASE_DEFENCE_FACILITY_CAP_PCT: 66, // …mas no máximo 66 % da força dos soldados (≥ 60 % da força vem deles)
+    BASE_DEFENCE_CASUALTY_PCT: 40, // baixas da vitória = round(guarnição × exigência / força × 40 %), 1..guarnição
     MISSION_ARRIVE_NM: 5, // nave em patrulha a ≤ 5 mn de um local conta como chegada (startMission)
     ALIEN_BASE_SURRENDER: ['commander', 'leader', 'leader'], // ours: base alienígena tomada entrega estes vivos (contenção)
     GEO_IDLE_COALESCE: true, // ours: sem nada no ar, o relógio salta até à fronteira seguinte (hash idêntico)

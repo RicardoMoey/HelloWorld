@@ -14,6 +14,10 @@
      --landed 1       OVNI aterrado (tripulação completa, sem danos de queda) em vez de despenhado
      --squad N        soldados (omissão 8; base alienígena e Cidónia: a nave cheia — Skyranger 10, Avenger 12)
      --gear N         equipamento X-COM do mês N (independente do --month dos alienígenas)
+   Equipamento X-COM do mês (Battle.quickLoadout, alinhado com o bot de campanha — lasers e Armadura Pessoal nos dias
+   22–28, Plasma Pesado a partir do dia ≈ 90): mês 0 Espingarda + fato de combate; 1–2 Espingarda Laser + Armadura
+   Pessoal; 3–5 Plasma Pesado + Armadura Pessoal; 6+ Plasma Pesado + Fato Energético; um kit médico no soldado com mais
+   Saúde. Cidónia usa o kit final (cydoniaKit).
    Locais de terror: raça pelo calendário da campanha (Data.raceSchedule.alien_terror); missões escuras (base alienígena,
    Marte) levam very-lights; dois soldados levam uma granada de fumo.
      --quiet / --verbose
@@ -108,7 +112,7 @@ function drain(gen, B, st) {
 
 // ---- missões -------------------------------------------------------------------------------------------------
 const UFOS = ['small_scout', 'medium_scout', 'large_scout', 'harvester', 'abductor', 'supply_ship', 'terror_ship', 'battleship'];
-// mês do varrimento por tipo (equipamento do mês: 0–2 espingarda, 3–5 laser + armadura, Cidónia fato + plasma pesado)
+// mês do varrimento por tipo (equipamento do mês: ver cabeçalho — 0 espingarda, 1–2 laser + armadura, 3–5 plasma pesado)
 const SWEEP = [
   { id: 'small_scout', ufo: 'small_scout', month: 0 }, { id: 'medium_scout', ufo: 'medium_scout', month: 0 },
   { id: 'large_scout', ufo: 'large_scout', month: 1 }, { id: 'harvester', ufo: 'harvester', month: 1 },
@@ -187,7 +191,7 @@ function missionFor(o) {
     if (k === 1 || k === 2) s.loadout.pack.push('smoke_grenade');
   });
   // --vet: equipa com a experiência típica do mês de campanha (ganhos de atributos por missões, até aos limites)
-  // --gear N: equipamento do mês N (espingarda < 3, laser + armadura < 6, plasma + fato), independente dos alienígenas
+  // --gear N: equipamento do mês N (Battle.quickLoadout, ver cabeçalho), independente dos alienígenas
   if (o.gear !== undefined && o.gear !== null) {
     const { lo, armour } = OV.Battle.quickLoadout(o.gear | 0, dark || !!o.night);
     for (const s of mission.squad) {

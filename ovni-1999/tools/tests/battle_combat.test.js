@@ -624,6 +624,7 @@ module.exports = function (OV, t) {
 
   t.test('Moral: feridas = total na parte atingida (mesmo sem ferida nova); impacto só em golpes diretos, também STUN', () => {
     const B = fixture();
+    B.mission.difficulty = 1; // perdas de moral orig (Recruta: MORALE_LOSS_PCT 50)
     const s = soldier(B, 3, 3, { stats: { brav: 50, hp: 60 } });
     s.wounds[1] = 2;
     s.morale = 80;

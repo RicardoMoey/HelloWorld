@@ -73,7 +73,7 @@
     return B._;
   }
   function stats(B) {
-    if (!B.stats) B.stats = { civSaved: 0, civKilledByAliens: 0, civKilledByXcom: 0, aliensKilled: 0, aliensStunned: 0, xcomKilled: 0, crashDead: 0 };
+    if (!B.stats) B.stats = { civSaved: 0, civKilledByAliens: 0, civKilledByXcom: 0, aliensKilled: 0, aliensStunned: 0, xcomKilled: 0, crashDead: 0, xcomPanics: 0 };
     return B.stats;
   }
   function pending(B) {

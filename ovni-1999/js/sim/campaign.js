@@ -398,7 +398,8 @@
        reseedMap(G, salt) → novo G.rng.map (mistura determinística do sal na stream 'map'; repetir uma missão)
        finishMission(G, B) → modelo do debriefing
        baseVolley(G, baseId, ufoId) → {shots, destroyed} (defesas atiram uma vez; ufo.siege)
-       baseDefence(G, baseId, ufoId) → {result, shots, soldiersLost} }
+       baseDefence(G, baseId, ufoId) → {result, shots, soldiersLost}
+       assaultForce(G, ufo) → força esperada da tripulação do OVNI ; defenderPower(soldado) → força na defesa }
      Erros de pré-condição: Error('campaign.err.<motivo>'). */
   const U = OV.U;
   const D = () => OV.Data;
@@ -711,7 +712,7 @@
     OV.Economy.addScore(G, 'xcom', deb.score - craftLine, site.lon, site.lat);
 
     // 3) material e alienígenas vivos para a base (sem contenção com espaço, morrem: fica o cadáver)
-    const stored = {}, capturedStored = {}, capturedLost = {};
+    const stored = {}, capturedStored = {}, capturedLost = {}, surrendered = {};
     if (!deb.craftLost && base) {
       for (const k of Object.keys(deb.recovered).sort()) { bagAdd(base.stores, k, deb.recovered[k]); bagAdd(stored, k, deb.recovered[k]); }
       let room = room0;
@@ -727,22 +728,26 @@
         }
       }
       // ours (ritmo, contrato §11): a base alienígena tomada entrega vivas as patentes de TUNE.ALIEN_BASE_SURRENDER
-      // (uma por entrada; contam as já capturadas na batalha) enquanto houver lugar na contenção
+      // (os restantes ocupantes da base rendem-se): de cada patente no máximo tantas como as da tripulação da batalha
+      // (B.crew), menos as já capturadas nela, enquanto houver lugar na contenção; surrendered = as que vieram assim
       if (ref.kind === 'alienBase' && deb.result === 'win') {
         const race = (site.obj && site.obj.race) || B.mission.race;
         const members = Data.races[race] && Data.races[race].members;
+        const inCrew = {};
+        for (const c of B.crew || []) inCrew[c.rank] = (inCrew[c.rank] | 0) + 1;
         const want = {};
-        for (const rank of tune('ALIEN_BASE_SURRENDER', ['commander', 'leader', 'leader'])) {
+        for (const rank of tune('ALIEN_BASE_SURRENDER', ['commander', 'leader', 'leader'])) want[rank] = (want[rank] | 0) + 1;
+        for (const rank of Object.keys(want)) {
           const unit = members && members[rank];
           const rr = typeof unit === 'string' && Data.units[unit] ? Data.unitRankRace(unit) : null;
-          if (rr && rr.rank === rank) want[unit] = (want[unit] | 0) + 1;
-        }
-        for (const unit of Object.keys(want)) {
-          const n = Math.min(room, want[unit] - (capturedStored[unit] | 0));
+          if (!rr || rr.rank !== rank) continue;
+          const cap = (B.crew || []).length ? Math.min(want[rank], inCrew[rank] | 0) : want[rank];
+          const n = Math.min(room, cap - (capturedStored[unit] | 0));
           if (n <= 0) continue;
           room -= n;
           bagAdd(base.aliens, unit, n);
           bagAdd(capturedStored, unit, n);
+          bagAdd(surrendered, unit, n);
         }
       }
     }
@@ -826,7 +831,7 @@
     }
     return {
       debrief: deb, mission: B.mission, meta, outcome: G.flags.won ? 'victory' : G.flags.lost ? 'gameOver' : 'continue',
-      progression, promotions, stored, capturedStored, capturedLost, craftLost: !!deb.craftLost, scoreAdded: deb.score | 0, storage,
+      progression, promotions, stored, capturedStored, capturedLost, surrendered, craftLost: !!deb.craftLost, scoreAdded: deb.score | 0, storage,
     };
   }
 
@@ -855,8 +860,50 @@
     return { shots, destroyed: (ufo.dmg | 0) >= D().ufos[ufo.type].hp };
   }
 
+  /* Força esperada da tripulação do OVNI de um ataque (contrato §5.9): Σ sobre as linhas do destacamento do tipo de OVNI
+     de média(qty) × (UT + Pontaria + Saúde + armadura frontal) da unidade da raça na dificuldade (Data.alienStats /
+     alienArmour; terroristas: média das duas posições; quantidades com Data.crewDifficulty do mês), × (100 +
+     TUNE.BASE_DEFENCE_TIER_PCT × nível médio de armamento do mês, alienItemTiers) / 100. Inteiro. */
+  function assaultForce(G, ufo) {
+    const Data = D();
+    const def = ufo && Data.ufos[ufo.type];
+    const depId = def && def.deployment;
+    const dep = depId && Data.deployments[depId];
+    if (!dep) return 0;
+    const diff = G.difficulty | 0;
+    const cd = Data.crewDifficulty(depId, diff, G.month | 0);
+    const race = Data.races[ufo.race] ? ufo.race : dep.race || 'sectoid';
+    let sum4 = 0;
+    for (const row of dep.rows) {
+      const q = Data.rowQty(row, cd);
+      for (const pick of [0, 1]) {
+        const unit = Data.rowUnit(dep, row, race, pick);
+        if (!unit || !Data.units[unit]) continue;
+        const st = Data.alienStats(unit, diff);
+        const ar = Data.alienArmour(unit, diff);
+        sum4 += ((q[0] | 0) + (q[1] | 0)) * ((st.tu | 0) + (st.fire | 0) + (st.hp | 0) + ((ar && ar[0]) | 0));
+      }
+    }
+    // nível de armamento esperado ×100 (pistola 0, espingarda 1, pesado 2): fixo da raça, senão a tabela do mês
+    const tiers = Data.alienItemTiers;
+    let tier100 = 0;
+    if (tiers && tiers.raceTier && tiers.raceTier[race] !== undefined) tier100 = 100 * (tiers.raceTier[race] | 0);
+    else if (tiers && Array.isArray(tiers.byMonth) && tiers.byMonth.length) {
+      const row = tiers.byMonth[U.clamp(G.month | 0, 0, tiers.byMonth.length - 1)];
+      for (let k = 0; k < row.length; k++) tier100 += k * (row[k] | 0);
+    }
+    return U.idiv(U.idiv(sum4, 4) * (100 + U.idiv(tune('BASE_DEFENCE_TIER_PCT', 20) * tier100, 100)), 100);
+  }
+  // força de um soldado na defesa: UT + Pontaria + Saúde + armadura frontal do que veste
+  function defenderPower(s) {
+    const a = D().armours[s.armour];
+    return (s.stats.tu | 0) + (s.stats.fire | 0) + (s.stats.hp | 0) + ((a && a.front) | 0);
+  }
+
   /* Ataque a uma base X-COM, resolvido automaticamente (MVP; contrato §5.9 baseDefence; stream combat): salva das
-     defesas (se ainda não houve), depois a guarnição contra o casco que resta. */
+     defesas (se ainda não houve), depois a guarnição contra a tripulação esperada do OVNI no casco que resta. As
+     defesas só ajudam a guarnição até TUNE.BASE_DEFENCE_FACILITY_CAP_PCT da força dos soldados; as baixas crescem
+     com o rácio exigência / força. */
   function baseDefence(G, baseId, ufoId) {
     const Data = D();
     const base = C.findBase(G, baseId);
@@ -876,16 +923,19 @@
         const c = s.craftId ? C.findCraft(G, s.craftId) : null;
         return !c || !AIRBORNE[c.status];
       });
-      // força = Σ (UT + Pontaria + Saúde) da guarnição + parte do poder das defesas; a exigência desce com o casco
-      // que as defesas já tiraram ao OVNI (afinação: docs/CAMPAIGN_API.md §8)
-      const defPct = tune('BASE_DEFENCE_FACILITY_PCT', 100);
-      let strength = garrison.reduce((sum, s) => sum + (s.stats.tu | 0) + (s.stats.fire | 0) + (s.stats.hp | 0), 0);
-      for (const d of OV.BaseSim.capacities(G, baseId).defences) strength += U.idiv((d.power | 0) * defPct, 100);
-      const full = tune('BASE_DEFENCE_BASE', 850) + tune('BASE_DEFENCE_PER_COEF', 100) * 2 * (G.difficulty | 0);
+      // força = Σ soldados + defesas (FACILITY_PCT do poder, no máximo FACILITY_CAP_PCT dos soldados: ≥ 60 % vem deles);
+      // exigência = CREW_PCT da tripulação esperada × casco que resta (afinação: docs/CAMPAIGN_API.md §11.11)
+      const men = garrison.reduce((sum, s) => sum + defenderPower(s), 0);
+      let fac = 0;
+      for (const d of OV.BaseSim.capacities(G, baseId).defences) fac += U.idiv((d.power | 0) * tune('BASE_DEFENCE_FACILITY_PCT', 25), 100);
+      const strength = men + Math.min(fac, U.idiv(men * tune('BASE_DEFENCE_FACILITY_CAP_PCT', 66), 100));
+      const full = U.idiv(assaultForce(G, ufo) * tune('BASE_DEFENCE_CREW_PCT', 50), 100);
       const need = U.idiv(full * Math.max(0, ufoDef.hp - (ufo.dmg | 0)), Math.max(1, ufoDef.hp));
       if (garrison.length && strength >= need) {
         result = 'repelled';
-        const n = Math.min(r.int(1, 3), garrison.length);
+        // baixas = round(guarnição × exigência / força × CASUALTY_PCT %), entre 1 e a guarnição
+        const pct = tune('BASE_DEFENCE_CASUALTY_PCT', 40);
+        const n = U.clamp(U.idiv(2 * garrison.length * need * pct + 100 * strength, 200 * Math.max(1, strength)), 1, garrison.length);
         const pool = garrison.slice();
         for (let k = 0; k < n; k++) {
           const s = pool.splice(r.int(0, pool.length - 1), 1)[0];
@@ -919,6 +969,6 @@
 
   Object.assign(OV.Campaign, {
     availableResearch, availableManufacture, equipPool, applyEquip, siteRefOf, briefingMeta,
-    startMission, cancelMission, reseedMap, abortMission, finishMission, baseVolley, baseDefence,
+    startMission, cancelMission, reseedMap, abortMission, finishMission, baseVolley, baseDefence, assaultForce, defenderPower,
   });
 })(globalThis.OV || (globalThis.OV = {}));
