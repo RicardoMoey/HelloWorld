@@ -294,6 +294,8 @@ button.bsc-row:hover { border-color: #3d6a8e; background: rgba(22, 36, 52, 0.9);
 .bsc-stat small { font: 700 10.5px var(--mono); }
 .bsc-seg { display: flex; flex-wrap: wrap; gap: 4px; }
 .bsc .btn.seg.on { color: #04110f; background: linear-gradient(180deg, #5fe7d6, #2fb7a7); border-color: #8ff3e6; }
+/* forma além da cor: a opção escolhida leva sempre um ✓ (daltonismo, leitores de ecrã têm aria-pressed) */
+.bsc .btn.seg.on::before { content: '✓'; margin-right: 5px; font-weight: 900; }
 .bsc-sol-detail .bsc-sec { margin: 12px 0 0; }
 
 /* mercado */
@@ -341,6 +343,11 @@ button.bsc-row:hover { border-color: #3d6a8e; background: rgba(22, 36, 52, 0.9);
 
 /* avisos por baixo dos separadores enquanto a base está aberta (não tapar a data e os fundos) */
 body:has(.scr.bsc:not(.scr-paused):not(.scr-leaving)) #toasts { top: calc(132px + env(safe-area-inset-top)); }
+/* retrato / ecrã estreito: os separadores ocupam 2 filas e a altura varia — os avisos vão para baixo, nunca por cima
+   dos rótulos dos separadores (o toque passa, mas o jogador tem de ver onde toca) */
+@media (max-width: 900px), (orientation: portrait) and (max-width: 1100px) {
+  body:has(.scr.bsc:not(.scr-paused):not(.scr-leaving)) #toasts { top: auto; bottom: calc(18px + env(safe-area-inset-bottom)); }
+}
 
 /* ---- ecrãs mais pequenos ------------------------------------------------------------------------ */
 @media (max-width: 1240px) {

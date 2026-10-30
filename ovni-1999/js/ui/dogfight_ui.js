@@ -78,7 +78,11 @@
     if (!ufo) return '';
     const def = D().ufos[ufo.type];
     const n = String(ufo.id).replace(/^\D+/, '');
-    const what = ufo.hyper || (G.seen && G.seen.ufoTypes && G.seen.ufoTypes.indexOf(ufo.type) >= 0) ? T(def.nameKey) : T(def.sizeKey);
+    // a mesma regra do Geoscape (typeKnown: hiperonda, tipo já visto ou OVNI identificado no briefing/aterrado):
+    // identificado → «Batedor Grande (médio)»; senão só o eco do radar
+    const gm = OV.GeoUI && OV.GeoUI.model;
+    const known = gm && gm.typeKnown ? gm.typeKnown(G, ufo) : !!(ufo.hyper || (G.seen && G.seen.ufoTypes && G.seen.ufoTypes.indexOf(ufo.type) >= 0));
+    const what = known ? T('df.ufoKnown', { type: T(def.nameKey), size: T(def.sizeKey).toLowerCase() }) : T(def.sizeKey);
     return T('df.ufoLabel', { n }) + ' · ' + what;
   }
 

@@ -387,6 +387,11 @@
   /* Ataque terrorista (ref.kind 'site'): a mesma noite, com site = true e lasts = o ataque ainda dura até ao dia
      (com SITE_WAIT_MARGIN_H horas de margem) — só então se pode esperar */
   const SITE_WAIT_MARGIN_H = 1;
+  // nave de transporte que não deve perseguir OVNIs no ar: sem armas, ou com soldados a bordo
+  function groundTransport(G, c) {
+    const def = c && D().crafts[c.type];
+    return !!def && !!def.transport && (!((def.weapons | 0) > 0) || (c.soldiers || []).length > 0);
+  }
   function nightAt(G, ref) {
     if (!ref || (ref.kind !== 'ufo' && ref.kind !== 'site')) return null;
     const tg = C().targetOf(G, ref);
@@ -403,15 +408,19 @@
       /* safe: OVNI aterrado nos meses de aprendizagem (Missions.nightLandingS) que ainda fica no chão até amanhecer —
          esperar pelo dia não o deixa fugir */
       const o = tg.obj;
-      const safe = !!o && o.status === 'landed' && (G.month | 0) < tune('NIGHT_LANDING_MONTHS', 0) && (o.groundLeftS | 0) >= h * 3600;
-      return { h, crashed: !!(o && o.status === 'crashed'), safe, dusk: ph === 'dusk' };
+      const learn = !!o && o.status === 'landed' && (G.month | 0) < tune('NIGHT_LANDING_MONTHS', 0);
+      const safe = learn && (o.groundLeftS | 0) >= h * 3600;
+      /* leaves: nos mesmos meses sabe-se também o contrário — este OVNI levanta voo antes de amanhecer (aterrou de dia
+         e anoiteceu): esperar é perdê-lo */
+      return { h, crashed: !!(o && o.status === 'crashed'), safe, leaves: learn && !safe, dusk: ph === 'dusk' };
     } catch (e) {
       return null;
     }
   }
-  /* «Esperar pelo dia» por omissão: em Recruta, antes da 1.ª missão noturna (G.ui.geo.nightTried) ou quando o OVNI
-     aterrado fica até amanhecer (nt.safe, meses de aprendizagem), exceto destroços que expiram antes de amanhecer ou
-     combustível que não chega (fora dos meses de aprendizagem o tempo no chão não se conhece: a pergunta não o revela) */
+  /* «Esperar pelo dia» por omissão: destroços (em Recruta ou antes da 1.ª missão noturna, G.ui.geo.nightTried) que
+     duram até amanhecer, terror que ainda dura, ou OVNI aterrado que fica até amanhecer (nt.safe, meses de
+     aprendizagem); nunca um OVNI aterrado sem essa garantia, nem com combustível que não chega (fora dos meses de
+     aprendizagem o tempo no chão não se conhece: a pergunta não o revela) */
   function waitIsDefault(G, ref, nt, craft) {
     if (!nt) return false;
     // ataque terrorista que acaba antes do dia: não há espera possível
@@ -422,6 +431,9 @@
     const tg = C().targetOf(G, ref);
     const o = tg && tg.obj;
     if (o && o.status === 'crashed' && Number.isFinite(o.crashLeftS) && o.crashLeftS <= nt.h * 3600) return false;
+    // OVNI aterrado: esperar só é o conselho quando se sabe que fica no chão até amanhecer (também em Recruta) —
+    // seguir o botão por omissão nunca deixa fugir a missão
+    if (o && o.status === 'landed' && !nt.safe) return false;
     const tried = !!(G.ui && G.ui.geo && G.ui.geo.nightTried);
     return (G.difficulty | 0) === 0 || !tried || !!nt.safe;
   }
@@ -602,8 +614,9 @@
   const waitSpeed = (h) => (h > 6 ? 4 : 3);
   // linha do porquê na chegada de noite/crepúsculo; com a pergunta curta por cima, a variante .short não a repete
   // → chave .short ou null (null: a linha completa)
+  const nightSuffix = (nt) => (nt.crashed ? '.crash' : nt.safe ? '.safe' : nt.leaves ? '.leaves' : '');
   function nightLineKey(ph, nt, asked) {
-    const k = 'geo.ev.arrived.' + ph + (nt.crashed ? '.crash' : nt.safe ? '.safe' : '') + '.short';
+    const k = 'geo.ev.arrived.' + ph + nightSuffix(nt) + '.short';
     return asked && has(k) ? k : null;
   }
 
@@ -721,6 +734,8 @@
       }
       case 'crashSiteExpired': return { text: n > 1 ? T(k + '.many', { n }) : T(k, { ufo: T('geo.ufo.label', { n: numOf(ev.ufoId) }) }), kind: 'info' };
       case 'landedUfoGone': return { text: n > 1 ? T(k + '.many', { n }) : T(k, { ufo: T('geo.ufo.label', { n: numOf(ev.ufoId) }) }), kind: 'warn' };
+      case 'crewBoarded': return { text: evs.map((e) => e.text).join(' '), kind: evs.some((e) => e.warn) ? 'warn' : 'good' };
+      case 'transportHome': return { text: n > 1 ? T(k + '.many', { n }) : T(k, { craft: craft(ev), ufo: ufo(ev) }), kind: 'warn' };
       case 'pactSigned': return { text: evs.map((e) => T(k, { country: countryName(e.countryId) || e.countryId })).join(' · '), kind: 'alert' };
       case 'productionStalled': return { text: T('geo.ev.productionStalled.' + (ev.reason || 'funds'), { item: prodName(ev.item) }), kind: 'warn' };
       case 'alienBaseBuilt': return { text: T('geo.toast.alienBaseBuilt', { n }), kind: 'info' };
@@ -783,6 +798,10 @@
       'geo.ev.team.eta.night.flares.touch.one', 'geo.ev.team.eta.night.flares.touch.other', 'geo.idle.toast.touch');
     // ronda de personas 4: bases alienígenas com raça/número, alerta «outra base», noite sem a pergunta repetida, espera acelerada
     k.push('geo.alienBase.nameRace', 'geo.alienBase.nameNum', 'geo.alienBase.shortNum', 'geo.toast.waitDay.fast', 'geo.toast.waitDay.resume');
+    // ronda 5: OVNI que levanta voo antes do dia, transporte que regressa em vez de perseguir
+    for (const id of STEP_IDS) k.push('geo.steps.' + id + '.tip');
+    k.push('geo.steps.done', 'geo.steps.ufo.hint');
+    k.push('geo.ev.arrived.night.leaves', 'geo.ev.arrived.dusk.leaves', 'geo.ev.targetLost.transport', 'geo.toast.transportHome', 'geo.toast.transportHome.many');
     for (const r of ['patrol', 'agents', 'supply']) k.push('geo.ev.alienBaseFound.' + r + '.another');
     for (const p of ['night', 'dusk']) for (const v of ['', '.crash', '.safe']) k.push('geo.ev.arrived.' + p + v + '.short');
     for (const id of STEP_IDS) k.push('geo.steps.' + id);
@@ -808,7 +827,7 @@
     prodName, itemName, researchName, textKeys, ufoVisible, WORLD_REASONS, WORLD_WARNS, MISSION_REASONS,
     groundTarget, teamEta, teamEtaLine, busyLine, nightAt, dayAt, idleStaff, storesOver, nextSteps, suggestSpeed, dropBaseLosses, logTerror,
     crewEstimate, arrivingSoldiers, squadShort, noAmmo, waitIsDefault, loiterHours, homeTransport, GEAR_KINDS,
-    busyDest, headingText, ammoSuggest, alienBaseName, alienBaseTwin, alienBaseOther, waitSpeed, nightLineKey,
+    busyDest, headingText, ammoSuggest, alienBaseName, alienBaseTwin, alienBaseOther, waitSpeed, nightLineKey, groundTransport,
   };
 
   // =================================================================================================================
@@ -1187,7 +1206,29 @@
       x.addEventListener('click', () => { if (!isTop()) return; sfx('ui_click'); ui.stepsOff = true; refreshAux(true); });
       OV.Dom.tooltip(x, tip(T('geo.steps.hide')));
       box.append(el('div', { class: 'geo-steps-h' }, el('span', { text: T('geo.steps.title') }), x),
-        el('ol', null, ns.steps.map((st) => el('li', { class: st.done ? 'done' : '' }, el('i', { 'aria-hidden': 'true', text: st.done ? '✓' : '' }), el('span', { text: TT('geo.steps.' + st.id) })))));
+        el('ol', null, ns.steps.map((st) => el('li', { class: st.done ? 'done' : '' }, stepBtn(st)))));
+    }
+    // cada passo é um botão que leva ao sítio onde se faz (base › Investigação/Pessoal, acelerar, onde aparecem os OVNIs)
+    const STEP_KEYS = { research: 'B', speed: '3' };
+    function stepAct(id) {
+      if (!isTop()) return;
+      const b = selBase() || G.bases[0];
+      sfx('ui_click');
+      if (id === 'research' && b) openBase(b.id, 'research', { pick: true });
+      else if (id === 'hire' && b) openBase(b.id, 'personnel');
+      else if (id === 'speed') setSpeed(Math.max(3, clk.speed));
+      else if (id === 'ufo') {
+        if (clk.paused || clk.speed < 3) setSpeed(3);
+        OV.Dom.toast(TT('geo.steps.ufo.hint'), null, 'info');
+      }
+    }
+    function stepBtn(st) {
+      const label = TT('geo.steps.' + st.id);
+      const b = el('button', { type: 'button', class: 'geo-step', dataset: { step: st.id }, 'aria-label': label + (st.done ? ' — ' + T('geo.steps.done') : '') },
+        el('i', { 'aria-hidden': 'true', text: st.done ? '✓' : '' }), el('span', { text: label }));
+      b.addEventListener('click', () => stepAct(st.id));
+      OV.Dom.tooltip(b, () => tip(TT('geo.steps.' + st.id + '.tip'), STEP_KEYS[st.id]));
+      return b;
     }
     /* avisos persistentes no painel: ficam enquanto o problema existir (os toasts passam e os «Próximos passos» só
        cobrem o 1.º mês). Cada linha tem a ação que o resolve. */
@@ -1209,7 +1250,7 @@
       for (const o of over) {
         const bs = C().findBase(G, o.baseId);
         rows.push(el('div', { class: 'geo-alert', dataset: { alert: 'stores' } }, el('span', { text: T('geo.alert.stores', { base: baseName(bs), used: dec1s(o.used), cap: dec1s(o.cap) }) }),
-          btn(T('geo.alert.storesBtn'), { cls: 'small', tip: tip(T('geo.alert.storesBtn.tip')), onClick: () => { if (isTop() && C().findBase(G, o.baseId)) openBase(o.baseId, 'market'); } })));
+          btn(T('geo.alert.storesBtn'), { cls: 'small', tip: tip(T('geo.alert.storesBtn.tip')), onClick: () => { if (isTop() && C().findBase(G, o.baseId)) openBase(o.baseId, 'market', { market: 'sell' }); } })));
       }
       if (idle.sci > 0) {
         rows.push(el('div', { class: 'geo-alert', dataset: { alert: 'sci' } }, el('span', { text: Tn('geo.alert.sci', idle.sci) }),
@@ -1646,7 +1687,7 @@
         return box('warn', txt, home && idle && seats ? crewBtn(T('geo.fix.boardBtn', { n: Math.min(idle, seats) })) : null,
           !arr && !idle ? btn(T('geo.fix.hireBtn'), { cls: 'small', onClick: () => { closeDlg(); openBase(c.baseId, 'personnel'); } }) : null);
       }
-      if (home && idle && seats) return box('info', Tn('geo.fix.seats', Math.min(idle, seats)), crewBtn(T('geo.fix.boardBtn', { n: Math.min(idle, seats) })));
+      if (home && idle && seats) return box('warn', Tn('geo.fix.seats', Math.min(idle, seats)), crewBtn(T('geo.fix.boardBtn', { n: Math.min(idle, seats) })));
       return null;
     }
     /* equipa menor do que o efetivo mínimo estimado: um clique na linha da nave não a manda logo — pergunta-se, com
@@ -1999,6 +2040,14 @@
       const firstAt = new Map();
       for (const ev of evs) if (ev.t === 'deliveryArrived' && !firstAt.has(ev.baseId)) firstAt.set(ev.baseId, ev);
       for (const [baseId, ev] of firstAt) crewOnDelivery(ev, evs.filter((e) => e.t === 'deliveryArrived' && e.baseId === baseId).map((e) => e.kind));
+      for (const ev of evs) if (ev.t === 'ufoLiftOff' || ev.t === 'landedUfoGone') transportsHome(ev.ufoId);
+      // nave de volta ao hangar ou soldado curado: os aptos que ficaram na base voltam a embarcar (lugares de baixas)
+      const boardAt = new Set();
+      for (const ev of evs) {
+        if (ev.t === 'craftReturned' && ev.baseId) boardAt.add(ev.baseId);
+        if (ev.t === 'soldierRecovered') { const so = C().findSoldier(G, ev.soldierId); if (so && so.baseId) boardAt.add(so.baseId); }
+      }
+      for (const baseId of boardAt) crewOnReturn(baseId);
       for (const ev of evs) {
         const mode = classify(ev);
         if (ev.t === 'terrorSiteExpired') logTerror(G, ev);
@@ -2013,6 +2062,31 @@
       }
       S.sigs.lists = null;
       dirty();
+    }
+    /* um OVNI aterrado levantou voo: os transportes que iam para lá (ou esperavam pelo dia no local) não o perseguem
+       — regressam à base (World.recall) e o aviso diz porquê */
+    function transportsHome(ufoId) {
+      for (const id of Object.keys(G.crafts)) {
+        const c = G.crafts[id];
+        if (!c || !c.dest || c.dest.kind !== 'ufo' || c.dest.id !== ufoId || c.dogfightId || !groundTransport(G, c)) continue;
+        if (c.status !== 'out' && c.status !== 'patrol') continue;
+        const r = W().recall(G, c.id);
+        if (r && r.ok) addToast({ t: 'transportHome', craftId: c.id, ufoId });
+      }
+    }
+    /* depois de uma missão com baixas (a nave chega ao hangar) ou de um soldado curado: os aptos sem nave embarcam no
+       transporte com lugares (como nas contratações) — a nave nunca parte com metade da equipa por esquecimento */
+    function crewOnReturn(baseId) {
+      const cu = CU();
+      const base = C().findBase(G, baseId);
+      if (!cu || !cu.crewUp || !base || !cu.idleFit(G, baseId).length) return;
+      const tr = base.crafts.map((id) => G.crafts[id]).filter((c) => c && D().crafts[c.type] && (D().crafts[c.type].seatsUI | 0) > c.soldiers.length && HANGAR[c.status]);
+      tr.sort((a, b2) => b2.soldiers.length - a.soldiers.length);
+      for (const c of tr) {
+        if (!cu.idleFit(G, baseId).length) break;
+        const r = cu.crewUp(G, c.id);
+        if (r.boarded) addToast({ t: 'crewBoarded', craftId: c.id, text: cu.crewText(G, c.id, r), warn: !!r.unarmed });
+      }
     }
     /* Soldados ou transporte novos: os aptos sem nave embarcam sozinhos num transporte com lugares e quem vai sem arma
        leva o material do armazém (o Skyranger de substituição chega tripulado); armas novas no armazém equipam quem
@@ -2218,7 +2292,7 @@
             const nk = nt ? nightLineKey(ph, nt, waitDef) : null, np = nt ? { t: fmtDur(nt.h), d: tune('VIEW_DIST', 20), left: fmtDur(nt.leftH || 0) } : null;
             // ataque terrorista: o porquê é o mesmo, mais quanto tempo dura o ataque (ou que acaba antes de amanhecer)
             if (nt && nt.site) lines.unshift(T('geo.ev.arrived.' + ph + '.site' + (!nt.lasts ? '.ends' : waitDef ? '.asked' : ''), np));
-            else if (nt) lines.unshift(nk ? T(nk, np) : T('geo.ev.arrived.' + ph + (nt.crashed ? '.crash' : nt.safe ? '.safe' : ''), np));
+            else if (nt) lines.unshift(nk ? T(nk, np) : T('geo.ev.arrived.' + ph + nightSuffix(nt), np));
             if (waitDef) lines.unshift(T('geo.ev.arrived.night.ask', { t: fmtDur(nt.h) }));
             // sem combustível para esperar: dizê-lo (esperar seria regressar à base sem missão)
             const lh = nt ? loiterHours(G, c) : Infinity;
@@ -2287,10 +2361,16 @@
         case 'targetLost': {
           const c = craftOf(ev);
           if (!c) return null;
+          // transporte (sem armas ou com soldados): não interceta nada no ar — «Regressar à base» é o botão por omissão
+          const home = groundTransport(G, c);
+          const patrolB = { label: T('geo.a.keepPatrol'), key: home ? 'P' : 'Enter', cls: home ? '' : 'primary', def: !home, esc: !home, act: () => {} };
+          const recallB = { label: T('geo.a.recall'), key: home ? 'Enter' : 'R', cls: home ? 'primary' : '', def: home, esc: home, act: () => doRecall(c.id) };
           return {
             tone: 'warn', icon: 'radar', title: T('geo.ev.targetLost'), focus: refOf('craft', c.id),
             text: T('geo.ev.targetLost.body', { craft: craftName(G, c) }),
-            buttons: [{ label: T('geo.a.keepPatrol'), key: 'Enter', def: true, esc: true, act: () => {} }, { label: T('geo.a.newDest'), key: 'D', act: () => openIntercept({ craftId: c.id }) }, { label: T('geo.a.recall'), key: 'R', act: () => doRecall(c.id) }],
+            lines: home ? [T('geo.ev.targetLost.transport')] : [],
+            buttons: home ? [recallB, { label: T('geo.a.newDest'), key: 'D', act: () => openIntercept({ craftId: c.id }) }, patrolB]
+              : [patrolB, { label: T('geo.a.newDest'), key: 'D', act: () => openIntercept({ craftId: c.id }) }, recallB],
           };
         }
         case 'researchDone': {

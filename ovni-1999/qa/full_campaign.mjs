@@ -1047,6 +1047,16 @@ async function playBattle() {
 }
 async function debrief() {
   tag = 'relatório';
+  // a batalha que acaba no turno alienígena mostra antes «Durante o turno alienígena» com «Continuar para o relatório»
+  const t0 = Date.now();
+  while (Date.now() - t0 < 15000 && !(await page.evaluate(() => !!OV.Scenes.top() && OV.Scenes.top().id === 'cdebrief'))) {
+    const b = page.locator('.bs-report .btn.primary');
+    if ((await b.count()) && (await b.first().isVisible())) {
+      await shot('battle_final_report');
+      await press(b.first());
+    }
+    await sleep(400);
+  }
   await until(() => OV.Scenes.top() && OV.Scenes.top().id === 'cdebrief', 40000, 'relatório da missão');
   await sleep(700);
   await shot('mission_debrief');

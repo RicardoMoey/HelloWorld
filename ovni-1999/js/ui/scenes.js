@@ -7,6 +7,13 @@
 
   OV.SceneDefs = OV.SceneDefs || {};
 
+  // a dica e a etiqueta de toque longo pertencem ao ecrã que as mostrou: nunca passam para a cena seguinte
+  function dropTips() {
+    if (!OV.Dom) return;
+    if (OV.Dom.hideTooltip) OV.Dom.hideTooltip();
+    if (OV.Dom.hideLongPress) OV.Dom.hideLongPress();
+  }
+
   const S = {
     stack: [],
     pending: [],
@@ -22,6 +29,7 @@
     },
     push(name, params) {
       const prev = S.top();
+      dropTips();
       if (prev && prev.pause) prev.pause();
       const sc = typeof name === 'string' ? S.create(name, params) : name;
       // um ecrã novo por cima (briefing, base, relatório) leva os avisos antigos consigo
@@ -32,6 +40,7 @@
       return sc;
     },
     pop(result) {
+      dropTips();
       const sc = S.stack.pop();
       if (sc && sc.exit) sc.exit();
       const top = S.top();
@@ -41,6 +50,7 @@
     },
     // substitui toda a pilha
     set(name, params) {
+      dropTips();
       while (S.stack.length) {
         const sc = S.stack.pop();
         if (sc.exit) sc.exit();
@@ -48,6 +58,7 @@
       return S.push(name, params);
     },
     replace(name, params) {
+      dropTips();
       const sc = S.stack.pop();
       if (sc && sc.exit) sc.exit();
       return S.push(name, params);

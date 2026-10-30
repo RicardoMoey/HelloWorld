@@ -16,6 +16,7 @@
     'df.start': 'Contacto! {craft} interceta {ufo}',
     'df.vs': 'contra',
     'df.ufoLabel': 'OVNI-{n}',
+    'df.ufoKnown': '{type} ({size})',
     'df.alt': 'Altitude {alt}',
     'df.elapsed': 'Tempo de combate',
 

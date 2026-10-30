@@ -28,8 +28,9 @@
        o briefing) ; saveBeforeMission(G, siteRef, craftId) ; preMissionFor(G, startedT) → {siteRef, craftId}|null ;
        retryMission(G, pm) ; extraSummary(slot) ; loadExtra(slot) → {G, B, meta} ; markUfoKnown(G, ufoId) ;
        reseedOnLoad(G) → n.º da carga (sal de Campaign.reseedMap; resume() aplica-o a qualquer gravação do Geoscape) ;
-       leftAtBase(G, craft, pool) → [{id, n}] (os 4 primeiros do que ficou no armazém e não vai a bordo: material de
-       captura, armas com munição, granadas…) ; leftAtBaseAll(…) → a lista toda ; leftText(G, craft, pool, base) → aviso
+       leftAtBase(G, craft, pool, {night}) → [{id, n, ab}] (os 4 primeiros do que ficou no armazém e faz falta: material de
+       captura, sinalizadores à noite, armas com munição, granadas…; ab = quantos já vão a bordo) ; leftAtBaseAll(…) → a
+       lista toda ; leftText(G, craft, pool, base, {night}) → aviso
        com «e mais N: …» }
    Atalhos: ver as dicas de cada botão (tooltip com a tecla). */
 (function (OV) {
@@ -252,8 +253,11 @@
   /* geração da arma (convencional 0, laser 1, plasma 2): só se oferece tecnologia nova — a pistola do médico do
      kit inicial não passa a espingarda sem o jogador o pedir */
   const GUN_TIER = { pistol: 0, rifle: 0, laser_pistol: 1, laser_rifle: 1, plasma_pistol: 2, plasma_rifle: 2, heavy_plasma: 2 };
-  // → {loadouts: {sid: lo}, stores, list: [{sid, name, from, to}]} (plano; nada muda em G)
-  function upgradePlan(G, craftId) {
+  const isPistol = (id) => /pistol$/.test(id || '');
+  /* → {loadouts: {sid: lo}, stores, list: [{sid, name, from, to}]} (plano; nada muda em G). Com {fromPistol:true}: só
+     quem leva apenas pistola recebe uma arma de infantaria mais potente (espingarda) da mesma geração ou melhor */
+  function upgradePlan(G, craftId, o) {
+    const fromPistol = !!(o && o.fromPistol);
     let pool;
     try { pool = C().equipPool(G, craftId); } catch (e) { return { loadouts: {}, stores: {}, list: [] }; }
     const st = Object.assign({}, pool.stores);
@@ -270,13 +274,15 @@
       if (!hands.length || ['R', 'L'].some((h) => lo[h] && D().items[lo[h]] && D().items[lo[h]].kind === 'firearm' && PREF_GUNS.indexOf(lo[h]) < 0)) continue;
       const hand = hands.sort((a, b) => gunPower(lo[b]) - gunPower(lo[a]))[0];
       const old = lo[hand], oldDef = D().items[old];
+      if (fromPistol && !isPistol(old)) continue;
       const oldAmmo = Array.isArray(oldDef.ammo) ? oldDef.ammo : [];
       const rest = { belt: (lo.belt || []).filter((x) => oldAmmo.indexOf(x) < 0), pack: (lo.pack || []).filter((x) => oldAmmo.indexOf(x) < 0) };
       const restW = [lo[hand === 'R' ? 'L' : 'R'], ...rest.belt, ...rest.pack].reduce((w, x) => w + weightOf(x), 0);
       const str = Math.max(1, (s.stats && s.stats.str) | 0);
       let best = null;
       for (const g of PREF_GUNS) {
-        if (!has(g) || !usable(G, g) || gunPower(g) <= gunPower(old) || (GUN_TIER[g] | 0) <= (GUN_TIER[old] | 0)) continue;
+        if (!has(g) || !usable(G, g) || gunPower(g) <= gunPower(old)) continue;
+        if (fromPistol ? isPistol(g) || (GUN_TIER[g] | 0) < (GUN_TIER[old] | 0) : (GUN_TIER[g] | 0) <= (GUN_TIER[old] | 0)) continue;
         const ammo = D().items[g].ammo;
         const clip = Array.isArray(ammo) && ammo.length ? ammo.find((a) => has(a) && usable(G, a)) : null;
         if (Array.isArray(ammo) && ammo.length && !clip) continue;
@@ -305,6 +311,69 @@
       list.push({ sid: s.id, name: s.name, from: old, to: best.g });
     }
     return { loadouts, stores: st, list };
+  }
+  /* «Completar o kit» (e «Equipar para a noite»): com o que há a bordo (e, no hangar, no armazém), sem tirar nada a
+     ninguém — quem só leva pistola recebe uma espingarda que esteja livre; se ninguém leva kit médico e há um, vai
+     para a mochila de alguém; de noite, até 3 soldados levam um sinalizador no cinto. Tudo dentro da Força.
+     → plano {loadouts, stores, armed, med, flares, carriers, want} (nada muda em G) */
+  const FLARE = 'electro_flare', MEDKIT = 'medikit', FLARE_WANT = 3;
+  function fieldKitPlan(G, craftId, o) {
+    const night = !!(o && o.night);
+    const none = { loadouts: {}, stores: {}, armed: 0, med: 0, flares: 0, carriers: 0, want: 0 };
+    let pool;
+    try { pool = C().equipPool(G, craftId); } catch (e) { return none; }
+    const up = upgradePlan(G, craftId, { fromPistol: true });
+    const st = up.stores || Object.assign({}, pool.stores);
+    const loadouts = Object.assign({}, up.loadouts);
+    const cur = (s) => loadouts[s.id] || s.loadout;
+    const own = (s) => {
+      if (!loadouts[s.id]) { const lo = s.loadout; loadouts[s.id] = { R: lo.R || null, L: lo.L || null, belt: (lo.belt || []).slice(), pack: (lo.pack || []).slice() }; }
+      return loadouts[s.id];
+    };
+    const strOf = (s) => Math.max(1, (s.stats && s.stats.str) | 0);
+    const wOf = (lo) => loItems(lo).reduce((a, id) => a + weightOf(id), 0);
+    // põe 1 × id no primeiro compartimento que o aceite, sem passar a Força → bool
+    const give1 = (s, id, slots) => {
+      if (!((st[id] | 0) > 0) || !usable(G, id)) return false;
+      const lo = cur(s);
+      if (wOf(lo) + weightOf(id) > strOf(s)) return false;
+      const sl = slots.find((x) => D().fitsSlot(id, x, visIn(lo, x)));
+      if (!sl) return false;
+      own(s)[sl].push(id);
+      st[id]--;
+      if (!st[id]) delete st[id];
+      return true;
+    };
+    const team = pool.squad.slice().sort((a, b) => strOf(b) - strOf(a));
+    let med = 0, flares = 0;
+    if (!team.some((s) => loItems(cur(s)).indexOf(MEDKIT) >= 0)) {
+      for (const s of team) if (give1(s, MEDKIT, ['pack', 'belt'])) { med = 1; break; }
+    }
+    const want = night ? Math.min(FLARE_WANT, team.length) : 0;
+    let carriers = team.filter((s) => loItems(cur(s)).indexOf(FLARE) >= 0).length;
+    const had = carriers;
+    for (const s of team) {
+      if (carriers >= want) break;
+      if (loItems(cur(s)).indexOf(FLARE) >= 0) continue;
+      if (give1(s, FLARE, ['belt', 'pack'])) { carriers++; flares++; }
+    }
+    return { loadouts, stores: st, armed: up.list.length, med, flares, carriers: had, want };
+  }
+  // aplica o plano → {ok, armed, med, flares, reason?}
+  function fieldKit(G, craftId, o) {
+    const plan = fieldKitPlan(G, craftId, o);
+    if (!plan.armed && !plan.med && !plan.flares) return { ok: true, armed: 0, med: 0, flares: 0 };
+    const r = C().applyEquip(G, craftId, { loadouts: plan.loadouts, stores: plan.stores });
+    if (!r || !r.ok) return { ok: false, reason: (r && r.reason) || 'mismatch', armed: 0, med: 0, flares: 0 };
+    return { ok: true, armed: plan.armed, med: plan.med, flares: plan.flares };
+  }
+  // texto do resultado: «2 soldados receberam espingardas · 1 kit médico · 3 sinalizadores»
+  function fieldKitText(r) {
+    const parts = [];
+    if (r.armed) parts.push(Tn('cp.kit.armed', r.armed));
+    if (r.med) parts.push(T('cp.kit.med'));
+    if (r.flares) parts.push(Tn('cp.kit.flares', r.flares));
+    return parts.join(' · ');
   }
   // quem pode trocar de arma → [{sid, name, from, to}]
   function gunUpgrades(G, craftId) {
@@ -1128,8 +1197,15 @@
     const dry = noAmmoCount(squad);
     if (dry) out.unshift({ cls: 'bad', id: 'unarmed', text: Tn('cp.br.warn.noAmmo', dry) });
     if (unarmed) out.unshift({ cls: 'bad', id: 'unarmed', text: Tn('cp.br.warn.unarmed', unarmed) });
-    if (!has('medikit')) out.push({ cls: 'warn', text: T('cp.br.warn.medikit') });
-    if (M.night && !has('electro_flare')) out.push({ cls: 'warn', text: T('cp.br.warn.flares') });
+    /* o que está a bordo e ninguém leva (kit médico, sinalizadores à noite, espingardas livres para quem só tem
+       pistola): avisos com o botão «Completar o kit» / «Equipar para a noite» (o mesmo plano que o botão aplica) */
+    const kit = fieldKitPlan(G, mission.craftId, { night: !!M.night });
+    // à noite os sinalizadores primeiro (o botão «Equipar para a noite» fica junto do aviso que o explica)
+    if (M.night && kit.flares) out.push({ cls: 'warn', id: 'kit', text: kit.carriers ? Tn('cp.br.warn.flaresAboard', kit.carriers, { want: kit.want }) : T('cp.br.warn.flaresAboard.none', { want: kit.want }) });
+    else if (M.night && !has('electro_flare')) out.push({ cls: 'warn', text: T('cp.br.warn.flares') });
+    if (kit.armed) out.push({ cls: 'warn', id: 'kit', text: Tn('cp.br.warn.pistols', kit.armed) });
+    if (kit.med) out.push({ cls: 'warn', id: 'kit', text: T('cp.br.warn.medAboard') });
+    else if (!has('medikit')) out.push({ cls: 'warn', text: T('cp.br.warn.medikit') });
     const craft = C().findCraft(G, mission.craftId);
     const seats = craft && D().crafts[craft.type] ? D().crafts[craft.type].seatsUI | 0 : 0;
     // menos soldados do que o efetivo mínimo estimado: aviso forte (não só «lugares vazios»)
@@ -1142,6 +1218,12 @@
     const up = gunUpgrades(G, mission.craftId);
     if (up.length) out.push({ cls: 'info', id: 'upgrade', text: Tn('cp.br.warn.upgrade', up.length, { list: upgradeText(up) }) });
     return out;
+  }
+
+  // o OVNI aterrado do briefing levou dano antes de aterrar?
+  function landedHurt(G, siteRef) {
+    const u = siteRef && siteRef.kind === 'ufo' ? C().findUfo(G, siteRef.id) : null;
+    return !!u && (u.dmg | 0) > 0;
   }
 
   OV.SceneDefs.cbriefing = function (params) {
@@ -1211,6 +1293,18 @@
         OV.Dom.toast(T('cp.br.autoKit.none'), null, 'warn');
       }
     }
+    // «Completar o kit» / «Equipar para a noite»: o que está a bordo e ninguém leva vai para quem precisa
+    function fieldKitNow() {
+      if (busy) return;
+      const r = fieldKit(G, craftId, { night: !!OV.Battle.normalizeMission(mission).night });
+      if (r.ok && (r.armed || r.med || r.flares)) {
+        OV.Dom.toast(fieldKitText(r), null, 'good');
+        if (restart()) render();
+      } else {
+        sfx('ui_deny');
+        OV.Dom.toast(r.ok ? T('cp.kit.none') : OV.T.has('cp.eq.err.' + r.reason) ? T('cp.eq.err.' + r.reason) : T('cp.err.generic', { msg: r.reason }), null, 'warn');
+      }
+    }
     // «Trocar armas»: os soldados armados levam as armas melhores que há a bordo (e, no hangar, no armazém)
     function upgradeNow() {
       if (busy) return;
@@ -1252,12 +1346,16 @@
       const where = whereOf(G, siteRef, meta);
       const notes = [];
       if (time === 'night') notes.push(T('scr.br.note.night'));
-      if (time === 'night' && nightUfo()) notes.push(touchT('cp.br.note.waitDay'));
+      // OVNI que levanta voo antes de amanhecer (meses de aprendizagem): a sugestão de esperar seria perdê-lo
+      const gmN = OV.GeoUI && OV.GeoUI.model && siteRef && siteRef.kind === 'ufo' && OV.GeoUI.model.nightAt ? OV.GeoUI.model.nightAt(G, siteRef) : null;
+      if (time === 'night' && nightUfo()) notes.push(gmN && gmN.leaves ? T('cp.br.note.leaves') : touchT('cp.br.note.waitDay'));
       if (time === 'dusk') notes.push(T('scr.br.note.dusk'));
       if (time === 'dim') notes.push(T('scr.br.note.dim'));
       if (M.kind === 'crash') notes.push(T('scr.br.note.crash'));
       if (M.kind === 'terror') notes.push(T('scr.br.note.terror'));
-      if (M.kind === 'landed') notes.push(T('cp.br.note.landed'));
+      // casco danificado numa interceção: diz-se, sem prometer o que o dano não faz (a tripulação e o material são os de
+      // um OVNI aterrado)
+      if (M.kind === 'landed') notes.push(T(landedHurt(G, siteRef) ? 'cp.br.note.landedDamaged' : 'cp.br.note.landed'));
       const warns = briefingWarnings(G, mission, M);
       const squad = mission.squad || [];
       startBtn = btn(T('cp.br.start'), { cls: 'primary scr-big', key: 'Enter', tip: T('cp.br.start.tip'), sound: false, onClick: (e) => { if (e.detail > 1) return; start(); } });
@@ -1277,10 +1375,12 @@
                 el('li', { text: T('scr.br.obj.' + M.kind + '.2') }),
                 el('li', { class: 'scr-muted', text: T('scr.br.obj.abort') }))),
             // avisos com ação (sem arma, sem munição) logo a seguir aos objetivos: à vista sem deslocar a 1280×800
-            warns.length ? ui.panelSection(T('cp.br.warnings'), el('ul', { class: 'cp-warns' }, warns.map((w) => el('li', { class: w.cls },
+            warns.length ? ui.panelSection(T('cp.br.warnings'), el('ul', { class: 'cp-warns' }, warns.map((w, i) => el('li', { class: w.cls },
               el('span', { text: w.text }),
               w.id === 'unarmed' ? btn(T('cp.br.autoKit'), { cls: 'small', key: 'A', tip: T('cp.br.autoKit.tip'), onClick: autoKitNow })
-                : w.id === 'upgrade' ? btn(T('cp.br.upgrade'), { cls: 'small', key: 'U', tip: T('cp.br.upgrade.tip'), data: { act: 'upgrade' }, onClick: upgradeNow }) : null)))) : null,
+                : w.id === 'upgrade' ? btn(T('cp.br.upgrade'), { cls: 'small', key: 'U', tip: T('cp.br.upgrade.tip'), data: { act: 'upgrade' }, onClick: upgradeNow })
+                  // um só botão para todos os avisos de kit (no primeiro)
+                  : w.id === 'kit' && warns.findIndex((x) => x.id === 'kit') === i ? btn(T(M.night ? 'cp.br.kit.night' : 'cp.br.kit'), { cls: 'small', key: 'K', tip: T(M.night ? 'cp.br.kit.night.tip' : 'cp.br.kit.tip'), data: { act: 'kit' }, onClick: fieldKitNow }) : null)))) : null,
             ui.panelSection(T('scr.br.intel'),
               el('div', { class: 'scr-intel' }, sprite ? el('div', { class: 'scr-intel-sprite' }, sprite) : el('div', { class: 'scr-intel-sprite cp-unknown', text: '?' }),
                 el('dl', null,
@@ -1316,6 +1416,7 @@
         if ((ev.key === 'w' || ev.key === 'W') && !ev.repeat && nightUfo()) { waitDay(); return true; }
         if ((ev.key === 'a' || ev.key === 'A') && !ev.repeat && sc.root && sc.root.querySelector('.cp-warns .btn:not([data-act])')) { autoKitNow(); return true; }
         if ((ev.key === 'u' || ev.key === 'U') && !ev.repeat && sc.root && sc.root.querySelector('.cp-warns [data-act="upgrade"]')) { upgradeNow(); return true; }
+        if ((ev.key === 'k' || ev.key === 'K') && !ev.repeat && sc.root && sc.root.querySelector('.cp-warns [data-act="kit"]')) { fieldKitNow(); return true; }
         return false;
       },
       back: cancel,
@@ -1335,23 +1436,45 @@
     return it.kind === 'firearm' && Array.isArray(it.ammo) && it.ammo.length > 0 && it.ammo.every((a) => D().items[a] && D().items[a].dmg === 'STUN');
   };
   const LEFT_SHOW = 4;
-  /* tudo o que ficou no armazém e não vai a bordo, por ordem: captura, armas (com a sua munição), granadas, kit
-     médico, … e, em cada grupo, o mais numeroso primeiro → [{id, n}] */
-  function leftAtBaseAll(G, craft, pool) {
+  /* o que ficou no armazém e faz falta, por ordem: captura (à noite, logo a seguir os sinalizadores), armas (com a sua
+     munição), granadas, kit médico, … e, em cada grupo, o mais numeroso primeiro → [{id, n, ab}] (ab = quantos vão a
+     bordo). Um tipo que já vai a bordo também conta quando fica mais na base do que vai, ou quando os consumíveis
+     (granadas, kits, sinalizadores) não chegam para um por soldado */
+  const SHORT_KINDS = { grenade: 1, medikit: 1, flare: 1 };
+  const SURPLUS = 8;
+  function leftAtBaseAll(G, craft, pool, opts) {
     const b = C().findBase(G, craft.baseId);
     if (!b || !b.stores) return [];
+    const night = !!(opts && opts.night);
+    const squadN = ((pool && pool.squad) || []).length;
     const aboard = Object.assign({}, (pool && pool.stores) || {});
     for (const s of (pool && pool.squad) || []) for (const id of loItems(s.loadout)) aboard[id] = (aboard[id] | 0) + 1;
-    // grupos: cada objeto seguido da munição da arma (o carregador fica junto da sua arma)
+    const atBase = (id) => (b.stores[id] | 0);
+    const short = (id) => {
+      const n = atBase(id), ab = aboard[id] | 0;
+      if (!(n > 0) || !usable(G, id)) return false;
+      if (ab === 0 || n > ab) return true;
+      return !!SHORT_KINDS[D().items[id].kind] && ab < squadN;
+    };
+    const entry = (id) => ({ id, n: atBase(id), ab: aboard[id] | 0 });
+    // grupos: cada objeto seguido da munição da arma (o carregador fica junto da sua arma, mesmo que a arma vá a bordo)
     const groups = [];
-    for (const id of Object.keys(b.stores)) {
+    const ids = new Set(Object.keys(b.stores).concat(Object.keys(aboard)));
+    for (const id of ids) {
       const it = D().items[id];
-      if (!it || !(b.stores[id] > 0) || !(it.kind in LEFT_KINDS) || !usable(G, id) || (aboard[id] | 0) > 0) continue;
-      const g = { o: captureGear(id) ? -1 : LEFT_KINDS[it.kind], n: b.stores[id] | 0, list: [{ id, n: b.stores[id] | 0 }] };
-      if (it.kind === 'firearm' && Array.isArray(it.ammo)) {
-        for (const a of it.ammo) if ((b.stores[a] | 0) > 0 && usable(G, a) && !(aboard[a] > 0)) g.list.push({ id: a, n: b.stores[a] | 0 });
+      if (!it || !(it.kind in LEFT_KINDS)) continue;
+      const o = captureGear(id) ? -1 : night && it.kind === 'flare' ? -0.5 : LEFT_KINDS[it.kind];
+      const ammo = it.kind === 'firearm' && Array.isArray(it.ammo) ? it.ammo.filter(short) : [];
+      if (it.kind === 'firearm' && (aboard[id] | 0) > 0) {
+        /* arma que já vai a bordo: um tipo de munição que não vai (ex.: explosiva do Canhão Pesado) vem logo a seguir
+           às armas; o que é só excedente (mais armas, mais carregadores do mesmo tipo) fica para o fim */
+        if (short(id)) groups.push({ o: SURPLUS, n: atBase(id), list: [entry(id)] });
+        for (const a of ammo) groups.push({ o: (aboard[a] | 0) > 0 ? SURPLUS : 1, n: atBase(a), list: [entry(a)] });
+        continue;
       }
-      groups.push(g);
+      const list = short(id) ? [entry(id)].concat(ammo.map(entry)) : [];
+      if (!list.length && ammo.length) for (const a of ammo) groups.push({ o: (aboard[a] | 0) > 0 ? SURPLUS : 1, n: atBase(a), list: [entry(a)] });
+      if (list.length) groups.push({ o, n: list[0].n, list });
     }
     groups.sort((a, c) => a.o - c.o || c.n - a.n);
     const seen = {}, out = [];
@@ -1359,14 +1482,14 @@
     return out;
   }
   // os primeiros LEFT_SHOW (a linha do aviso); o resto vai em «e mais N…»
-  function leftAtBase(G, craft, pool) {
-    return leftAtBaseAll(G, craft, pool).slice(0, LEFT_SHOW);
+  function leftAtBase(G, craft, pool, opts) {
+    return leftAtBaseAll(G, craft, pool, opts).slice(0, LEFT_SHOW);
   }
-  // texto do aviso «Ficaram em …»: os primeiros com quantidades e, havendo mais, «e mais N: nomes»
-  function leftText(G, craft, pool, base) {
-    const all = leftAtBaseAll(G, craft, pool);
+  // texto do aviso «Ficaram em …»: os primeiros com quantidades (e quantos vão a bordo) e, havendo mais, «e mais N: nomes»
+  function leftText(G, craft, pool, base, opts) {
+    const all = leftAtBaseAll(G, craft, pool, opts);
     if (!all.length) return null;
-    let list = all.slice(0, LEFT_SHOW).map((x) => x.n + ' × ' + itemName(x.id)).join(', ');
+    let list = all.slice(0, LEFT_SHOW).map((x) => (x.ab > 0 ? T('cp.eq.leftAboard', { n: x.n, name: itemName(x.id), ab: x.ab }) : x.n + ' × ' + itemName(x.id))).join(', ');
     const rest = all.slice(LEFT_SHOW);
     if (rest.length) list += ' ' + Tn('cp.eq.leftMore', rest.length, { list: rest.map((x) => itemName(x.id)).join(', ') });
     return T('cp.eq.leftAtBase', { list, base: baseName(base) });
@@ -1397,38 +1520,56 @@
       if (r && r.ok) changed = true;
       else OV.Dom.toast(T('cp.eq.err.' + ((r && r.reason) || 'mismatch')), null, 'warn');
     }
+    // «Completar o kit» / «Kit noturno» no rodapé: aplica o plano e volta a montar o ecrã com as mochilas novas
+    let kitBtn = null;
+    function kitNow() {
+      const r = fieldKit(G, craftId, { night: !!p.night });
+      if (r.ok && (r.armed || r.med || r.flares)) {
+        changed = true;
+        OV.Dom.toast(fieldKitText(r), null, 'good');
+        if (ctrl) ctrl.destroy();
+        ctrl = null;
+        if (sc && sc.root) { OV.Dom.clear(sc.root); build(sc.root, sc); setTimeout(() => { if (doneBtn && doneBtn.isConnected) doneBtn.focus({ preventScroll: true }); }, 0); }
+      } else {
+        sfx('ui_deny');
+        OV.Dom.toast(r.ok ? T('cp.kit.none') : OV.T.has('cp.eq.err.' + r.reason) ? T('cp.eq.err.' + r.reason) : T('cp.err.generic', { msg: r.reason }), null, 'warn');
+      }
+    }
+    function build(root, s) {
+      sc = s;
+      const craft = C().findCraft(G, craftId);
+      let pool = null;
+      try { pool = C().equipPool(G, craftId); } catch (e) { pool = null; }
+      const base = craft ? C().findBase(G, craft.baseId) : null;
+      const home = !!craft && !!base && base.crafts.indexOf(craft.id) >= 0 && !{ out: 1, patrol: 1, returning: 1 }[craft.status];
+      host = el('div', { class: 'cp-eq-host' });
+      doneBtn = btn(T('cp.eq.done'), { cls: 'primary', key: 'Enter', tip: T('cp.eq.done.tip'), onClick: done });
+      const kp = craft ? fieldKitPlan(G, craftId, { night: !!p.night }) : null;
+      kitBtn = kp && (kp.armed || kp.med || kp.flares) ? btn(T(p.night ? 'cp.br.kit.night' : 'cp.br.kit'), { key: 'K', tip: T(p.night ? 'cp.br.kit.night.tip' : 'cp.br.kit.tip'), data: { act: 'kit' }, onClick: kitNow }) : null;
+      root.append(el('div', { class: 'scr-panel cp-eq' },
+        ui.header(home || !craft ? T('cp.eq.kicker', { base: baseName(base) }) : T('cp.eq.kicker.away', { craft: craftName(craft), place: craftPlace(G, craft) }), T('cp.eq.title', { craft: craftName(craft) }),
+          el('div', { class: 'scr-chips' },
+            el('span', { class: 'scr-chip ' + (home ? 't-day' : 't-dusk') }, el('i', { text: T('cp.eq.source') }), T(home ? 'cp.eq.home' : 'cp.eq.away')),
+            pool ? el('span', { class: 'scr-chip' }, el('i', { text: T('cp.eq.squad') }), String(pool.squad.length)) : null)),
+        host,
+        el('footer', { class: 'scr-foot' },
+          el('span', { class: 'scr-hint', text: touchT('cp.eq.hint') }),
+          el('div', { class: 'scr-foot-btns' }, kitBtn, doneBtn))));
+      // fora da base: o que ficou no armazém não vai — diz-se o quê e como o levar da próxima vez
+      const left = !home && craft ? leftAtBase(G, craft, pool, { night: !!p.night }) : [];
+      if (left.length) {
+        const txt = leftText(G, craft, pool, base, { night: !!p.night });
+        host.before(el('p', { class: 'cp-note info cp-eq-left', role: 'note', title: txt, text: txt }));
+      }
+      if (!pool || !pool.squad.length || !OV.InventoryUI || !OV.InventoryUI.equipScreen) {
+        host.appendChild(el('p', { class: 'cp-note warn', text: T(pool ? 'cp.eq.empty' : 'cp.eq.noCraft') }));
+        return;
+      }
+      ctrl = OV.InventoryUI.equipScreen(host, { squad: pool.squad, stores: pool.stores, onChange, night: !!p.night, researched: G.researched });
+    }
     sc = ui.makeScreen('equip', {
       backdrop: { dim: 0.6 },
-      build(root, s) {
-        sc = s;
-        const craft = C().findCraft(G, craftId);
-        let pool = null;
-        try { pool = C().equipPool(G, craftId); } catch (e) { pool = null; }
-        const base = craft ? C().findBase(G, craft.baseId) : null;
-        const home = !!craft && !!base && base.crafts.indexOf(craft.id) >= 0 && !{ out: 1, patrol: 1, returning: 1 }[craft.status];
-        host = el('div', { class: 'cp-eq-host' });
-        doneBtn = btn(T('cp.eq.done'), { cls: 'primary', key: 'Enter', tip: T('cp.eq.done.tip'), onClick: done });
-        root.append(el('div', { class: 'scr-panel cp-eq' },
-          ui.header(home || !craft ? T('cp.eq.kicker', { base: baseName(base) }) : T('cp.eq.kicker.away', { craft: craftName(craft), place: craftPlace(G, craft) }), T('cp.eq.title', { craft: craftName(craft) }),
-            el('div', { class: 'scr-chips' },
-              el('span', { class: 'scr-chip ' + (home ? 't-day' : 't-dusk') }, el('i', { text: T('cp.eq.source') }), T(home ? 'cp.eq.home' : 'cp.eq.away')),
-              pool ? el('span', { class: 'scr-chip' }, el('i', { text: T('cp.eq.squad') }), String(pool.squad.length)) : null)),
-          host,
-          el('footer', { class: 'scr-foot' },
-            el('span', { class: 'scr-hint', text: touchT('cp.eq.hint') }),
-            el('div', { class: 'scr-foot-btns' }, doneBtn))));
-        // fora da base: o que ficou no armazém não vai — diz-se o quê e como o levar da próxima vez
-        const left = !home && craft ? leftAtBase(G, craft, pool) : [];
-        if (left.length) {
-          const txt = leftText(G, craft, pool, base);
-          host.before(el('p', { class: 'cp-note info cp-eq-left', role: 'note', title: txt, text: txt }));
-        }
-        if (!pool || !pool.squad.length || !OV.InventoryUI || !OV.InventoryUI.equipScreen) {
-          host.appendChild(el('p', { class: 'cp-note warn', text: T(pool ? 'cp.eq.empty' : 'cp.eq.noCraft') }));
-          return;
-        }
-        ctrl = OV.InventoryUI.equipScreen(host, { squad: pool.squad, stores: pool.stores, onChange, night: !!p.night, researched: G.researched });
-      },
+      build,
       exit() { if (ctrl) ctrl.destroy(); ctrl = null; },
       focus: () => doneBtn,
       keys(ev) {
@@ -1440,6 +1581,7 @@
           return true;
         }
         if (k === 'Enter') { if (!activeIsButtonIn(sc.root) || document.activeElement === doneBtn) { sfx('ui_click'); done(); return true; } return false; }
+        if ((k === 'k' || k === 'K') && !ev.repeat && kitBtn && kitBtn.isConnected) { sfx('ui_click'); kitNow(); return true; }
         if (!ctrl) return false;
         const list = sids();
         if (k === 'Tab' && list.length) {
@@ -2377,7 +2519,7 @@
     launchMission, startBattle, afterBattle, resume, openGeo, popToGeo, equip,
     cydoniaState, cydoniaPick, cydoniaWhy, cydoniaCapable, launchCydonia, monthAlienSplit, fundingTotals,
     monthReport, gameOver, victory, baseDefence, saveDialog, loadDialog, autosave, saveLabel, errText,
-    armedLo, idleFit, unarmedAboard, boardAll, autoKit, crewUp, leftAtBase, leftAtBaseAll, leftText, gunPower, gunUpgrades, upgradeKit, upgradeText, emptyHands, noAmmoCount, loadAmmo, crewText, starterKit, buyStarterKit, orderStarterKit,
+    armedLo, idleFit, unarmedAboard, boardAll, autoKit, landedHurt, fieldKitPlan, fieldKit, fieldKitText, crewUp, leftAtBase, leftAtBaseAll, leftText, gunPower, gunUpgrades, upgradeKit, upgradeText, emptyHands, noAmmoCount, loadAmmo, crewText, starterKit, buyStarterKit, orderStarterKit,
     markUfoKnown, saveBeforeMission, preMissionFor, retryMission, EXTRA_SLOTS, extraSummary, loadExtra, reseedOnLoad, alsoPromotedKey, fmtDec1,
   });
 })(globalThis.OV || (globalThis.OV = {}));

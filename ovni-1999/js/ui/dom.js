@@ -1,5 +1,5 @@
 /* Utilitários DOM: criação de elementos, toasts, modais com Promise (foco preso e devolvido), tooltips, barras.
-   OV.Dom = { $, el, clear, toast (o mesmo aviso à vista não se repete), clearToasts, modal, anyModalOpen, tooltip (também toque longo no iPad), hideTooltip, hideLongPress, bar,
+   OV.Dom = { $, el, clear, toast (o mesmo aviso à vista não se repete), clearToasts, modal, anyModalOpen, tooltip (também toque longo no iPad; some ao trocar de cena/abrir modal ou se o nó sair do DOM), hideTooltip, tooltipNode() → nó da dica à vista, hideLongPress, bar,
               download, pickFile,
               trapFocus(caixa, {keep, returnTo}) → release(restore?) ; trapOpen() ; focusKey(nó) → chave única ou null ; refocus(chave, dentro?) ;
               focusables(caixa) ; ghostClick(event, nascido) → true se for o 2.º clique de um duplo clique num botão acabado de aparecer } */
@@ -176,6 +176,8 @@
   function modal(spec) {
     return new Promise((resolve) => {
       const host = $('modals');
+      hideTooltip();
+      hideLongPress();
       let release = null;
       const close = (v) => {
         document.removeEventListener('keydown', onKey, true);
@@ -221,6 +223,9 @@
   /* um nó que aparece debaixo de um ponteiro parado (diálogo novo, botão recriado) não mostra a dica logo: só depois
      de um movimento real do ponteiro (senão a dica do botão por omissão tapa a própria pergunta) */
   let lastMoveT = -1, lastX = NaN, lastY = NaN;
+  // nó cuja dica está à vista: se sair do DOM (troca de cena, lista redesenhada) ou deixar de estar sob o
+  // ponteiro sem mouseleave, o primeiro movimento seguinte esconde a dica (nunca fica presa sobre outro ecrã)
+  let tipNode = null;
   const nowT = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
   if (typeof document !== 'undefined' && document.addEventListener) {
     document.addEventListener('pointermove', (e) => {
@@ -228,6 +233,7 @@
       lastX = e.clientX;
       lastY = e.clientY;
       lastMoveT = nowT();
+      if (tipNode && (!tipNode.isConnected || (tipNode.matches && !tipNode.matches(':hover')))) hideTooltip();
     }, { capture: true, passive: true });
   }
   function tooltip(node, content) {
@@ -242,8 +248,10 @@
       const t = $('tooltip');
       const html = typeof content === 'function' ? content() : content;
       if (!html) return;
+      if (!node.isConnected) return;
       t.innerHTML = html;
       t.classList.remove('hidden');
+      tipNode = node;
       const r = node.getBoundingClientRect();
       const tw = t.offsetWidth, th = t.offsetHeight;
       let x = r.left + r.width / 2 - tw / 2, y = r.top - th - 8;
@@ -257,9 +265,11 @@
     longPress(node, () => (typeof content === 'function' ? content() : content));
   }
   function hideTooltip() {
-    const t = $('tooltip');
+    tipNode = null;
+    const t = typeof document !== 'undefined' ? $('tooltip') : null;
     if (t) t.classList.add('hidden');
   }
+  const tooltipNode = () => tipNode;
   /* toque: sem pairar não há dicas — um toque longo (≥ 450 ms) num nó com dica mostra a etiqueta junto dele (nome e
      tecla) durante 2,6 s e cancela o clique que viria a seguir. Todas as interfaces o têm através de tooltip(). */
   let lpBubble = null, lpHideT = 0;
@@ -344,5 +354,5 @@
     });
   }
 
-  OV.Dom = { $, el, clear, toast, clearToasts, modal, anyModalOpen, tooltip, hideTooltip, hideLongPress, bar, download, pickFile, trapFocus, trapOpen, focusKey, refocus, focusables, ghostClick };
+  OV.Dom = { $, el, clear, toast, clearToasts, modal, anyModalOpen, tooltip, hideTooltip, tooltipNode, hideLongPress, bar, download, pickFile, trapFocus, trapOpen, focusKey, refocus, focusables, ghostClick };
 })(globalThis.OV || (globalThis.OV = {}));

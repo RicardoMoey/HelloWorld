@@ -165,7 +165,8 @@ module.exports = function (OV, t) {
     // a luz do crepúsculo não escurece as casas para a visão X-COM (SHADE_DUSK ≤ DARK_SHADE): a escolha por omissão é atacar
     t.ok(OV.TUNE.SHADE_DUSK <= OV.TUNE.DARK_SHADE, 'crepúsculo não é «escuro» para a visão');
     t.eq(M.waitIsDefault(G, ref, nt), false);
-    t.eq(M.waitIsDefault(G, ref, Object.assign({}, nt, { dusk: false })), true, 'a mesma situação de noite, em Recruta: esperar');
+    t.eq(M.waitIsDefault(G, ref, Object.assign({}, nt, { dusk: false, safe: true })), true, 'a mesma situação de noite, em Recruta, OVNI que fica: esperar');
+    t.eq(M.waitIsDefault(G, ref, Object.assign({}, nt, { dusk: false, safe: false })), false, 'ronda 5: OVNI que descola antes do dia: atacar');
     const txt = OV.T('geo.ev.arrived.dusk', { t: '2 h', d: 20 });
     t.ok(/crepúsculo/.test(txt) && /20 casas/.test(txt) && /2 h/.test(txt), txt);
     const src = read('js/ui/geo_ui.js');

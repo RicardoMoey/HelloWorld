@@ -6,7 +6,7 @@
    Cena: OV.SceneDefs.basescape({G, baseId, tab}) (isScreen).
    API: OV.BaseUI = {
      TABS,
-     open(G, baseId?, tab?, {pick?, item?, qty?, equip?})   empilha 'basescape' (ou muda de base/separador se já estiver no topo); tab
+     open(G, baseId?, tab?, {pick?, item?, qty?, equip?, market?:'buy'|'sell'})   empilha 'basescape' (ou muda de base/separador se já estiver no topo); tab
                               'research' abre a escolha de projeto sozinha sem projetos a decorrer ou com pick;
                               tab 'market' + item: Comprar com a linha do objeto realçada e o botão em foco
                               (qty: quantidade já escolhida nessa linha);
@@ -133,6 +133,8 @@
   const ctxName = (what, name) => T('base.aria.ctx', { what, name });
   function btn(label, o) {
     o = o || {};
+    // botões segmentados (escolha de uma opção): o estado vai sempre em aria-pressed, não só na cor (.on)
+    if (o.pressed === undefined && /(^|\s)seg(\s|$)/.test(o.cls || '')) o = Object.assign({}, o, { pressed: /(^|\s)on(\s|$)/.test(o.cls || '') });
     // nome acessível com contexto («Iniciar: Armas Laser», «Comprar 1 × Stingray»); bloqueado não é paragem do Tab
     const aria = o.aria || (o.title && o.title !== label ? o.title : null);
     const b = el('button', { type: 'button', class: 'btn ' + (o.cls || ''), 'aria-disabled': o.why ? 'true' : null, 'aria-label': aria ? aria + (o.why ? ' — ' + o.why : '') : null, 'aria-keyshortcuts': o.key || null, 'aria-pressed': o.pressed === undefined ? null : o.pressed ? 'true' : 'false', dataset: o.data || null });
@@ -296,7 +298,7 @@
     const S = {
       G: P.G, baseId: null, tab: 'facilities', root: null, r: {}, dirty: true, lastDraw: 0, L: null,
       hover: null, sel: null, build: null, kcur: null, dismantle: null, highlight: null, hlFac: null,
-      craftSel: null, solSel: null, sort: { key: 'rank', dir: -1 }, memorial: false, market: 'buy', qty: {}, sellQty: {},
+      craftSel: null, solSel: null, sort: { key: 'rank', dir: -1 }, memorial: false, market: P.market === 'sell' ? 'sell' : 'buy', qty: {}, sellQty: {},
       equip: null, sheet: null, scroll: {}, autoPick: false, ro: null, ghostTip: null, bg: null, bgKey: '',
     };
     sc.S = S;
@@ -1509,6 +1511,8 @@
           on: () => { if (!isCur) act(() => BS().setArmour(g, s.id, id), T('base.toast.armour', { name: s.name, armour: T(a.nameKey) })); },
         }));
       }
+      arm.setAttribute('role', 'group');
+      arm.setAttribute('aria-label', T('base.sol.armour'));
       box.appendChild(section(T('base.sol.armour'), arm));
       // nave
       const seat = el('div', { class: 'bsc-seg' });
@@ -1521,6 +1525,8 @@
         if (!on) why = away || (!inHangar(t) ? errText('away') : s.woundDays > 0 ? errText('wounded') : t.soldiers.length >= max ? errText('seats') : null);
         seat.appendChild(btn(craftName(t) + ' ' + t.soldiers.length + '/' + max, { cls: 'small seg' + (on ? ' on' : ''), title: craftName(t), tip: T('base.sol.seatTip'), why, data: { seat: t.id }, on: () => { if (!on) act(() => BS().assignSoldier(g, s.id, t.id)); } }));
       }
+      seat.setAttribute('role', 'group');
+      seat.setAttribute('aria-label', T('base.sol.craft'));
       box.appendChild(section(T('base.sol.craft'), seat));
       box.appendChild(el('div', { class: 'bsc-card-act' },
         btn(T('base.sol.sack'), { cls: 'small danger', title: T('base.sol.sack'), tip: T('base.sol.sackTip'), why: away, on: () => sackSoldierDlg(s) })));
@@ -2194,11 +2200,13 @@
       S.dirty = true;
       S.bgKey = '';
     };
-    sc.go = function (baseId, tab) {
+    sc.go = function (baseId, tab, opts) {
       S.baseId = pickBase(baseId || S.baseId);
       S.sel = null;
       S.build = null;
       if (tab && TABS.indexOf(tab) >= 0) S.tab = tab;
+      // «Vender material» (armazém cheio) abre o Mercado já em Vender
+      if (opts && (opts.market === 'sell' || opts.market === 'buy')) S.market = opts.market;
       refresh();
     };
     sc.refresh = refresh;
@@ -2214,10 +2222,10 @@
   function open(G, baseId, tab, opts) {
     const top = OV.Scenes.top();
     if (top && top.id === 'basescape' && top.S && top.S.G === G) {
-      top.go(baseId, tab);
+      top.go(baseId, tab, opts);
       return top;
     }
-    return OV.Scenes.push('basescape', { G, baseId: baseId || null, tab: tab || null, pick: !!(opts && opts.pick), item: (opts && opts.item) || null, qty: (opts && opts.qty) || null, equip: (opts && opts.equip) || null });
+    return OV.Scenes.push('basescape', { G, baseId: baseId || null, tab: tab || null, pick: !!(opts && opts.pick), item: (opts && opts.item) || null, qty: (opts && opts.qty) || null, equip: (opts && opts.equip) || null, market: (opts && opts.market) || null });
   }
   function close() {
     const top = OV.Scenes.top();

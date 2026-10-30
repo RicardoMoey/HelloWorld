@@ -64,13 +64,15 @@ module.exports = function (OV, t) {
       G.ufos.push(u);
       return { kind: 'ufo', id: u.id };
     };
-    const nt = { h: 5, crashed: false };
+    // ronda 5: num OVNI aterrado, esperar só é o Enter quando se sabe que fica no chão até amanhecer (nt.safe)
+    const nt = { h: 5, crashed: false, safe: true }, ntRisk = { h: 5, crashed: false, safe: false };
     t.eq(M.waitIsDefault(G0, ufo(G0, 'landed'), nt), true, 'Recruta: esperar');
     t.eq(M.waitIsDefault(G1, ufo(G1, 'landed'), nt), true, 'Veterano, 1.ª noite: esperar');
+    t.eq(M.waitIsDefault(G0, ufo(G0, 'landed'), ntRisk), false, 'Recruta, OVNI que pode descolar: atacar');
     G1.ui.geo = Object.assign(G1.ui.geo || {}, { nightTried: true });
-    t.eq(M.waitIsDefault(G1, ufo(G1, 'landed'), nt), false, 'Veterano depois da 1.ª noite: atacar');
+    t.eq(M.waitIsDefault(G1, ufo(G1, 'landed'), ntRisk), false, 'Veterano depois da 1.ª noite: atacar');
     G0.ui.geo = Object.assign(G0.ui.geo || {}, { nightTried: true });
-    t.eq(M.waitIsDefault(G0, ufo(G0, 'landed'), nt), true, 'Recruta: sempre esperar');
+    t.eq(M.waitIsDefault(G0, ufo(G0, 'landed'), nt), true, 'Recruta, seguro: esperar');
     t.eq(M.waitIsDefault(G0, ufo(G0, 'crashed', 2 * 3600), { h: 5, crashed: true }), false, 'destroços acabam antes do dia: atacar');
     t.eq(M.waitIsDefault(G0, ufo(G0, 'crashed', 40 * 3600), { h: 5, crashed: true }), true, 'destroços duram: esperar');
     t.eq(M.waitIsDefault(G0, ufo(G0, 'landed'), null), false, 'de dia nada muda');
@@ -111,7 +113,7 @@ module.exports = function (OV, t) {
     t.ok(left.every((x) => D.items[x.id].kind !== 'corpse'), 'só material de combate');
     t.ok(/Ficaram em Lusitânia: 11 × Lança-Foguetes/.test(OV.T('cp.eq.leftAtBase', { base: 'Lusitânia', list: '11 × Lança-Foguetes' })));
     const cu = read('js/ui/campaign_ui.js');
-    t.ok(/const left = !home && craft \? leftAtBase\(G, craft, pool\) : \[\];/.test(cu), 'só fora da base');
+    t.ok(/const left = !home && craft \? leftAtBase\(G, craft, pool(, \{[^}]*\})?\) : \[\];/.test(cu), 'só fora da base');
     // aviso de entrega
     t.ok(M.GEAR_KINDS.firearm && !M.GEAR_KINDS.ammo && !M.GEAR_KINDS.corpse);
     c.status = 'ready';

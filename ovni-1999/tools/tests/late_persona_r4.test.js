@@ -246,7 +246,7 @@ module.exports = function (OV, t) {
     t.ok(/57,9\/50/.test(txt) && /munição/.test(txt), txt);
     const src = read('js/ui/geo_ui.js');
     t.ok(/S\.over = storesOver\(G\);/.test(src) && /S\.over\.length > 0/.test(src), 'o «!» de Bases liga-se');
-    t.ok(/dataset: \{ alert: 'stores' \}/.test(src) && /openBase\(o\.baseId, 'market'\)/.test(src), 'aviso persistente com «Vender material»');
+    t.ok(/dataset: \{ alert: 'stores' \}/.test(src) && /openBase\(o\.baseId, 'market'(, \{ market: 'sell' \})?\)/.test(src), 'aviso persistente com «Vender material»');
     t.ok(/used: fmtDec1\(model\.storage\.used\), cap: fmtDec1\(model\.storage\.cap\)/.test(read('js/ui/campaign_ui.js')), 'relatório com vírgula (já corrigido na ronda 4)');
   });
 

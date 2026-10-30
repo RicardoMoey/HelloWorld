@@ -138,6 +138,12 @@ body:has(#hud > .geo:not(.geo-off) .geo-banner:not(.hidden)) #toasts { top: calc
 .geo-steps li i { flex: none; width: 13px; height: 13px; border: 1px solid #3d6a8e; border-radius: 2px; font: 800 10px/12px var(--sans); font-style: normal; text-align: center; color: #04110f; }
 .geo-steps li.done { color: var(--dim); text-decoration: line-through; }
 .geo-steps li.done i { background: var(--teal); border-color: var(--teal); }
+/* cada passo é um botão (leva ao sítio onde se faz) */
+.geo-step { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 7px; width: 100%; min-height: 22px; padding: 1px 4px; margin: 0 -4px; border-radius: 3px; cursor: pointer; color: inherit; font: inherit; text-decoration: inherit; }
+.geo-step:hover { background: rgba(70, 200, 190, 0.12); color: #e8f4f6; }
+.geo-step:hover span { text-decoration: underline; text-decoration-color: rgba(70, 200, 190, 0.6); text-underline-offset: 2px; }
+.geo-step:focus-visible { outline: 2px solid var(--teal); outline-offset: 1px; }
+.geo-steps li.done .geo-step:hover span { text-decoration: line-through; }
 .geo-nudge { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 6px 7px; background: rgba(8, 40, 36, 0.55); border: 1px solid rgba(63, 215, 197, 0.45); border-radius: 3px; animation: geoIn 0.18s ease-out; }
 .geo-nudge.hidden { display: none; }
 .geo-nudge-t { flex: 1 1 100%; font-size: 12px; color: #c9f1ea; }
@@ -322,6 +328,7 @@ body:has(#hud > .geo:not(.geo-off) .geo-banner:not(.hidden)) #toasts { top: calc
 }
 @media (hover: none) {
   .geo-steps-h .geo-x { width: 36px; height: 36px; margin: -8px -6px -8px 0; }
+  .geo-step { min-height: 32px; }
   .geo-nudge .btn, .geo-nudge .geo-nudge-x { min-height: 36px; }
   .geo-nudge .geo-nudge-x { width: 40px; }
 }
