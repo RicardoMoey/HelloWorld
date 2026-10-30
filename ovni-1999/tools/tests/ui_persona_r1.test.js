@@ -116,7 +116,8 @@ module.exports = function (OV, t) {
     const e = M.logEntry(B, { t: 'death', unitId: teresa.id, killerId: al.id, cause: 'grenade', i: BM.idx(m, 2, 2, 0), vis: true, pos: BM.idx(m, 2, 2, 0) }, ctx);
     t.ok(e && e.own && e.kind === 'bad', 'baixa nossa');
     const txt = OV.T(e.key, e.params);
-    t.ok(/Teresa Carvalho foi morta em combate/.test(txt) && /explosão/.test(txt) && /atacante não visto/.test(txt), txt);
+    // ronda 3 (casual): a causa diz que foi uma granada alienígena (o atacante não visto não se nomeia)
+    t.ok(/Teresa Carvalho foi morta em combate — granada alienígena$/.test(txt), txt);
     t.eq(e.from, -1, 'atacante nunca visto: «Mostrar» vai para a vítima');
     // tiro visto: o atacante fica com nome e posição
     const shotEv = { t: 'shot', shooterId: al.id, vis: true, pos: BM.idx(m, 8, 8, 0) };

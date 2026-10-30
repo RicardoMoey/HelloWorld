@@ -86,7 +86,7 @@ module.exports = function (OV, t) {
     const src = read('js/ui/geo_ui.js');
     t.ok(/buttons: waitDef \? \[wait, go, recall\] : \[go, wait, recall\]/.test(src), 'esperar primeiro e por omissão');
     t.ok(/key: waitDef \? 'Enter' : 'W'/.test(src) && /def: waitDef/.test(src), 'Enter espera');
-    t.ok(/if \(nt\) markNight\(\); launchMission/.test(src), 'atacar de noite marca a 1.ª missão noturna');
+    t.ok(/if \(nt && !nt\.dusk\) markNight\(\); launchMission/.test(src), 'atacar de noite (não ao crepúsculo) marca a 1.ª missão noturna');
     t.ok(has('geo.ev.arrived.night.ask') && has('geo.a.attackNow'));
   });
 

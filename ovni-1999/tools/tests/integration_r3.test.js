@@ -164,7 +164,8 @@ module.exports = function (OV, t) {
     t.eq(M.nightAt(G, ref).safe, false, 'aterrou de dia e descola antes de amanhecer: não se promete');
     t.ok(/fica no chão até amanhecer/.test(OV.T('geo.ev.arrived.night.safe', { t: '3 h' })) && /3 h/.test(OV.T('geo.ev.arrived.night.safe', { t: '3 h' })));
     t.ok(M.textKeys().indexOf('geo.ev.arrived.night.safe') >= 0);
-    t.ok(/nt\.safe \? 'geo\.ev\.arrived\.night\.safe'/.test(read('js/ui/geo_ui.js')));
+    // ronda 3 (casual): a chave junta a fase (noite/crepúsculo) e a variante (.crash/.safe)
+    t.ok(/T\('geo\.ev\.arrived\.' \+ ph \+ \(nt\.crashed \? '\.crash' : nt\.safe \? '\.safe' : ''\)/.test(read('js/ui/geo_ui.js')));
   });
 
   // ---- 6–8. Battlescape -----------------------------------------------------------------------------------------

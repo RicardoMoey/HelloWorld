@@ -116,7 +116,8 @@ module.exports = function (OV, t) {
     const u = { id: C.nextId(G, 'u'), type: 'small_scout', status: 'landed', lon, lat: 52, hyper: false, race: 'sectoid', missionId: null };
     G.ufos.push(u);
     const ref = { kind: 'ufo', id: u.id };
-    t.eq(M.nightAt(G, ref), null, 'não é noite…');
+    // ronda 3 (casual): o crepúsculo também pergunta à chegada (nightAt devolve dusk), mas não é «amanheceu»
+    t.eq(M.nightAt(G, ref).dusk, true, 'não é noite, é crepúsculo…');
     t.eq(M.dayAt(G, ref), false, '…mas também ainda não é dia');
     const src = read('js/ui/geo_ui.js');
     t.ok(/if \(!dayAt\(G, ref\) && !\(w\.until && G\.t >= w\.until\)\) return true;/.test(src), 'checkWaitDay espera por dayAt (ou pelo limite anunciado)');
@@ -168,7 +169,7 @@ module.exports = function (OV, t) {
     t.eq(M.classify({ t: 'craftRearmShort', what: 'ammo' }), 'popup');
     t.eq(M.classify({ t: 'craftRearmShort', what: 'fuel' }), 'toast');
     const src = read('js/ui/geo_ui.js');
-    t.ok(/openBase\(c\.baseId, 'market', \{ item: items\[0\] \}\)/.test(src), '«Comprar munição» abre o Mercado na linha certa');
+    t.ok(/openBase\(c\.baseId, 'market', \{ item: items\[0\], qty: sug\.qty \}\)/.test(src), '«Comprar munição» abre o Mercado na linha certa (com a quantidade sugerida)');
     t.ok(/geo\.int\.noAmmo\.confirm/.test(src), 'confirmação antes de enviar');
     t.ok(/P\.tab === 'market' && P\.item/.test(read('js/ui/base_ui.js')), 'a base realça a linha pedida');
   });

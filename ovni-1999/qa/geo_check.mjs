@@ -310,8 +310,10 @@ try {
       if (arr) {
         await shot(page, '1440-07-start-mission');
         const txt = await page.evaluate(() => document.querySelector('.geo-pop') && document.querySelector('.geo-pop').innerText);
-        check(/Iniciar missão/i.test(txt || ''), 'botão «Iniciar missão»');
-        await page.keyboard.press('Enter');
+        // de noite (ou ao crepúsculo) «Esperar pelo dia» pode ser o Enter: aí ataca-se com I («Atacar já»)
+        const nightDef = /Atacar já/i.test(txt || '');
+        check(/Iniciar (a )?missão|Atacar já/i.test(txt || ''), 'botão «Iniciar missão» / «Atacar já»');
+        await page.keyboard.press(nightDef ? 'i' : 'Enter');
         await sleep(1500);
         const top = await page.evaluate(() => OV.Scenes.top() && OV.Scenes.top().id);
         log('após «Iniciar missão»:', top);

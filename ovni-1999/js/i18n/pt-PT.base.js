@@ -232,7 +232,7 @@
     'base.prod.qty': 'Quantidade',
     'base.prod.continuous': 'Contínuo',
     'base.prod.engineers': 'Engenheiros atribuídos',
-    'base.prod.done': '{done}/{qty} concluídos',
+    'base.prod.done': 'Progresso {done}/{qty}',
     'base.prod.eta.one': 'Próxima unidade dentro de {n} hora',
     'base.prod.eta.other': 'Próxima unidade dentro de {n} horas',
     'base.prod.stalledFunds': 'Suspensa: fundos insuficientes.',
@@ -448,7 +448,8 @@
     'base.toast.craftSold': '{craft} vendida por {money}. O material ficou no armazém.',
 
     // produção
-    'base.prod.sub': '{n} fabricos disponíveis',
+    'base.prod.sub.one': '1 fabrico disponível',
+    'base.prod.sub.other': '{n} fabricos disponíveis',
     'base.prod.newTip': 'Escolher o que fabricar.',
     'base.prod.none': 'Nada para fabricar: a investigação desbloqueia novos fabricos.',
     'base.prod.noActive': 'A oficina está parada.',
@@ -456,7 +457,7 @@
     'base.prod.idle.other': '{n} engenheiros estão sem trabalho.',
     'base.prod.active': 'Ordens de fabrico',
     'base.prod.running': 'Em curso',
-    'base.prod.contDone': 'Contínuo · {n} feitos',
+    'base.prod.contDone': 'Contínuo · fabricados: {n}',
     'base.prod.unitCost': '{money} por unidade',
     'base.prod.unitHours': '{spent}/{hours} h-eng',
     'base.prod.noEngineers': 'Sem engenheiros: parado',
@@ -506,8 +507,15 @@
 
     // pessoal e entregas
     'base.pers.sub': 'As contratações chegam dentro de {h} h.',
-    'base.pers.soldierFit': '{fit} aptos · {wounded} feridos',
-    'base.pers.freeBusy': '{free} livres · {busy} ocupados',
+    'base.market.clip': 'Caixa de {n} munições: cada rearme de uma nave gasta caixas inteiras.',
+    'base.pers.fit.one': '1 apto',
+    'base.pers.fit.other': '{n} aptos',
+    'base.pers.wounded.one': '1 ferido',
+    'base.pers.wounded.other': '{n} feridos',
+    'base.pers.free.one': '1 livre',
+    'base.pers.free.other': '{n} livres',
+    'base.pers.busy.one': '1 ocupado',
+    'base.pers.busy.other': '{n} ocupados',
     'base.pers.hireN': 'Contratar +{n}',
     'base.pers.hireTitle': 'Contratar {n} {kind}',
     'base.pers.hireTip': 'Custa {cost}; chegam dentro de {h} h.',
@@ -533,7 +541,10 @@
     'base.deliv.eta.other': 'chegam dentro de {h} h',
 
     // armazém
-    'base.stores.sub': '{n} objetos de {kinds} tipos',
+    'base.stores.items.one': '1 objeto',
+    'base.stores.items.other': '{n} objetos',
+    'base.stores.kinds.one': '1 tipo',
+    'base.stores.kinds.other': '{n} tipos',
     'base.stores.over': 'O armazém está acima da capacidade: venda material ou construa outro Armazém antes de comprar mais.',
     'base.stores.units': '{u} un. de espaço',
     'base.stores.unitsEach': '{each} un. cada · {u} no total',
@@ -563,7 +574,10 @@
     'base.cat.live': 'Alienígenas vivos',
 
     // naves
-    'base.crafts.sub': '{n} naves · {cap} hangares',
+    'base.crafts.n.one': '1 nave',
+    'base.crafts.n.other': '{n} naves',
+    'base.crafts.cap.one': '1 hangar',
+    'base.crafts.cap.other': '{n} hangares',
     'base.crafts.buy': 'Comprar nave',
     'base.crafts.buyTip': 'Abrir o Mercado.',
     'base.crafts.none': 'Não há naves nesta base.',
@@ -616,7 +630,8 @@
     'base.toast.equipSaved': 'Equipamento atualizado: {craft}',
 
     // soldados e memorial
-    'base.sol.sub': '{n} soldados · {w} feridos',
+    'base.sol.n.one': '1 soldado',
+    'base.sol.n.other': '{n} soldados',
     'base.sol.none': 'Não há soldados nesta base.',
     'base.sol.hire': 'Recrutar',
     'base.sol.hireTip': 'Ir ao separador Pessoal.',

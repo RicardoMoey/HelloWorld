@@ -1251,7 +1251,7 @@
       if (squadInp) {
         squadInp.max = String(maxSquad(q.kind));
         squadInp.value = String(q.squad);
-        squadOut.textContent = T('scr.qb.squadN', { n: q.squad });
+        squadOut.textContent = Tn('scr.qb.squadN', q.squad);
         squadInp.style.setProperty('--p', ((q.squad - 4) / Math.max(1, maxSquad(q.kind) - 4)) * 100 + '%');
       }
       if (seedInp && +seedInp.value !== q.seed) seedInp.value = String(q.seed);
@@ -1718,7 +1718,7 @@
               el('div', { class: 'scr-prog-name' }, el('span', { class: 'scr-rank r' + (w.rank | 0), text: rank ? T(rank.abbrKey) : '' }), el('b', { text: w.name }),
                 g.kills ? el('span', { class: 'scr-muted', text: ' · ' + Tn('bs.debrief.soldier.kills', g.kills) }) : null),
               el('div', { class: 'scr-gains' }, gainEls.length ? gainEls : el('span', { class: 'scr-muted', text: T('scr.db.noGains') })),
-              promo ? el('span', { class: 'scr-promo', text: T('scr.db.promoted', { rank: T(promo.nameKey) }) }) : null);
+              promo ? el('span', { class: 'scr-promo', text: T(gk('scr.db.promoted', w), { rank: T(promo.nameKey) }) }) : null);
           })),
           !p.onDone ? el('p', { class: 'scr-muted small', text: T('scr.db.preview') }) : null) : null;
 

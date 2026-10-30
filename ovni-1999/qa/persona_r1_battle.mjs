@@ -6,7 +6,7 @@
    B) explosivo com aliados no raio (Tiago): o 1.º Enter não dispara («Enter outra vez… atinge N aliados»), o 2.º
       dispara; rótulo «Explosão raio N» em vez de «Acerto ≈ 0 %»; menu com «Pontaria»;
    C) porta (Rui): com ⌥ o rótulo passa a «Abrir a porta sem entrar · N UT», sem ⌥ aparece a dica; ⌥+clique abre;
-   D) turno alienígena (Sofia): registo com «foi morta em combate — explosão (…)» e painel com «Mostrar»;
+   D) turno alienígena (Sofia): registo com «foi morta em combate — granada alienígena» e painel com «Mostrar»;
       abortar com 0 soldados na nave avisa que a nave se perde;
    E) movimento reduzido e paleta para daltonismo (Pedro): sem animações no HUD, FX sem tremor, classes cvd;
    F) iPad 834×1194 e 1194×834 (Marta): nenhum botão do HUD tapado por outro, toque longo mostra a etiqueta e não
@@ -323,7 +323,8 @@ try {
   }, ids);
   await sleep(200);
   s = await st();
-  log(!!s.report && s.report.rows.some((r) => /Teresa Carvalho foi morta em combate — explosão/.test(r)), 'painel «Durante o turno alienígena»: ' + JSON.stringify(s.report && s.report.rows));
+  // ronda 3 (casual): a causa de uma granada alienígena diz-se («granada alienígena» em vez de «explosão (…)»)
+  log(!!s.report && s.report.rows.some((r) => /Teresa Carvalho foi morta em combate — granada alienígena/.test(r)), 'painel «Durante o turno alienígena»: ' + JSON.stringify(s.report && s.report.rows));
   log(await page.locator('.bs-report .bs-report-row .btn').count() > 0, 'botão «Mostrar» em cada linha');
   await shot('alien_turn_report');
   await page.keyboard.press('Escape');

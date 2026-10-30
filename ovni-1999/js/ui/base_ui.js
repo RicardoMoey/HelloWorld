@@ -6,9 +6,10 @@
    Cena: OV.SceneDefs.basescape({G, baseId, tab}) (isScreen).
    API: OV.BaseUI = {
      TABS,
-     open(G, baseId?, tab?, {pick?, item?, equip?})   empilha 'basescape' (ou muda de base/separador se já estiver no topo); tab
+     open(G, baseId?, tab?, {pick?, item?, qty?, equip?})   empilha 'basescape' (ou muda de base/separador se já estiver no topo); tab
                               'research' abre a escolha de projeto sozinha sem projetos a decorrer ou com pick;
-                              tab 'market' + item: Comprar com a linha do objeto realçada e o botão em foco;
+                              tab 'market' + item: Comprar com a linha do objeto realçada e o botão em foco
+                              (qty: quantidade já escolhida nessa linha);
                               equip: craftId → Naves com o equipamento desse transporte aberto («Pôr na nave»)
      close()                  volta ao ecrã anterior (Geoscape) ; isOpen() → bool ; refresh()
      errText(reason) → texto pt-PT de 'base.err.<reason>'
@@ -869,7 +870,7 @@
       const avail = C().availableManufacture(g, b.id);
       const wrap = el('div', { class: 'bsc-tab-prod' });
       const newWhy = !avail.length ? T('base.prod.none') : caps.workshops.cap <= 0 ? errText('workshops') : null;
-      wrap.appendChild(head(T('base.tab.production'), T('base.prod.sub', { n: avail.length }),
+      wrap.appendChild(head(T('base.tab.production'), Tn('base.prod.sub', avail.length),
         btn(T('base.prod.new') + (avail.length ? ' (' + avail.length + ')' : ''), { cls: 'primary', title: T('base.prod.new'), tip: T('base.prod.newTip'), key: 'N', why: newWhy, on: prodPicker, data: { act: 'newProduction' } })));
       wrap.appendChild(el('div', { class: 'bsc-meters2' },
         meter(T('base.personnel.engineers'), st.engineers.total - st.engineers.free, st.engineers.total, { text: T('base.eng.busyOf', { busy: st.engineers.total - st.engineers.free, total: st.engineers.total }) }),
@@ -984,9 +985,9 @@
       const arriving = (kind) => b.deliveries.filter((d) => d.kind === kind).reduce((s, d) => s + d.n, 0);
       const soldiers = b.soldiers.map((id) => C().findSoldier(g, id)).filter(Boolean);
       const kinds = [
-        { kind: 'soldier', total: soldiers.length, extra: T('base.pers.soldierFit', { fit: soldiers.filter((s) => !s.woundDays).length, wounded: soldiers.filter((s) => s.woundDays > 0).length }), hire: [1, 5], sack: null },
-        { kind: 'scientist', total: st.scientists.total, extra: T('base.pers.freeBusy', { free: st.scientists.free, busy: st.scientists.total - st.scientists.free }), hire: [1, 5, 10], sack: [1, 5], free: st.scientists.free },
-        { kind: 'engineer', total: st.engineers.total, extra: T('base.pers.freeBusy', { free: st.engineers.free, busy: st.engineers.total - st.engineers.free }), hire: [1, 5, 10], sack: [1, 5], free: st.engineers.free },
+        { kind: 'soldier', total: soldiers.length, extra: Tn('base.pers.fit', soldiers.filter((s) => !s.woundDays).length) + ' · ' + Tn('base.pers.wounded', soldiers.filter((s) => s.woundDays > 0).length), hire: [1, 5], sack: null },
+        { kind: 'scientist', total: st.scientists.total, extra: Tn('base.pers.free', st.scientists.free) + ' · ' + Tn('base.pers.busy', st.scientists.total - st.scientists.free), hire: [1, 5, 10], sack: [1, 5], free: st.scientists.free },
+        { kind: 'engineer', total: st.engineers.total, extra: Tn('base.pers.free', st.engineers.free) + ' · ' + Tn('base.pers.busy', st.engineers.total - st.engineers.free), hire: [1, 5, 10], sack: [1, 5], free: st.engineers.free },
       ];
       const grid = el('div', { class: 'bsc-pers' });
       for (const k of kinds) {
@@ -1043,7 +1044,7 @@
       const wrap = el('div', { class: 'bsc-tab-stores' });
       const ids = Object.keys(b.stores).filter((id) => b.stores[id] > 0);
       const total = ids.reduce((s, id) => s + b.stores[id], 0);
-      wrap.appendChild(head(T('base.tab.stores'), T('base.stores.sub', { n: int(total), kinds: ids.length })));
+      wrap.appendChild(head(T('base.tab.stores'), Tn('base.stores.items', total, { n: int(total) }) + ' · ' + Tn('base.stores.kinds', ids.length)));
       wrap.appendChild(el('div', { class: 'bsc-meters2' }, meter(T('base.cap.storage'), caps.storage.used, caps.storage.cap, { fmt: dec1, tip: () => tipHtml(T('base.cap.storage'), [esc(T('base.captip.storage'))]) })));
       if (caps.storage.usedTenths > caps.storage.cap * 10) wrap.appendChild(note(T('base.stores.over'), 'bad'));
       if (!ids.length) wrap.appendChild(note(T('base.stores.empty'), 'muted'));
@@ -1090,7 +1091,7 @@
       const crafts = b.crafts.map((id) => C().findCraft(g, id)).filter(Boolean);
       const wrap = el('div', { class: 'bsc-tab-crafts' });
       const caps = BS().capacities(g, b.id);
-      wrap.appendChild(head(T('base.tab.crafts'), T('base.crafts.sub', { n: crafts.length, cap: caps.crafts.cap }),
+      wrap.appendChild(head(T('base.tab.crafts'), Tn('base.crafts.n', crafts.length) + ' · ' + Tn('base.crafts.cap', caps.crafts.cap),
         btn(T('base.crafts.buy'), { cls: 'small', title: T('base.crafts.buy'), tip: T('base.crafts.buyTip'), key: '8', on: () => { S.market = 'buy'; setTab('market'); } })));
       if (!crafts.length) { wrap.appendChild(note(T('base.crafts.none'), 'muted')); return wrap; }
       if (!S.craftSel || !crafts.some((c) => c.id === S.craftSel)) S.craftSel = crafts[0].id;
@@ -1362,7 +1363,7 @@
       const sols = b.soldiers.map((id) => C().findSoldier(g, id)).filter(Boolean);
       const wounded = sols.filter((s) => s.woundDays > 0).length;
       wrap.appendChild(head(S.memorial ? T('base.mem.title') : T('base.tab.soldiers'),
-        S.memorial ? Tn('base.mem.sub', g.dead.length) : T('base.sol.sub', { n: sols.length, w: wounded }),
+        S.memorial ? Tn('base.mem.sub', g.dead.length) : Tn('base.sol.n', sols.length) + ' · ' + Tn('base.pers.wounded', wounded),
         btn(S.memorial ? T('base.sol.backToList') : T('base.mem.btn') + (g.dead.length ? ' (' + g.dead.length + ')' : ''), { cls: 'small' + (S.memorial ? ' on' : ''), title: T('base.mem.btn'), tip: T('base.mem.tip'), key: 'M', on: () => { S.memorial = !S.memorial; sfx('ui_select'); renderContent(); }, data: { act: 'memorial' } }),
         S.memorial ? null : btn(T('base.sol.hire'), { cls: 'small', title: T('base.sol.hire'), tip: T('base.sol.hireTip'), key: '4', on: () => setTab('personnel') })));
       if (S.memorial) { wrap.appendChild(memorial()); return wrap; }
@@ -1561,6 +1562,8 @@
             isCraft ? craftIcon(id, 40) : itemIcon(id, 40),
             el('div', { class: 'bsc-row-main' }, el('div', { class: 'bsc-row-name', text: itemName(id) }),
               el('div', { class: 'bsc-row-sub', text: T('base.market.priceLine', { price: money(def.buy), h: eta, have }) + (isCraft ? ' · ' + T('base.market.rent', { money: money(def.rent) }) : ' · ' + T('base.market.space', { u: dec1(space) })) }),
+              // munição de nave em caixas: o rearme abre sempre uma caixa inteira
+              !isCraft && def.kind === 'craft_ammo' && def.rounds > 1 ? el('div', { class: 'bsc-row-sub', text: T('base.market.clip', { n: def.rounds }) }) : null,
               why === 'storage' || why === 'hangar' ? el('div', { class: 'bsc-row-why', text: errText(why) }) : null),
             qtyCtl(S.qty, id, isCraft ? 3 : 0, renderContent, 'buy'),
             el('div', { class: 'bsc-mtotal mono' + (g.funds < def.buy * n ? ' bad' : ''), text: money(def.buy * n) }),
@@ -2033,6 +2036,8 @@
       // vindo de «Comprar munição» (Geoscape): Mercado › Comprar com a linha do objeto à vista e o botão em foco
       if (P.tab === 'market' && P.item) {
         S.market = 'buy';
+        // quantidade sugerida (ex.: caixas de munição para encher as naves e ter uma recarga de reserva)
+        if (P.qty > 0) S.qty[P.item] = P.qty | 0;
         renderContent();
         setTimeout(() => {
           const row = S.root && S.r.content.querySelector('[data-buy="' + P.item + '"]');
@@ -2099,7 +2104,7 @@
       top.go(baseId, tab);
       return top;
     }
-    return OV.Scenes.push('basescape', { G, baseId: baseId || null, tab: tab || null, pick: !!(opts && opts.pick), item: (opts && opts.item) || null, equip: (opts && opts.equip) || null });
+    return OV.Scenes.push('basescape', { G, baseId: baseId || null, tab: tab || null, pick: !!(opts && opts.pick), item: (opts && opts.item) || null, qty: (opts && opts.qty) || null, equip: (opts && opts.equip) || null });
   }
   function close() {
     const top = OV.Scenes.top();

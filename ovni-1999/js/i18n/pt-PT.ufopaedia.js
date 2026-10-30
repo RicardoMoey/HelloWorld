@@ -27,7 +27,8 @@
     'up.counter': 'Artigo {i} de {n}',
     'up.hint': '← → artigos · / pesquisar · Esc voltar',
     'up.new': 'Novo',
-    'up.locked': '{n} artigos ainda por desclassificar — investigue, capture e recupere.',
+    'up.locked.one': '1 artigo ainda por desclassificar — investigue, capture e recupere.',
+    'up.locked.other': '{n} artigos ainda por desclassificar — investigue, capture e recupere.',
     'up.note.research': 'Desclassificado por: {list}',
     'up.title.alien_interrogation': 'Interrogatório de Alienígenas',
 

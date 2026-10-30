@@ -1213,7 +1213,7 @@
       }
       if (G) {
         const all = articles().length, open = list.length;
-        if (open < all && !query) nav.appendChild(el('p', { class: 'up-locked', text: T('up.locked', { n: all - open }) }));
+        if (open < all && !query) nav.appendChild(el('p', { class: 'up-locked', text: OV.Tn('up.locked', all - open) }));
       }
       markSel();
     }

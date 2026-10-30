@@ -13,6 +13,7 @@
      launchCydonia(G, craftId?) → Promise(bool)   confirmação «sem regresso» e briefing da missão final
      cydoniaState(G, craftId) → {ok, reason} ; cydoniaPick(G, baseId?) → {ok, reason, craftId} ; cydoniaWhy(reason) → texto
      cydoniaCapable(craft) → bool ; monthAlienSplit(G, report) → [{key, n?, pts}] ; fundingTotals(report) → {before, delta, after}
+     alsoPromotedKey(n, allFemale) → chave i18n de «Também promovido(a)(s) na base» (número e género)
      debug.newgame() → {step, diff, chosen, name, view} | null   (QA)
      Equipa (puras sobre G, só via BaseSim/Campaign): armedLo(lo) → bool ; idleFit(G, baseId) → [ids] ;
        unarmedAboard(G, craftId) → [ids] ; boardAll(G, craftId) → [ids embarcados] ;
@@ -34,6 +35,8 @@
   const Tn = (k, n, p) => OV.Tn(k, n, p);
   // chave no feminino quando existe (soldadas: «Morta em combate»…)
   const gk = (key, s) => (s && s.female && OV.T.has(key + '.f') ? key + '.f' : key);
+  // «Também promovido(a)(s) na base»: número e género (feminino só quando todas são soldadas)
+  const alsoPromotedKey = (n, allFemale) => 'cp.db.alsoPromoted.' + (n === 1 ? 'one' : 'other') + (allFemale ? '.f' : '');
   const el = (...a) => OV.Dom.el(...a);
   const D = () => OV.Data;
   const C = () => OV.Campaign;
@@ -1013,7 +1016,7 @@
       if (sol) missing += Math.max(0, loItems(sol.loadout).length - loItems(s.loadout).length);
       let w = 0;
       for (const it of loItems(s.loadout)) w += (D().items[it] && D().items[it].weight) | 0;
-      if (s.stats && w > (s.stats.str | 0)) out.push({ cls: 'warn', text: T('cp.br.warn.heavy', { name: s.name, w, str: s.stats.str | 0 }) });
+      if (s.stats && w > (s.stats.str | 0)) out.push({ cls: 'warn', text: T(gk('cp.br.warn.heavy', sol || s), { name: s.name, w, str: s.stats.str | 0 }) });
     }
     if (missing) out.unshift({ cls: 'bad', text: Tn('cp.br.warn.missing', missing) });
     const unarmed = squad.filter((s) => !armedLo(s.loadout)).length;
@@ -1544,9 +1547,9 @@
             el('div', { class: 'scr-prog-name' }, el('span', { class: 'scr-rank r' + w.rank, text: rankLabel(w.rank) }), el('b', { text: w.name }),
               g.kills ? el('span', { class: 'scr-muted', text: ' · ' + Tn('bs.debrief.soldier.kills', g.kills) }) : null),
             el('div', { class: 'scr-gains' }, gainEls.length ? gainEls : el('span', { class: 'scr-muted', text: T('scr.db.noGains') })),
-            promo ? el('span', { class: 'scr-promo', text: T('scr.db.promoted', { rank: T(promo.nameKey) }) }) : null);
+            promo ? el('span', { class: 'scr-promo', text: T(gk('scr.db.promoted', w), { rank: T(promo.nameKey) }) }) : null);
         })),
-        extraPromo.length ? el('p', { class: 'cp-note good', text: T('cp.db.alsoPromoted', { list: extraPromo.map((pr) => {
+        extraPromo.length ? el('p', { class: 'cp-note good', text: T(alsoPromotedKey(extraPromo.length, extraPromo.every((pr) => G.soldiers[pr.id] && G.soldiers[pr.id].female)), { list: extraPromo.map((pr) => {
           const s = G.soldiers[pr.id];
           const r = D().soldierRank(pr.to);
           return (s ? s.name : pr.id) + ' (' + (r ? T(r.nameKey) : '') + ')';
@@ -2214,6 +2217,6 @@
     cydoniaState, cydoniaPick, cydoniaWhy, cydoniaCapable, launchCydonia, monthAlienSplit, fundingTotals,
     monthReport, gameOver, victory, baseDefence, saveDialog, loadDialog, autosave, saveLabel, errText,
     armedLo, idleFit, unarmedAboard, boardAll, autoKit, crewUp, leftAtBase, emptyHands, noAmmoCount, loadAmmo, crewText, starterKit, buyStarterKit, orderStarterKit,
-    markUfoKnown, saveBeforeMission, preMissionFor, retryMission, EXTRA_SLOTS, extraSummary, loadExtra, reseedOnLoad,
+    markUfoKnown, saveBeforeMission, preMissionFor, retryMission, EXTRA_SLOTS, extraSummary, loadExtra, reseedOnLoad, alsoPromotedKey,
   });
 })(globalThis.OV || (globalThis.OV = {}));

@@ -1259,8 +1259,11 @@
     closeReport();
     sfx('ui_confirm');
     S.lastFire = null;
-    const mark = S.log.length;
+    // marca pelo número de série (o registo corta as entradas antigas a 400: um índice deslizaria)
+    const mark = S.logSeq, endNo = S.B.turn | 0;
+    S.endNo = endNo;
     await playGen(OV.Battle.endPlayerTurn(S.B));
+    if (S) S.endNo = null;
     if (!S || S.ended) return;
     if (isTouch()) S.mouse = null;
     playerTurnHook();
@@ -1268,12 +1271,15 @@
     if (u) select(u.id, { centre: true, quiet: true });
     // o que aconteceu aos nossos durante o turno alienígena (os avisos passam depressa demais)
     // e as granadas alienígenas ativadas à vista (Recruta): a mesma janela, com «Mostrar» a centrar em cada uma
-    const hurt = turnReportRows(S.log.slice(mark)).concat(warnGrenades());
+    const hurt = turnReportRows(S.log.filter((e) => e.seq > mark), endNo).concat(warnGrenades());
     if (hurt.length || visibleAliens().length) S.contactTurn = S.B.turn;
     // noite num OVNI sem contacto há vários turnos: os alienígenas estão lá dentro (uma vez por batalha)
     const hint = !S.ufoHinted && ufoHintDue(S.B, S.contactTurn) ? ufoHintRow() : null;
     if (hint) S.ufoHinted = true;
-    if (hurt.length) openReport('turn', hint ? hurt.concat({ key: 'hud.hint.title', params: null, kind: 'sect', at: -1, from: -1 }, hint) : hurt);
+    // granadas que rebentaram depois de «Fim do turno» (antes dos alienígenas jogarem): o título deixa de ser só
+    // «Durante o turno alienígena»
+    const title = hurt.some((e) => e.key === 'hud.report.turnEnd') ? 'hud.report.title.since' : undefined;
+    if (hurt.length) openReport('turn', hint ? hurt.concat({ key: 'hud.hint.title', params: null, kind: 'sect', at: -1, from: -1 }, hint) : hurt, title);
     else if (hint) openReport('turn', [hint], 'hud.hint.title');
   }
   /* Conselho do OVNI às escuras: missão noturna num OVNI caído/aterrado, UFO_HINT_TURNS turnos X-COM sem contacto
@@ -1353,6 +1359,8 @@
       else if (L.cause === 'wounds') k = 'wounds';
       else if (L.cause === 'smoke') k = 'smoke';
       else if (L.cause === 'melee') k = 'melee';
+      // granada alienígena (atirada ou largada com espoleta, que rebenta no fim do turno): diz-se o que foi
+      else if (L.cause === 'grenade' && a && !mine(a)) return who && C.seenAt[a.id] !== undefined ? T('hud.log.how.alienGrenadeBy', { who }) : T('hud.log.how.alienGrenade');
       else if (area || L.cause === 'grenade' || L.cause === 'unitDeath' || L.cause === 'tile' || L.cause === 'powerSource') k = who ? 'explosion' : 'blast';
       else if (L.cause === 'shot') k = 'shot';
       if (!who && (k === 'shot' || k === 'melee' || k === 'other')) return T('hud.log.how.' + k, { who: T('hud.log.unseen') });
@@ -1420,6 +1428,9 @@
     if (!e) return;
     e.turn = S.B.turn;
     e.side = S.B.side;
+    e.seq = ++S.logSeq;
+    // depois de «Fim do turno», antes de os alienígenas jogarem (granadas com espoleta): o registo di-lo à parte
+    if (S.endNo !== null && S.endNo !== undefined && S.B.side === 'xcom' && (S.B.turn | 0) === S.endNo) e.end = true;
     S.log.push(e);
     if (S.log.length > 400) S.log.splice(0, S.log.length - 400);
   }
@@ -1467,9 +1478,9 @@
     const listEl = el('div', { class: 'bs-report-list', 'data-scroll': '1', role: 'log' });
     let lastTurn = null;
     for (const e of rows) {
-      if (kind === 'log' && (e.turn + ':' + e.side) !== lastTurn) {
-        lastTurn = e.turn + ':' + e.side;
-        listEl.appendChild(el('div', { class: 'bs-report-turn', text: T('hud.log.turn', { n: e.turn, side: T('bs.side.' + e.side) }) }));
+      if (kind === 'log' && (e.turn + ':' + e.side + (e.end ? ':end' : '')) !== lastTurn) {
+        lastTurn = e.turn + ':' + e.side + (e.end ? ':end' : '');
+        listEl.appendChild(el('div', { class: 'bs-report-turn', text: e.end ? T('hud.log.turnEnd', { n: e.turn }) : T('hud.log.turn', { n: e.turn, side: T('bs.side.' + e.side) }) }));
       }
       if (e.kind === 'sect') {
         listEl.appendChild(el('div', { class: 'bs-report-turn', text: T(e.key) }));
@@ -1538,12 +1549,22 @@
     if (panic) parts.push(Tn('hud.report.panic', panic));
     return parts.join(' · ');
   }
-  /* entradas do registo desde o fim do turno X-COM → linhas do relatório: o que aconteceu aos nossos no turno
-     alienígena e, à parte, no início do turno X-COM (pânico, descontrolo, mortes por hemorragia) */
-  function turnReportRows(entries) {
-    const rows = entries.filter((e) => e.own && e.side !== 'xcom');
-    const start = entries.filter((e) => e.own && e.side === 'xcom');
-    if (start.length) rows.push({ key: 'hud.report.turnStart', params: null, kind: 'sect', at: -1, from: -1 }, ...start);
+  /* entradas do registo desde «Fim do turno» → linhas do relatório, pela ordem em que aconteceram: no fim do turno
+     X-COM (granadas com espoleta a rebentar — endNo = número do turno que acabou; as entradas ainda têm side 'xcom'
+     e turn endNo), durante o turno alienígena e, à parte, no início do turno X-COM seguinte (pânico, descontrolo,
+     mortes por hemorragia). Nenhuma baixa fica fora do relatório. */
+  function turnReportRows(entries, endNo) {
+    const own = entries.filter((e) => e.own);
+    const atEnd = (e) => e.side === 'xcom' && endNo !== undefined && (e.turn | 0) <= (endNo | 0);
+    const end = own.filter(atEnd);
+    const alien = own.filter((e) => e.side !== 'xcom');
+    const start = own.filter((e) => e.side === 'xcom' && !atEnd(e));
+    const sect = (key) => ({ key, params: null, kind: 'sect', at: -1, from: -1 });
+    const rows = [];
+    if (end.length) rows.push(sect('hud.report.turnEnd'), ...end);
+    if (end.length && alien.length) rows.push(sect('hud.report.alienTurn'));
+    rows.push(...alien);
+    if (start.length) rows.push(sect('hud.report.turnStart'), ...start);
     return rows;
   }
 
@@ -2260,7 +2281,7 @@
         if (!(w > 0)) return;
         n++;
         const b = el('button', { class: 'bs-menu-item', type: 'button' }, el('span', { class: 'bs-mi-label', text: T('hud.med.part.' + p) }),
-          el('span', { class: 'bs-mi-cost bad', text: T('hud.med.wounds', { n: w }) }), el('span', { class: 'bs-mi-acc', text: T('bs.action.heal') }));
+          el('span', { class: 'bs-mi-cost bad', text: Tn('hud.med.wounds', w) }), el('span', { class: 'bs-mi-acc', text: T('bs.action.heal') }));
         b.addEventListener('click', () => doMed(t, 'heal', p));
         list.appendChild(b);
       });
@@ -2931,7 +2952,7 @@
         lastFire: null, miniOn: false, mood: null, hudDirty: true, mapDirty: true, force: false, spaceDown: false, spaceDragged: false,
         clickFast: false, perf: OV.Game && OV.Game.debug ? { draw: [], at: [], shown: 0, last: null } : null,
         kcur: { x: 0, y: 0, armed: false, anchor: null, hold: null }, arrowT: {}, alt: false, lastInput: 'ptr', mouse0: null, aimLabel: '',
-        log: [], logCtx: { last: {}, seenAt: {} }, report: null, alienNades: new Set(), contactTurn: B.turn | 0, ufoHinted: false,
+        log: [], logSeq: 0, endNo: null, logCtx: { last: {}, seenAt: {} }, report: null, alienNades: new Set(), contactTurn: B.turn | 0, ufoHinted: false,
       };
       S.pctx = {
         view: S.view, anim, side: 'xcom', followId: () => (S ? S.selId : null),

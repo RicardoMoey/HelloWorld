@@ -1323,7 +1323,7 @@
     for (let p = 0; p < PARTS; p++) {
       const w = t.wounds[p] | 0;
       const b = el('button', { class: 'medk-pb' + (w ? ' hurt' : '') + (p === part ? ' on' : ''), type: 'button', dataset: { part: String(p) },
-        'aria-pressed': p === part ? 'true' : 'false', 'aria-label': T(p === part ? 'hud.medk.partSel' : 'hud.medk.partBtn', { part: T('hud.medk.part.' + p), n: w }) },
+        'aria-pressed': p === part ? 'true' : 'false', 'aria-label': Tn(p === part ? 'hud.medk.partSel' : 'hud.medk.partBtn', w, { part: T('hud.medk.part.' + p) }) },
         el('span', { text: T('hud.medk.part.' + p) }), el('b', { text: String(w) }));
       b.addEventListener('click', () => {
         V.med.part = p;
@@ -1357,7 +1357,7 @@
       const b = el('button', { class: 'medk-b ' + k.kind + (p.ok ? (p.warn ? ' warn' : '') : ' off'), type: 'button', dataset: { act: 'med-' + k.kind, nav: '1' } },
         el('span', { class: 'key', text: k.key }),
         el('span', { class: 'medk-b-txt' }, el('b', { text: T('bs.action.' + k.kind) }), el('small', { class: why ? 'bad' : '', text: why ? p.reason : k.fx })),
-        el('span', { class: 'medk-b-ch', text: T('hud.medk.charges', { n: ch[k.kind] | 0 }) }),
+        el('span', { class: 'medk-b-ch', text: Tn('hud.medk.charges', ch[k.kind] | 0) }),
         el('span', { class: 'cost' + (p.ok ? '' : ' bad'), text: why ? '—' : p.label || '' }));
       if (p.reason) OV.Dom.tooltip(b, '<b>' + T('bs.action.' + k.kind) + '</b><br><span class="muted">' + p.reason + '</span>');
       b.addEventListener('click', () => doMed(k.kind));
@@ -1943,7 +1943,7 @@
           }
         }
         E.loadouts[s.id] = settleOrder(l);
-        if (missing) OV.Dom.toast('hud.equip.missing', { n: missing }, 'warn');
+        if (missing) OV.Dom.toast(Tn('hud.equip.missing', missing), null, 'warn');
         sfx('ui_confirm');
         emit();
       } else if (kind === 'auto') {

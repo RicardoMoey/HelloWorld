@@ -130,7 +130,7 @@ module.exports = function (OV, t) {
     t.ok(/else label = T\(confirmKey\('hud\.confirmThrow'\)\) \+ ' · ' \+ label;/.test(ui), 'arremesso usa hud.confirmThrow');
     t.ok(/case 'x': if \(!m\.shift\) abortMission\(\); return true;/.test(ui), 'X aborta (com a confirmação)');
     t.ok(/^X\|Abortar missão/.test(S['hud.keys.20']) && typeof OV.BattleUI.abort === 'function', 'linha na folha de teclas e OV.BattleUI.abort');
-    for (const k of ['hud.medk.keys', 'hud.medk.keys.touch', 'hud.medk.partSel', 'hud.medk.partBtn', 'hud.sq.panic', 'hud.sq.panic.aria', 'hud.sq.aria', 'hud.sq.spent.aria', 'hud.sq.gone.aria', 'hud.report.turnStart', 'hud.report.panic.one', 'hud.report.panic.other', 'hud.panicSkip.one', 'hud.panicSkip.other', 'hud.equip.clipBack.one', 'hud.equip.clipBack.other']) t.ok(has(k), k);
+    for (const k of ['hud.medk.keys', 'hud.medk.keys.touch', 'hud.medk.partSel.one', 'hud.medk.partSel.other', 'hud.medk.partBtn.one', 'hud.medk.partBtn.other', 'hud.sq.panic', 'hud.sq.panic.aria', 'hud.sq.aria', 'hud.sq.spent.aria', 'hud.sq.gone.aria', 'hud.report.turnStart', 'hud.report.panic.one', 'hud.report.panic.other', 'hud.panicSkip.one', 'hud.panicSkip.other', 'hud.equip.clipBack.one', 'hud.equip.clipBack.other']) t.ok(has(k), k);
     t.ok(/←\/→ ferido · ↑\/↓ parte do corpo/.test(S['hud.medk.keys']), 'teclas do kit como o painel se vê');
     t.ok(!/[←↑1]/.test(S['hud.medk.keys.touch']), 'toque sem teclas');
     t.ok(/\{clip\}/.test(S['hud.equip.inWeapon.tip']) && /não ocupa espaço/.test(S['hud.equip.hint']) && /não ocupa espaço/.test(S['hud.equip.hint.touch']), 'ajuda do Equipar');
@@ -149,7 +149,7 @@ module.exports = function (OV, t) {
     t.eq(BM.reportSummary(rows), '1 ferido · 3 em pânico');
     t.eq(BM.turnReportRows(entries.slice(0, 2)).length, 1, 'sem nada no início do turno, sem secção');
     const ui = read('js/ui/battle_ui.js');
-    t.ok(/const hurt = turnReportRows\(S\.log\.slice\(mark\)\)\.concat\(warnGrenades\(\)\);/.test(ui), 'endTurn usa as linhas novas');
+    t.ok(/const hurt = turnReportRows\(S\.log\.filter\(\(e\) => e\.seq > mark\), endNo\)\.concat\(warnGrenades\(\)\);/.test(ui), 'endTurn usa as linhas novas');
     t.ok(/toast\(Tn\('hud\.panicSkip', panicked\), null, 'warn'\)/.test(ui), 'Tab avisa de quem está em pânico');
     t.ok(/class: 'bs-sq-st', 'aria-hidden': 'true' \}, el\('b', \{ text: '⚠' \}\), T\('hud\.sq\.panic'\)/.test(ui), 'linha da equipa com ícone e texto');
     t.ok(/row\.setAttribute\('aria-label'/.test(ui), 'aria-label com o estado');
