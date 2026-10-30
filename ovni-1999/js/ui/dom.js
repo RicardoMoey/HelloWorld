@@ -1,5 +1,5 @@
 /* Utilitários DOM: criação de elementos, toasts, modais com Promise (foco preso e devolvido), tooltips, barras.
-   OV.Dom = { $, el, clear, toast, clearToasts, modal, anyModalOpen, tooltip (também toque longo no iPad), hideTooltip, hideLongPress, bar,
+   OV.Dom = { $, el, clear, toast (o mesmo aviso à vista não se repete), clearToasts, modal, anyModalOpen, tooltip (também toque longo no iPad), hideTooltip, hideLongPress, bar,
               download, pickFile,
               trapFocus(caixa, {keep, returnTo}) → release(restore?) ; trapOpen() ; focusKey(nó) ; refocus(chave, dentro?) ;
               focusables(caixa) } */
@@ -42,11 +42,20 @@
     const box = $('toasts');
     if (!box) return;
     const text = OV.T && OV.T.has && OV.T.has(textOrKey) ? OV.T(textOrKey, params) : textOrKey;
-    const d = el('div', { class: 'toast ' + (kind || 'info'), text });
+    // o mesmo aviso ainda à vista não se empilha: volta a contar o tempo do que já lá está (as confirmações «good»
+    // repetem-se, porque cada uma é uma ação que aconteceu)
+    const same = kind === 'good' ? null : [...box.children].find((n) => n.textContent === text && !n.classList.contains('fade') && n.dataset.kind === (kind || 'info'));
+    if (same) { arm(same); return; }
+    const d = el('div', { class: 'toast ' + (kind || 'info'), text, dataset: { kind: kind || 'info' } });
     box.appendChild(d);
     while (box.children.length > 5) box.removeChild(box.firstChild);
-    setTimeout(() => d.classList.add('fade'), 3400);
-    setTimeout(() => d.remove(), 4100);
+    arm(d);
+  }
+  function arm(d) {
+    clearTimeout(d._tf);
+    clearTimeout(d._tr);
+    d._tf = setTimeout(() => d.classList.add('fade'), 3400);
+    d._tr = setTimeout(() => d.remove(), 4100);
   }
   // avisos do ecrã anterior não ficam por cima de um ecrã novo (briefing, base, relatório)
   function clearToasts() {

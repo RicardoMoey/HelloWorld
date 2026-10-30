@@ -23,7 +23,9 @@
        buyStarterKit(G, baseId, kit) → {ok, reason?, cost, eta} ; orderStarterKit(G, baseId, n) → Promise(bool) (diálogo)
      Gravações extra (ranhuras do OV.Save): EXTRA_SLOTS ['auto2','preMission'] (rodam com a automática; «Antes da missão» ao abrir
        o briefing) ; saveBeforeMission(G, siteRef, craftId) ; preMissionFor(G, startedT) → {siteRef, craftId}|null ;
-       retryMission(G, pm) ; extraSummary(slot) ; loadExtra(slot) → {G, B, meta} ; markUfoKnown(G, ufoId) }
+       retryMission(G, pm) ; extraSummary(slot) ; loadExtra(slot) → {G, B, meta} ; markUfoKnown(G, ufoId) ;
+       reseedOnLoad(G) → n.º da carga (sal de Campaign.reseedMap; resume() aplica-o a qualquer gravação do Geoscape) ;
+       leftAtBase(G, craft, pool) → [{id, n}] (armas e material que ficaram no armazém e não vão a bordo) }
    Atalhos: ver as dicas de cada botão (tooltip com a tecla). */
 (function (OV) {
   'use strict';
@@ -421,6 +423,22 @@
     try { C().reseedMap(G, n); } catch (e) { return 0; }
     return n;
   }
+  /* Qualquer gravação carregada no Geoscape (manual, automática, «Antes da missão») sorteia outro mapa para a próxima
+     missão: o n.º de cargas deste browser é o sal de Campaign.reseedMap (só a stream 'map'; o resto não muda). Assim
+     carregar e voltar a entrar nunca repete o mesmo mapa com os alienígenas nos mesmos sítios; sem cargas (testes,
+     robô) tudo continua determinístico. → n.º da carga */
+  let loadN = 0;
+  function reseedOnLoad(G) {
+    let n = loadN + 1;
+    try {
+      const v = +localStorage.getItem('ovni1999.loads');
+      if (Number.isFinite(v) && v >= loadN) n = v + 1;
+      localStorage.setItem('ovni1999.loads', String(n));
+    } catch (e) { /* sem armazenamento: o contador em memória chega */ }
+    loadN = n;
+    try { C().reseedMap(G, 0x10000 + n); } catch (e) { return 0; }
+    return n;
+  }
   // antes de cada missão (ao abrir o briefing): a gravação «Antes da missão» para repetir depois de uma derrota
   function saveBeforeMission(G, siteRef, craftId) {
     if (!OV.Save || !G) return false;
@@ -719,6 +737,7 @@
       if (OV.Scenes.stack.length > 1) OV.Scenes.pop();
       else OV.Scenes.set('menu');
     }
+    const SEA_DELAY_MS = 340;
     function choose(p) {
       if (!p) return;
       if (!OV.GMath.isLand(p.lon, p.lat)) { sfx('ui_deny'); OV.Dom.toast(T('cp.ng.sea'), null, 'warn'); return; }
@@ -808,10 +827,17 @@
       if (ev.kind === 'click') {
         const p = GR.pick(view, ev.x, ev.y);
         if (ev.mods && ev.mods.alt && p) { GR.rotateTo(view, p.lon, p.lat); return true; }
+        // mar: o aviso espera pelo fim de um possível duplo clique/toque (que só centra) e nunca se repete
+        if (p && !OV.GMath.isLand(p.lon, p.lat)) {
+          clearTimeout(st.seaT);
+          if ((ev.detail | 0) < 2) st.seaT = setTimeout(() => { if (st.step === 'place' && OV.Scenes.top() === sc) choose(p); }, SEA_DELAY_MS);
+          return true;
+        }
         choose(p);
         return true;
       }
       if (ev.kind === 'dblclick' || ev.kind === 'secondary') {
+        clearTimeout(st.seaT);
         const p = GR.pick(view, ev.x, ev.y);
         if (p) GR.rotateTo(view, p.lon, p.lat);
         return true;
@@ -995,7 +1021,12 @@
     if (M.night && !has('electro_flare')) out.push({ cls: 'warn', text: T('cp.br.warn.flares') });
     const craft = C().findCraft(G, mission.craftId);
     const seats = craft && D().crafts[craft.type] ? D().crafts[craft.type].seatsUI | 0 : 0;
-    if (seats && squad.length < seats) out.push({ cls: 'info', text: Tn('cp.br.warn.seats', seats - squad.length) });
+    // menos soldados do que o efetivo mínimo estimado: aviso forte (não só «lugares vazios»)
+    let range = null;
+    try { range = M.deploymentId ? D().deploymentRange(M.deploymentId, M.difficulty, M.month) : null; } catch (e) { range = null; }
+    if (range && squad.length && squad.length < (range.min | 0)) {
+      out.unshift({ cls: 'bad', id: 'short', text: Tn('cp.br.warn.short', squad.length, { crew: OV.Screens && OV.Screens.crewText ? OV.Screens.crewText(range) : range.min + '–' + range.max }) });
+    } else if (seats && squad.length < seats) out.push({ cls: 'info', text: Tn('cp.br.warn.seats', seats - squad.length) });
     return out;
   }
 
@@ -1158,6 +1189,27 @@
   };
 
   // ---- «Equipar» (cena própria; a base também a pode abrir) ----------------------------------------------
+  /* armas e material de combate que ficaram no armazém da base e não vão a bordo (até 4, armas primeiro, com a sua
+     munição) → [{id, n}] */
+  const LEFT_KINDS = { firearm: 0, grenade: 2, medikit: 3, melee: 4, flare: 5, scanner: 6, psiamp: 7 };
+  function leftAtBase(G, craft, pool) {
+    const b = C().findBase(G, craft.baseId);
+    if (!b || !b.stores) return [];
+    const aboard = Object.assign({}, (pool && pool.stores) || {});
+    for (const s of (pool && pool.squad) || []) for (const id of loItems(s.loadout)) aboard[id] = (aboard[id] | 0) + 1;
+    const out = [];
+    for (const id of Object.keys(b.stores)) {
+      const it = D().items[id];
+      if (!it || !(b.stores[id] > 0) || !(it.kind in LEFT_KINDS) || !usable(G, id) || (aboard[id] | 0) > 0) continue;
+      out.push({ id, n: b.stores[id] | 0, o: LEFT_KINDS[it.kind] });
+      if (it.kind === 'firearm' && Array.isArray(it.ammo)) {
+        for (const a of it.ammo) if ((b.stores[a] | 0) > 0 && usable(G, a) && !(aboard[a] > 0)) out.push({ id: a, n: b.stores[a] | 0, o: 1 });
+      }
+    }
+    const seen = {};
+    return out.filter((x) => !seen[x.id] && (seen[x.id] = true)).sort((a, c) => a.o - c.o || c.n - a.n).slice(0, 4).map((x) => ({ id: x.id, n: x.n }));
+  }
+
   OV.SceneDefs.equip = function (params) {
     const ui = SUI();
     const p = params || {};
@@ -1203,6 +1255,12 @@
           el('footer', { class: 'scr-foot' },
             el('span', { class: 'scr-hint', text: touchT('cp.eq.hint') }),
             el('div', { class: 'scr-foot-btns' }, doneBtn))));
+        // fora da base: o que ficou no armazém não vai — diz-se o quê e como o levar da próxima vez
+        const left = !home && craft ? leftAtBase(G, craft, pool) : [];
+        if (left.length) {
+          const txt = T('cp.eq.leftAtBase', { list: left.map((x) => x.n + ' × ' + itemName(x.id)).join(', '), base: baseName(base) });
+          host.before(el('p', { class: 'cp-note info cp-eq-left', role: 'note', title: txt, text: txt }));
+        }
         if (!pool || !pool.squad.length || !OV.InventoryUI || !OV.InventoryUI.equipScreen) {
           host.appendChild(el('p', { class: 'cp-note warn', text: T(pool ? 'cp.eq.empty' : 'cp.eq.noCraft') }));
           return;
@@ -1350,8 +1408,9 @@
     }
     if (G.flags.won) { victory(G); return true; }
     if (G.flags.lost) { gameOver(G, G.flags.lostReason || 'council'); return true; }
+    reseedOnLoad(G);
     openGeo(G);
-    OV.Dom.toast(T('cp.resume.geo', { date: dateText(G.t) }), null, 'info');
+    OV.Dom.toast(touchT('cp.resume.geo', { date: dateText(G.t) }), null, 'info');
     return true;
   }
 
@@ -1685,7 +1744,7 @@
               el('div', { class: 'scr-kicker', text: T('cp.mr.kicker') }),
               el('h1', { class: 'scr-title', text: monthTitle(R.y, R.m) })),
             el('div', { class: 'cp-mr-rating' }, el('span', { class: 'cp-k', text: T('cp.mr.rating') }), el('b', { text: T(R.ratingKey) }))),
-          el('div', { class: 'cp-mr-body scr-scroll' },
+          el('div', { class: 'cp-mr-body scr-scroll', tabindex: '0', role: 'region', 'aria-label': T('cp.mr.body.aria') },
             el('blockquote', { class: 'cp-council ' + String(R.councilKey || '').replace('council.', 'c-') },
               el('div', { class: 'cp-k', text: T('cp.mr.council') }), el('p', { text: T(R.councilKey || 'council.satisfied') })),
             warns.length ? el('ul', { class: 'cp-warns cp-mr-warns' }, warns.map((w) => el('li', { class: w.cls, text: w.text }))) : null,
@@ -1702,7 +1761,8 @@
       focus: () => okBtn,
       keys(ev) {
         if (ev.key === 'Enter' || ev.key === ' ') { sfx('ui_confirm'); close(); return true; }
-        return false;
+        // ↓/↑/PageDown/PageUp/Início/Fim deslocam o relatório (cortes de financiamento, contas do mês)
+        return !!(ui.scrollKeys && sc && sc.root && ui.scrollKeys(ev, sc.root.querySelector('.cp-mr-body')));
       },
       back: close,
     });
@@ -2149,7 +2209,7 @@
     launchMission, startBattle, afterBattle, resume, openGeo, popToGeo, equip,
     cydoniaState, cydoniaPick, cydoniaWhy, cydoniaCapable, launchCydonia, monthAlienSplit, fundingTotals,
     monthReport, gameOver, victory, baseDefence, saveDialog, loadDialog, autosave, saveLabel, errText,
-    armedLo, idleFit, unarmedAboard, boardAll, autoKit, crewUp, emptyHands, noAmmoCount, loadAmmo, crewText, starterKit, buyStarterKit, orderStarterKit,
-    markUfoKnown, saveBeforeMission, preMissionFor, retryMission, EXTRA_SLOTS, extraSummary, loadExtra,
+    armedLo, idleFit, unarmedAboard, boardAll, autoKit, crewUp, leftAtBase, emptyHands, noAmmoCount, loadAmmo, crewText, starterKit, buyStarterKit, orderStarterKit,
+    markUfoKnown, saveBeforeMission, preMissionFor, retryMission, EXTRA_SLOTS, extraSummary, loadExtra, reseedOnLoad,
   });
 })(globalThis.OV || (globalThis.OV = {}));

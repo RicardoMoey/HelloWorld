@@ -14,7 +14,9 @@
      current() → {G, view, speed, paused, popup:string|null, dialog:string|null, mode} | null   estado (QA/depuração)
      setSpeed(i) ; togglePause() ; select(ref|null)                 controlo programático da cena aberta
      model                           funções puras (sem DOM; testadas em Node), incl. dayAt(G, ref), crewEstimate(G, ref),
-                                     arrivingSoldiers(G, base), squadShort(G), noAmmo(craft), classify(ev)
+                                     arrivingSoldiers(G, base), squadShort(G) (também {craftId, idle}: aptos fora da
+                                     nave no hangar), noAmmo(craft), classify(ev), waitIsDefault(G, ref, nt, craft?),
+                                     loiterHours(G, craft), homeTransport(G, baseId), GEAR_KINDS
    }
    Teclas: 1–6 velocidades, P/Espaço pausa, I intercetar, B bases, U Ufopédia, F financiamento, S gravar, Esc opções
    (ou fecha a janela aberta), C centrar na seleção, H centrar na base, R radares, T / ⇧T próximo OVNI/local/nave,
@@ -323,6 +325,42 @@
       return null;
     }
   }
+  /* «Esperar pelo dia» por omissão: em Recruta ou antes da 1.ª missão noturna (G.ui.geo.nightTried), exceto destroços que
+     expiram antes de amanhecer (o tempo no chão de um OVNI aterrado não se conhece: a pergunta não o revela) */
+  function waitIsDefault(G, ref, nt, craft) {
+    if (!nt) return false;
+    if (craft && loiterHours(G, craft) < nt.h) return false;
+    const tg = C().targetOf(G, ref);
+    const o = tg && tg.obj;
+    if (o && o.status === 'crashed' && Number.isFinite(o.crashLeftS) && o.crashLeftS <= nt.h * 3600) return false;
+    const tried = !!(G.ui && G.ui.geo && G.ui.geo.nightTried);
+    return (G.difficulty | 0) === 0 || !tried;
+  }
+  /* horas que uma nave no local ainda pode esperar antes de o combustível a mandar para casa (a mesma conta do
+     World.burnFuel: o regresso à velocidade máxima mais a margem) — Infinity se não gasta parada */
+  function loiterHours(G, c) {
+    const def = D().crafts[c.type];
+    const base = C().findBase(G, c.baseId);
+    if (!def || !base || !D().craftFuelPer10Min) return Infinity;
+    const per = D().craftFuelPer10Min(c.type, c.speed | 0);
+    if (!(per > 0)) return Infinity;
+    let nm = 0;
+    try { nm = GM().distNm(c, base); } catch (e) { nm = 0; }
+    const need = Math.ceil((nm / def.speed) * 6 + tune('LOW_FUEL_MARGIN_10M', 1)) * D().craftFuelPer10Min(c.type, def.speed);
+    return Math.max(0, (c.fuel | 0) - need) / per / 6;
+  }
+  // material que um soldado leva para o combate (o que vale a pena pôr na nave quando chega)
+  const GEAR_KINDS = { firearm: 1, grenade: 1, medikit: 1, flare: 1, melee: 1, scanner: 1, psiamp: 1 };
+  // transporte no hangar de uma base com soldados a bordo (o primeiro), ou null
+  function homeTransport(G, baseId) {
+    const b = C().findBase(G, baseId);
+    if (!b) return null;
+    for (const id of b.crafts || []) {
+      const c = G.crafts[id], def = c && D().crafts[c.type];
+      if (def && def.transport && HANGAR[c.status] && (c.soldiers || []).length) return c;
+    }
+    return null;
+  }
   // já é dia pleno no alvo (o crepúsculo ainda não conta como «amanheceu»)
   function dayAt(G, ref) {
     const tg = C().targetOf(G, ref);
@@ -339,7 +377,8 @@
     if (e.phase === 'night') {
       const c = G.crafts[e.craftId];
       const n = (c && c.equipment && c.equipment.electro_flare) | 0;
-      return n > 0 ? Tn('geo.ev.team.eta.night.flares', n, p) : T('geo.ev.team.eta.night.none', p);
+      const fk = touchNow() && has('geo.ev.team.eta.night.flares.touch.one') ? 'geo.ev.team.eta.night.flares.touch' : 'geo.ev.team.eta.night.flares';
+      return n > 0 ? Tn(fk, n, p) : T('geo.ev.team.eta.night.none', p);
     }
     return T('geo.ev.team.eta.' + (e.phase || 'day'), p);
   }
@@ -394,6 +433,18 @@
       if (!seats) continue;
       const fit = (b.soldiers || []).filter((id) => { const x = C().findSoldier(G, id); return x && !(x.woundDays > 0); }).length;
       if (fit < Math.min(seats, min)) return { baseId: b.id, fit, seats, arriving: arrivingSoldiers(G, b) };
+    }
+    // aptos na base mas fora da nave: o transporte no hangar leva menos do que podia (recrutas que ficaram em terra)
+    for (const b of G.bases) {
+      const idle = (b.soldiers || []).filter((id) => { const x = C().findSoldier(G, id); return x && !x.craftId && !(x.woundDays > 0); }).length;
+      if (!idle) continue;
+      for (const id of b.crafts || []) {
+        const c = G.crafts[id], def = c && D().crafts[c.type];
+        if (!def || !def.transport || !HANGAR[c.status]) continue;
+        const seats = def.seatsUI | 0, aboard = fitCount(G, c);
+        const want = Math.min(seats, min, aboard + idle);
+        if (aboard < want) return { baseId: b.id, fit: aboard, seats, arriving: null, craftId: c.id, idle: Math.min(idle, seats - c.soldiers.length) };
+      }
     }
     return null;
   }
@@ -598,6 +649,9 @@
     k.push('geo.ev.team.eta.night.flares.one', 'geo.ev.team.eta.night.flares.other', 'geo.ev.team.eta.night.none');
     k.push('geo.alert.sci.one', 'geo.alert.sci.other', 'geo.alert.sciBtn', 'geo.alert.sciBtn.tip', 'geo.alert.hireBtn.tip', 'geo.alert.squad.one', 'geo.alert.squad.other', 'geo.alert.squad.arriving.one', 'geo.alert.squad.arriving.other', 'geo.alert.hireBtn');
     k.push('geo.fix.short.one', 'geo.fix.short.other', 'geo.fix.short.arriving.one', 'geo.fix.short.arriving.other', 'geo.warn.noAmmo', 'geo.int.noAmmo.title', 'geo.int.noAmmo.body', 'geo.int.noAmmo.confirm', 'geo.int.noAmmo.go', 'geo.a.buyAmmo');
+    k.push('geo.alert.aboard.one', 'geo.alert.aboard.other', 'geo.short.title', 'geo.short.risk', 'geo.short.board', 'geo.short.go', 'geo.ev.arrived.night.ask', 'geo.ev.arrived.night.fuel', 'geo.a.attackNow',
+      'geo.a.putAboard', 'geo.ev.delivery.gearHint', 'geo.tm.keys', 'geo.tm.keys.mouse', 'geo.tm.keys.touch', 'geo.dfBanner.text.touch',
+      'geo.ev.team.eta.night.flares.touch.one', 'geo.ev.team.eta.night.flares.touch.other', 'geo.idle.toast.touch');
     for (const id of STEP_IDS) k.push('geo.steps.' + id);
     for (const r of ['sci', 'eng']) k.push('geo.idle.' + r + '.one', 'geo.idle.' + r + '.other');
     return k;
@@ -613,7 +667,7 @@
     launchState, craftsFor, targetsFor, reasonText, warnText, fundingRows, runClock, REACT, MERGE, classify, toastFor,
     prodName, itemName, researchName, textKeys, ufoVisible, WORLD_REASONS, WORLD_WARNS, MISSION_REASONS,
     groundTarget, teamEta, teamEtaLine, nightAt, dayAt, idleStaff, nextSteps, suggestSpeed, dropBaseLosses, logTerror,
-    crewEstimate, arrivingSoldiers, squadShort, noAmmo,
+    crewEstimate, arrivingSoldiers, squadShort, noAmmo, waitIsDefault, loiterHours, homeTransport, GEAR_KINDS,
   };
 
   // =================================================================================================================
@@ -844,6 +898,11 @@
       root.append(side, tools, card, banner, layer, hint);
       OV.Dom.$('hud').appendChild(root);
       S.side = side;
+      // painel baixo (1024×560): o elemento com o foco do teclado fica sempre à vista
+      side.addEventListener('focusin', (e) => {
+        const t = e.target;
+        if (t && t !== side && t.scrollIntoView && t.matches && t.matches(':focus-visible')) t.scrollIntoView({ block: 'nearest' });
+      });
       S.els = { date, time, funds, runDot, pauseB, speeds, lists, card, banner, layer, hint, radarB, zoomInd, fundsRow, basesB, basesBadge, steps, nudge, alerts };
       if (hintSeen) hint.classList.add('hidden');
       hintSeen = true;
@@ -985,7 +1044,7 @@
       const stepAsks = ns.show && ns.steps.some((x) => x.id === 'research' && !x.done);
       const idle = stepAsks ? { sci: 0 } : S.idle || { sci: 0 };
       const sh = S.short;
-      const sig = (idle.sci || 0) + '|' + (sh ? sh.fit + '/' + sh.seats + '/' + (sh.arriving ? sh.arriving.n + ':' + sh.arriving.h : '') : '');
+      const sig = (idle.sci || 0) + '|' + (sh ? sh.fit + '/' + sh.seats + '/' + (sh.craftId || '') + ':' + (sh.idle | 0) + '/' + (sh.arriving ? sh.arriving.n + ':' + sh.arriving.h : '') : '');
       if (sig === S.sigs.alerts) return;
       S.sigs.alerts = sig;
       OV.Dom.clear(box);
@@ -994,7 +1053,17 @@
         rows.push(el('div', { class: 'geo-alert', dataset: { alert: 'sci' } }, el('span', { text: Tn('geo.alert.sci', idle.sci) }),
           btn(T('geo.alert.sciBtn'), { cls: 'small', tip: tip(T('geo.alert.sciBtn.tip')), onClick: () => { if (isTop()) openBase(idle.baseId || G.bases[0].id, 'research', { pick: true }); } })));
       }
-      if (sh) {
+      if (sh && sh.craftId) {
+        const c = G.crafts[sh.craftId];
+        rows.push(el('div', { class: 'geo-alert', dataset: { alert: 'aboard' } }, el('span', { text: Tn('geo.alert.aboard', sh.fit, { craft: craftName(G, c), idle: sh.idle }) }),
+          CU() ? btn(T('geo.fix.boardBtn', { n: sh.idle }), { cls: 'small', tip: tip(T('geo.fix.boardBtn.tip')), onClick: () => {
+            if (!isTop() || !G.crafts[sh.craftId]) return;
+            const r = CU().crewUp(G, sh.craftId);
+            OV.Dom.toast(CU().crewText(G, sh.craftId, r) || T('geo.fix.nothing'), null, r.unarmed ? 'warn' : 'good');
+            afterOrder();
+            refreshAux(true);
+          } }) : null));
+      } else if (sh) {
         const txt = Tn('geo.alert.squad', sh.fit, { seats: sh.seats }) + (sh.arriving ? ' ' + Tn('geo.alert.squad.arriving', sh.arriving.n, { t: fmtDur(sh.arriving.h) }) : '');
         rows.push(el('div', { class: 'geo-alert', dataset: { alert: 'squad' } }, el('span', { text: txt }),
           sh.arriving ? null : btn(T('geo.alert.hireBtn'), { cls: 'small', tip: tip(T('geo.alert.hireBtn.tip')), onClick: () => { if (isTop()) openBase(sh.baseId, 'personnel'); } })));
@@ -1017,7 +1086,7 @@
       if (idle.sci) parts.push(Tn('geo.idle.sci', idle.sci));
       if (idle.eng) parts.push(Tn('geo.idle.eng', idle.eng));
       S.idleToastT = now;
-      OV.Dom.toast(T('geo.idle.toast', { what: parts.join(' · ') }), null, 'warn');
+      OV.Dom.toast(TT('geo.idle.toast', { what: parts.join(' · ') }), null, 'warn');
     }
     // sugestão discreta de acelerar o tempo depois de lançar uma nave (some sozinha; «não mostrar» fica em G.ui)
     function showNudge(craftId, h) {
@@ -1280,7 +1349,7 @@
             } else { st.craftId = c.id; st.step = 'target'; renderIntercept(); }
           };
           list.appendChild(rowBtn('craft' + (def.transport ? ' transport' : '') + dim + (dry ? ' dry' : ''), craftName(G, c), sub, right, r.ok, note, () => {
-            if (!dry) { pick(); return; }
+            if (!dry) { if (!shortConfirm(c, pick)) pick(); return; }
             // sem munição: perguntar antes de mandar um caça desarmado
             OV.Dom.modal({
               title: T('geo.int.noAmmo.title'), body: OV.U.esc(T('geo.int.noAmmo.confirm', { craft: craftName(G, c) })), cls: 'alert',
@@ -1323,7 +1392,7 @@
       const backTo = st.step === 'target' ? 'craft' : st.step === 'craft' && !st.target && G.bases.length > 1 ? 'base' : null;
       if (backTo) shell.foot.appendChild(btn(T('geo.a.back'), { cls: 'ghost', onClick: () => { st.step = backTo; st.err = null; renderIntercept(); } }));
       shell.foot.appendChild(el('span', { class: 'geo-grow' }));
-      if (st.step === 'target') shell.foot.appendChild(btn(T('geo.a.pickPoint'), { icon: 'globe', key: 'G', tip: tip(T('geo.a.pickPoint.tip'), 'G'), onClick: () => startTargetMode(st.craftId) }));
+      if (st.step === 'target') shell.foot.appendChild(btn(T('geo.a.pickPoint'), { icon: 'globe', key: 'G', tip: tip(T('geo.a.pickPoint.tip'), 'G'), onClick: (e) => startTargetMode(st.craftId, !e || e.detail === 0) }));
       shell.foot.appendChild(btn(T('common.cancel'), { key: 'Esc', onClick: () => closeDlg() }));
       const hadFocus = !!old && old.contains(document.activeElement);
       const fk = hadFocus && OV.Dom.focusKey ? OV.Dom.focusKey(document.activeElement) : null;
@@ -1384,6 +1453,40 @@
       if (home && idle && seats) return box('info', Tn('geo.fix.seats', Math.min(idle, seats)), crewBtn(T('geo.fix.boardBtn', { n: Math.min(idle, seats) })));
       return null;
     }
+    /* equipa menor do que o efetivo mínimo estimado: um clique na linha da nave não a manda logo — pergunta-se, com
+       «Embarcar N e enviar» por omissão (Enter) quando há aptos na base. → true quando a pergunta tratou o envio */
+    function shortConfirm(c, pick) {
+      const st = S.dlg && S.dlg.st;
+      const def = D().crafts[c.type];
+      if (!st || !st.target || !def || !def.transport || !groundTarget(G, st.target)) return false;
+      const crew = crewEstimate(G, st.target);
+      const fit = fitCount(G, c);
+      if (!crew || !fit || fit >= (crew.min | 0)) return false;
+      const cu = CU();
+      const base = C().findBase(G, c.baseId);
+      const home = !!base && !!HANGAR[c.status] && base.crafts.indexOf(c.id) >= 0;
+      const idle = cu && cu.idleFit ? cu.idleFit(G, c.baseId).length : 0;
+      const n = home ? Math.min(idle, Math.max(0, (def.seatsUI | 0) - c.soldiers.length)) : 0;
+      const arr = base ? arrivingSoldiers(G, base) : null;
+      const crewTxt = OV.Screens && OV.Screens.crewText ? OV.Screens.crewText(crew) : crew.min + '–' + crew.max;
+      const body = el('div', null,
+        el('p', { class: 'modal-text', text: Tn('geo.fix.short', fit, { crew: crewTxt }) + ' ' + T('geo.short.risk') }),
+        arr ? el('p', { class: 'modal-text scr-muted', text: Tn('geo.fix.short.arriving', arr.n, { t: fmtDur(arr.h) }) }) : null);
+      const buttons = n > 0
+        ? [{ label: T('common.cancel'), value: false }, { label: T('geo.short.go'), value: 'go', kind: 'danger' }, { label: T('geo.short.board', { n }), value: 'board', kind: 'primary' }]
+        : [{ label: T('geo.short.go'), value: 'go', kind: 'danger' }, { label: T('common.cancel'), value: false, kind: 'primary' }];
+      sfx('ui_deny');
+      OV.Dom.modal({ title: T('geo.short.title'), body, cls: 'alert', buttons }).then((v) => {
+        if (!S.dlg || S.dlg.st !== st || !G.crafts[c.id]) return;
+        if (v === 'board') {
+          const r = cu.crewUp(G, c.id);
+          OV.Dom.toast(cu.crewText(G, c.id, r) || T('geo.fix.nothing'), null, r.unarmed ? 'warn' : 'good');
+          afterOrder();
+          pick();
+        } else if (v === 'go') pick();
+      });
+      return true;
+    }
     function interceptSig(st) {
       try {
         if (st.step === 'craft') return JSON.stringify(craftsFor(G, st.target ? null : st.baseId, st.target).map((r) => [r.craftId, r.ok, r.reason, r.warn]));
@@ -1406,10 +1509,14 @@
     }
 
     // ---- alvo escolhido no globo --------------------------------------------------------------------------------------
-    function startTargetMode(craftId) {
+    /* byKey (tecla G ou Enter no botão): a mira do teclado aparece logo no centro do globo; o rato só a mostra depois
+       da primeira seta */
+    function startTargetMode(craftId, byKey) {
       const c = G.crafts[craftId];
       if (!c) return;
       S.target = { craftId };
+      S.kbdAim = !!byKey && !touchNow();
+      S.aimKey = null;
       view.mode = 'target';
       view.targetFrom = { lon: c.lon, lat: c.lat };
       if (S.dlg && S.dlg.node) S.dlg.node.classList.add('hidden');
@@ -1419,6 +1526,7 @@
     }
     function endTargetMode(back) {
       S.target = null;
+      S.kbdAim = false;
       view.mode = 'normal';
       view.targetFrom = null;
       hideBanner();
@@ -1452,7 +1560,7 @@
       const name = ref === 'home' ? T('geo.tk.home') : targetName(G, ref);
       const e = etaHours(G, G.crafts[S.target.craftId], ref);
       const msg = !r.ok ? reasonText(r.reason) : r.warn ? warnText(r.warn) : e ? fmtNm(e.nm) + ' · ' + fmtDur(e.h) : '';
-      showBanner(name, msg, !r.ok ? 'bad' : r.warn ? 'warn' : 'ok');
+      showBanner(name, msg, !r.ok ? 'bad' : r.warn ? 'warn' : 'ok', null, tmKeys());
     }
     function targetClick(x, y) {
       const ref = targetRefAt(x, y);
@@ -1656,14 +1764,17 @@
     // ---------------------------------------------------------------------------------------------------------------
     // faixa superior (modo alvo, missão em curso)
     // ---------------------------------------------------------------------------------------------------------------
-    function showBanner(title, text, tone, actions) {
+    function showBanner(title, text, tone, actions, keys) {
       const b = S.els.banner;
       OV.Dom.clear(b);
       b.className = 'geo-banner t-' + (tone || 'info');
       b.appendChild(el('b', { text: title }));
       if (text) b.appendChild(el('span', { text }));
       for (const a of actions || []) b.appendChild(btn(a.label, { cls: 'small ' + (a.cls || ''), onClick: a.act }));
+      if (keys) b.appendChild(el('span', { class: 'geo-banner-k', text: keys }));
     }
+    // a lembrança de como escolher e cancelar no modo «Escolher no globo» (por plataforma)
+    const tmKeys = () => T(touchNow() ? 'geo.tm.keys.touch' : S.kbdAim ? 'geo.tm.keys' : 'geo.tm.keys.mouse');
     function hideBanner() {
       S.els.banner.classList.add('hidden');
       OV.Dom.clear(S.els.banner);
@@ -1673,7 +1784,7 @@
       if (on) {
         if (S.target || S.blockedBattle) return;
         S.dfBanner = true;
-        showBanner(T('geo.dfBanner.title'), T('geo.dfBanner.text'), 'warn');
+        showBanner(T('geo.dfBanner.title'), TT('geo.dfBanner.text'), 'warn');
       } else if (S.dfBanner) {
         S.dfBanner = false;
         if (!S.target && !S.blockedBattle) hideBanner();
@@ -1901,12 +2012,20 @@
             const nt = nightAt(G, tref);
             const lines = unarmed ? [Tn('geo.ev.arrived.unarmed', unarmed)] : [];
             if (nt) lines.unshift(T(nt.crashed ? 'geo.ev.arrived.night.crash' : 'geo.ev.arrived.night', { t: fmtDur(nt.h) }));
-            const wait = nt ? { label: T('geo.a.waitDay'), key: 'W', esc: true, act: () => waitForDay(c.id, tref, nt) } : { label: T('geo.a.wait'), key: 'W', esc: true, act: () => {} };
+            // em Recruta, ou até à 1.ª missão noturna, esperar pelo dia é o botão por omissão (Enter) — salvo destroços
+            // que não duram até lá; a pergunta curta vem primeiro (o parágrafo do porquê fica por baixo)
+            const waitDef = !!nt && waitIsDefault(G, tref, nt, c);
+            if (waitDef) lines.unshift(T('geo.ev.arrived.night.ask', { t: fmtDur(nt.h) }));
+            // sem combustível para esperar: dizê-lo (esperar seria regressar à base sem missão)
+            const lh = nt ? loiterHours(G, c) : Infinity;
+            if (nt && lh < nt.h) lines.push(T('geo.ev.arrived.night.fuel', { craft: craftName(G, c), t: fmtDur(Math.max(0, Math.floor(lh))) }));
+            const wait = nt ? { label: T('geo.a.waitDay'), key: waitDef ? 'Enter' : 'W', cls: waitDef ? 'primary' : '', def: waitDef, esc: true, act: () => waitForDay(c.id, tref, nt) } : { label: T('geo.a.wait'), key: 'W', esc: true, act: () => {} };
+            const go = { label: T(waitDef ? 'geo.a.attackNow' : 'geo.a.startMission'), key: waitDef ? 'I' : 'Enter', cls: waitDef ? '' : 'primary', def: !waitDef, act: () => { if (nt) markNight(); launchMission(tref, c.id); } };
             return {
               tone: unarmed || nt ? 'warn' : 'good', icon: 'craft', title: T(ev.dawn ? 'geo.ev.arrived.dawn' : 'geo.ev.arrived.mission'), sound: 'radar_ping', focus: refOf('craft', c.id),
               text: T('geo.ev.arrived.mission.body', { craft: craftName(G, c), target: targetName(G, tref), n: fit }),
               lines,
-              buttons: [{ label: T('geo.a.startMission'), key: 'Enter', cls: 'primary', def: true, act: () => launchMission(tref, c.id) }, wait, recall],
+              buttons: waitDef ? [wait, go, recall] : [go, wait, recall],
             };
           }
           if (ev.prompt === 'patrol') {
@@ -2026,9 +2145,15 @@
           for (const e of evs) if (e.crew) lines.push(e.crew);
           const unarmed = evs.reduce((n, e) => Math.max(n, e.unarmed | 0), 0);
           const kitBtn = unarmed && CU() ? { label: T('geo.a.starterKit'), key: 'K', cls: 'primary', act: () => CU().orderStarterKit(G, ev.baseId, unarmed) } : null;
+          // material de combate novo fica no armazém: o equipamento em missão só vê o que vai a bordo — «Pôr na nave»
+          // abre já o equipamento do transporte no hangar
+          const gear = all.filter((e) => e.kind === 'item' && D().items[e.itemId] && GEAR_KINDS[D().items[e.itemId].kind]);
+          const tc = gear.length ? homeTransport(G, gear[0].baseId) : null;
+          const eqBtn = tc && !unarmed ? { label: T('geo.a.putAboard', { craft: craftName(G, tc) }), key: 'E', cls: 'primary', act: () => openBase(tc.baseId, 'crafts', { equip: tc.id }) } : null;
+          if (eqBtn) lines.push(T('geo.ev.delivery.gearHint', { craft: craftName(G, tc) }));
           return {
             tone: unarmed ? 'warn' : 'good', icon: 'box', title: T('geo.ev.deliveryArrived'), sound: 'production_done',
-            text: line(first), lines, buttons: [kitBtn, baseBtn(first.baseId, unarmed ? 'market' : tab), ok].filter(Boolean),
+            text: line(first), lines, buttons: [kitBtn, eqBtn, baseBtn(first.baseId, unarmed ? 'market' : tab), ok].filter(Boolean),
           };
         }
         case 'terrorSite': {
@@ -2340,6 +2465,12 @@
     }
     /* «Esperar pelo dia»: G.ui.waitDay = [{craftId, kind, id}]. Quando amanhece no alvo e a nave ainda lá está,
        o relógio para e volta a janela «Equipa no local». Devolve true quando parou (opção halt do runClock). */
+    // a 1.ª missão noturna lançada: daí em diante (fora de Recruta) «Iniciar missão» volta a ser o botão por omissão
+    function markNight() {
+      if (!G.ui) return;
+      G.ui.geo = G.ui.geo || {};
+      G.ui.geo.nightTried = true;
+    }
     function waitForDay(craftId, ref, nt) {
       const L = Array.isArray(G.ui.waitDay) ? G.ui.waitDay.filter((w) => w.craftId !== craftId) : [];
       // until: o mesmo limite das horas anunciadas (nightAt conta até 'day', não até ao fim da noite)
@@ -2546,7 +2677,7 @@
       }
       if (S.dlg) {
         if (k === 'Escape' || (S.dlg.kind === 'funding' && (k === 'f' || k === 'F'))) { sfx('ui_click'); closeDlg(); return true; }
-        if (S.dlg.kind === 'intercept' && (k === 'g' || k === 'G') && S.dlg.st.step === 'target') { startTargetMode(S.dlg.st.craftId); return true; }
+        if (S.dlg.kind === 'intercept' && (k === 'g' || k === 'G') && S.dlg.st.step === 'target') { startTargetMode(S.dlg.st.craftId, true); return true; }
         return false;
       }
       if (ev.repeat && !/^[1-6]$/.test(k)) return true;

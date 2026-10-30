@@ -79,7 +79,7 @@
     'cp.ng.help': 'Clique em terra firme para escolher o local. O círculo tracejado é o alcance do radar inicial: bases perto dos países financiadores detetam mais OVNIs onde mais importa.',
     'cp.ng.gestures': 'Arrastar ou dois dedos: rodar · Pinça ou ⌃ + roda: aproximar · Clique: escolher · Duplo clique: centrar',
     'cp.ng.help.touch': 'Toque em terra firme para escolher o local. O círculo tracejado é o alcance do radar inicial: bases perto dos países financiadores detetam mais OVNIs onde mais importa.',
-    'cp.ng.gestures.touch': 'Arrastar: rodar · Pinça: aproximar · Toque: escolher · Toque duplo: centrar',
+    'cp.ng.gestures.touch': 'Arrastar: rodar · Pinça: aproximar · Toque: escolher · Toque longo: centrar',
     'cp.ng.coords': 'Coordenadas',
     'cp.ng.ll': '{lat}° {ns} · {lon}° {ew}',
     'cp.ng.N': 'N', 'cp.ng.S': 'S', 'cp.ng.E': 'E', 'cp.ng.W': 'O',
@@ -224,7 +224,7 @@
     'cp.mr.warn.defeat.council': 'O Conselho retirou a confiança à X-COM.',
     'cp.mr.warn.defeat.debt': 'As dívidas tornaram o projeto insustentável.',
     'cp.mr.warn.defeat.baseLost': 'A X-COM ficou sem bases.',
-    'cp.mr.hint': 'Enter ou Esc continua',
+    'cp.mr.hint': '↑ ↓ PageDown deslocam · Enter ou Esc continua',
     'cp.mr.continue': 'Continuar',
     'cp.mr.continue.tip': 'Fechar o relatório e voltar ao Geoscape',
     'cp.mr.continue.end': 'Fechar o relatório',
@@ -381,5 +381,11 @@
     'cp.db.retry.extra': 'Este resultado fica na gravação automática, se quiser voltar a ele.',
     'cp.db.retry.newMap': 'Nova tentativa: o terreno e os alienígenas foram sorteados de novo.',
     'cp.db.retry.fail': 'A gravação «Antes da missão» já não existe.',
+    // ronda de personas 3
+    'cp.br.warn.short.one': 'Só {n} soldado contra {crew}: é provável perder a missão e a nave. Cancele e volte com mais soldados.',
+    'cp.br.warn.short.other': 'Só {n} soldados contra {crew}: é provável perder a missão e a nave. Cancele e volte com mais soldados.',
+    'cp.eq.leftAtBase': 'Ficaram em {base}: {list}. Fora da base só vai o que está a bordo — para levar mais, é preciso equipar a nave no hangar (Base › Naves › Equipar) antes de partir.',
+    'cp.mr.body.aria': 'Relatório do mês: as setas, Page Up/Page Down, Início e Fim deslocam',
+    'cp.resume.geo.touch': 'Campanha retomada: {date} — em pausa (toque numa velocidade para continuar)',
   });
 })(globalThis.OV || (globalThis.OV = {}));

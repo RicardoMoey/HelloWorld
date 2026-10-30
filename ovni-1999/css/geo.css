@@ -369,3 +369,26 @@ body:has(#hud > .geo:not(.geo-off) .geo-banner:not(.hidden)) #toasts { top: calc
 @media (hover: none) { .geo-alert .btn.small { min-height: 36px; } }
 /* intercetor sem munição: selo bem visível */
 .geo-row.dry em.t-bad { font-weight: 800; letter-spacing: 0.5px; }
+
+/* ---- ronda de personas 3 ----------------------------------------------------------------------------------------- */
+/* painel lateral baixo (1024×560, texto maior): nada fica abaixo da janela — o painel desloca-se (o foco do teclado
+   leva-o consigo) e as listas guardam uma altura mínima para os contactos */
+.geo-side { overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--line2) transparent; }
+.geo-side > :not(.geo-lists) { flex-shrink: 0; }
+.geo-lists { min-height: 120px; }
+@media (max-height: 640px) {
+  .geo-lists { flex: none; min-height: 0; overflow: visible; }
+  .geo-alert { padding: 3px 6px; font-size: 11px; gap: 2px 6px; }
+  .geo-alert > span { flex-basis: 100px; }
+  .geo-alert .btn.small { min-height: 24px; font-size: 10.5px; }
+  .geo-steps { padding: 5px 7px 4px; }
+  .geo-steps li { font-size: 11px; }
+}
+@media (max-height: 640px) and (hover: none) { .geo-alert .btn.small { min-height: 36px; } }
+@media (max-width: 760px) { .geo-lists { min-height: 0; } }
+/* «Escolher no globo»: a linha de como confirmar e cancelar fica sempre por baixo do alvo/coordenadas */
+.geo-banner { flex-wrap: wrap; row-gap: 2px; }
+.geo-banner .geo-banner-k { flex-basis: 100%; font-size: 11.5px; color: var(--dim) !important; }
+/* Financiamento em retrato (iPad 834 px): uma coluna, a tabela inteira (com «Evolução») sem deslocar para o lado */
+@media (max-width: 900px) { .geo-fund-grid { grid-template-columns: 1fr; } .geo-fund-l { max-height: none; } }
+.geo-fund-l { touch-action: pan-x pan-y; overflow-x: auto; }

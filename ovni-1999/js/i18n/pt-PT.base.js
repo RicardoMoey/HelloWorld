@@ -419,7 +419,6 @@
     'base.toast.craftReady': 'Nave pronta: {craft}',
 
     // investigação
-    'base.research.sub': '{n} projetos disponíveis',
     'base.research.newTip': 'Escolher um novo projeto de investigação.',
     'base.research.noActive': 'Nenhum projeto em curso: os cientistas estão parados.',
     'base.research.idle.one': '{n} cientista está sem projeto: ponha-o a trabalhar.',
@@ -760,5 +759,12 @@
     'base.market.moreOf': 'Mais {name}',
     'base.market.more10Of': 'Mais 10 × {name}',
     'base.market.allOf': 'Vender tudo: {name}',
+    // ronda de personas 3
+    'base.build.validHere.key': 'Posição válida: Enter constrói · setas mudam a casa · Esc cancela.',
+    'base.aria.ctx': '{what} — {name}',
+    'base.tip.articleFor': 'Abrir na Ufopédia: {name}',
+    'base.research.sub.one': '1 projeto disponível',
+    'base.research.sub.other': '{n} projetos disponíveis',
+    'base.research.hint.finalMission.touch': 'A missão final está disponível: no separador Naves, «Missão final: Cidónia» envia o Vingador com a equipa a bordo.',
   });
 })(globalThis.OV || (globalThis.OV = {}));

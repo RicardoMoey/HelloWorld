@@ -548,6 +548,9 @@ async function handlePopup(s) {
         });
         return;
       }
+      // de noite em Recruta «Esperar pelo dia» é o botão por omissão: o jogador cuidadoso espera e a janela volta ao
+      // amanhecer com «Iniciar missão»
+      if (/Atacar já/i.test(txt) && (await popBtn('Esperar pelo dia'))) { note('  noite no local: espera pelo dia'); return; }
       // intercetor sobre um OVNI aterrado (não combate no chão): regressa
       if (await popBtn('Regressar')) return;
       await key('Enter');

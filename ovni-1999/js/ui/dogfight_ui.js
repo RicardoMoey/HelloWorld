@@ -33,6 +33,9 @@
   'use strict';
 
   const T = (k, p) => OV.T(k, p);
+  // iPad: os textos que citam teclas (2–5, Q/E) têm uma variante «.touch» sem elas
+  const touchNow = () => !!(OV.Input && OV.Input.lastPointerType === 'touch') || (typeof matchMedia === 'function' && matchMedia('(hover: none) and (pointer: coarse)').matches);
+  const TT = (k, p) => (touchNow() && OV.T.has(k + '.touch') ? T(k + '.touch', p) : T(k, p));
   const D = () => OV.Data;
   const C = () => OV.Campaign;
   const DFS = () => OV.Dogfight;
@@ -459,10 +462,10 @@
     tip(askKeep, T('df.ask.keep'), 'N / Esc', T('df.ask.keep.hint'));
     E.ask = el('div', { class: 'df-ask hidden', role: 'alertdialog', 'aria-label': T('df.ask.q') }, el('b', { class: 'df-ask-q', text: T('df.ask.q') }), el('div', { class: 'df-ask-a' }, E.askOff, askKeep));
     const hintLines = [];
-    if (tr.scramble) hintLines.push(T(tr.ufoType === 'battleship' ? 'df.hint.scrambleBig' : 'df.hint.scramble'));
+    if (tr.scramble) hintLines.push(TT(tr.ufoType === 'battleship' ? 'df.hint.scrambleBig' : 'df.hint.scramble'));
     if (S.G.ui && !S.G.ui.dfHintSeen) {
-      hintLines.push(T('df.hint.modes'));
-      if (tr.ufoSize === 0) hintLines.push(T('df.hint.small'));
+      hintLines.push(TT('df.hint.modes'));
+      if (tr.ufoSize === 0) hintLines.push(TT('df.hint.small'));
     }
     if (hintLines.length) {
       const x = el('button', { type: 'button', class: 'btn small ghost df-hint-x', text: '×', onclick: () => hideHint(p) });
@@ -888,7 +891,7 @@
     const paused = (S.paused && !S.quietPause) || (OV.Dom.anyModalOpen && OV.Dom.anyModalOpen());
     const deny = c.denyVt !== undefined && S.vt - c.denyVt < 1600;
     const mainKey = paused && !tr.outcome ? 'df.st.paused' : deny ? 'df.mode.blocked' : st.key;
-    const mainTxt = T(mainKey, st.params || undefined);
+    const mainTxt = TT(mainKey, st.params || undefined);
     const mainTone = paused && !tr.outcome ? 'info' : deny ? 'alert' : st.tone;
     const dist = Math.round(d.dist);
     const craftHp = Math.max(0, Math.round(p.vis.craftHp));

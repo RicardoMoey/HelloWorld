@@ -127,5 +127,10 @@
     'df.ask.off.hint': 'O canhão abate-o sem o desintegrar: a equipa pode ir aos destroços',
     'df.ask.keep': 'Manter',
     'df.ask.keep.hint': 'Os mísseis disparam como estão (depois de 2 respostas destas, não volta a perguntar)',
+    // ronda de personas 3: sem teclado (iPad)
+    'df.hint.modes.touch': 'O combate começa em Normal: a nave aproxima-se até ao alcance da arma mais curta. Cauteloso dispara de mais longe, Agressivo encosta, Desengatar regressa. Os interruptores ligam e desligam cada arma.',
+    'df.hint.small.touch': 'OVNI muito pequeno: os mísseis costumam desintegrá-lo. Desligue-os no interruptor e abata-o só com o canhão para haver destroços a recuperar.',
+    'df.hint.scrambleBig.touch': 'Um Couraçado é muito mais forte do que os nossos caças: Desengatar poupa a nave — as defesas e a guarnição tratam do resto.',
+    'df.st.standoff.touch': 'Distância segura. Escolha Cauteloso, Normal ou Agressivo para atacar.',
   });
 })(globalThis.OV || (globalThis.OV = {}));

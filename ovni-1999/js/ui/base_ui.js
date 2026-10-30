@@ -6,9 +6,10 @@
    Cena: OV.SceneDefs.basescape({G, baseId, tab}) (isScreen).
    API: OV.BaseUI = {
      TABS,
-     open(G, baseId?, tab?, {pick?, item?})   empilha 'basescape' (ou muda de base/separador se já estiver no topo); tab
+     open(G, baseId?, tab?, {pick?, item?, equip?})   empilha 'basescape' (ou muda de base/separador se já estiver no topo); tab
                               'research' abre a escolha de projeto sozinha sem projetos a decorrer ou com pick;
-                              tab 'market' + item: Comprar com a linha do objeto realçada e o botão em foco
+                              tab 'market' + item: Comprar com a linha do objeto realçada e o botão em foco;
+                              equip: craftId → Naves com o equipamento desse transporte aberto («Pôr na nave»)
      close()                  volta ao ecrã anterior (Geoscape) ; isOpen() → bool ; refresh()
      errText(reason) → texto pt-PT de 'base.err.<reason>'
      groupDeliveries(G, deliveries) → [{kind, itemId, n, h}] (mesmo tipo + mesma hora somados) ; nextTen(v) → dezena seguinte
@@ -88,6 +89,17 @@
   const TT = (k, p) => (touchNow() && OV.T.has(k + '.touch') ? T(k + '.touch', p) : T(k, p));
 
   // botão com dica e razão de bloqueio: bloqueado fica cinzento e o clique explica porquê (com zumbido)
+  /* ações que mudam G e recriam o próprio botão (contratar, despedir, comprar, iniciar): o 2.º clique de um duplo
+     clique (event.detail ≥ 2) ou um clique a menos de 400 ms do anterior não as repete */
+  let lastOnceT = -1e9;
+  function oneShot(e) {
+    const t = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    if ((e && e.detail > 1) || t - lastOnceT < 400) return false;
+    lastOnceT = t;
+    return true;
+  }
+  // nome acessível de um botão repetido com o contexto da linha: «Atribuir mais 1 cientista — Kit Médico»
+  const ctxName = (what, name) => T('base.aria.ctx', { what, name });
   function btn(label, o) {
     o = o || {};
     // nome acessível com contexto («Iniciar: Armas Laser», «Comprar 1 × Stingray»); bloqueado não é paragem do Tab
@@ -100,6 +112,7 @@
     b.addEventListener('click', (e) => {
       e.stopPropagation();
       if (o.why) { deny(o.why); return; }
+      if (o.once && !oneShot(e)) return;
       if (o.on) o.on(e);
     });
     OV.Dom.tooltip(b, () => tipHtml(o.title || label, [o.tip ? esc(o.tip) : '', o.why ? warnLine(o.why) : ''], o.key));
@@ -223,6 +236,12 @@
     return out;
   }
   // primeiro artigo aberto da Ufopédia entre vários candidatos
+  function articleTitle(id) {
+    try {
+      const a = OV.Ufopaedia && OV.Ufopaedia.article ? OV.Ufopaedia.article(id) : null;
+      return a ? OV.Ufopaedia.title(a) : id;
+    } catch (e) { return id; }
+  }
   function articleFor(G, ids) {
     const UP = OV.Ufopaedia;
     if (!UP || !UP.isOpen) return null;
@@ -371,11 +390,19 @@
         S.baseId = pickBase(S.baseId);
         if (!S.baseId) { back(); return; }
       }
+      // o foco fora do conteúdo (separador, cabeçalho) também sobrevive ao redesenho: nunca cai no <body>
+      const a = document.activeElement;
+      const fk = a && a !== document.body && S.root.contains(a) && !S.r.content.contains(a) ? OV.Dom.focusKey(a) : null;
       renderTop();
       renderTabs();
       renderInfo();
       renderCaps();
       renderContent();
+      const now = document.activeElement;
+      if (fk && (!now || now === document.body || !now.isConnected) && !OV.Dom.refocus(fk, S.root)) {
+        const t = S.r.tabs.querySelector('.bsc-tab.on');
+        if (t) t.focus({ preventScroll: true });
+      }
       S.dirty = true;
     }
 
@@ -467,7 +494,7 @@
         if (cur) {
           const p = ghostPos(cur);
           const why = BS().canPlace(g, b.id, S.build.type, p.x, p.y);
-          state = why ? el('span', { class: 'bad', text: errText(why) }) : el('span', { class: 'good', text: TT('base.build.validHere') });
+          state = why ? el('span', { class: 'bad', text: errText(why) }) : el('span', { class: 'good', text: !S.hover && S.kcur && !touchNow() ? T('base.build.validHere.key') : TT('base.build.validHere') });
           r.info.classList.add(why ? 'invalid' : 'valid');
         } else state = el('span', { class: 'muted', text: T('base.build.hint') });
         r.info.append(el('div', { class: 'bsc-info-main' }, facIcon(S.build.type, 40),
@@ -705,7 +732,7 @@
     function storyHints(g) {
       const out = [];
       const f = g.flags || {};
-      if (f.cydoniaUnlocked) out.push(T('base.research.hint.finalMission'));
+      if (f.cydoniaUnlocked) out.push(TT('base.research.hint.finalMission'));
       else if (researched(g, 'martian_solution') && !f.commanderInterrogated) out.push(T('base.research.hint.commander'));
       else if (researched(g, 'alien_origins') && !f.leaderInterrogated) out.push(T('base.research.hint.leader'));
       else if (!f.interrogated && g.researched.length >= 3 && !g.bases.some((b) => Object.keys(b.aliens).length || b.research.some((p) => /^interrogate_/.test(p.topic)))) out.push(T('base.research.hint.capture'));
@@ -717,13 +744,15 @@
       const room = Math.max(0, Math.min(st.scientists.free, caps.labs.cap - caps.labs.used));
       const roomWhy = st.scientists.free <= 0 ? errText('scientists') : errText('labs');
       const set = (n) => act(() => BS().setScientists(g, b.id, p.topic, n));
+      const nm = topicName(p.topic);
+      const ar = (k) => ctxName(T(k), nm);
       return el('div', { class: 'bsc-stepper', dataset: { topic: p.topic } },
-        btn('−5', { cls: 'small', title: T('base.sci.minus5'), why: p.scientists <= 0 ? T('base.sci.none') : null, on: () => set(Math.max(0, p.scientists - 5)) }),
-        btn('−', { cls: 'small', title: T('base.sci.minus1'), why: p.scientists <= 0 ? T('base.sci.none') : null, on: () => set(p.scientists - 1) }),
+        btn('−5', { cls: 'small', title: T('base.sci.minus5'), aria: ar('base.sci.minus5'), why: p.scientists <= 0 ? T('base.sci.none') : null, on: () => set(Math.max(0, p.scientists - 5)) }),
+        btn('−', { cls: 'small', title: T('base.sci.minus1'), aria: ar('base.sci.minus1'), why: p.scientists <= 0 ? T('base.sci.none') : null, on: () => set(p.scientists - 1) }),
         el('b', { class: 'bsc-step-v', text: String(p.scientists) }),
-        btn('+', { cls: 'small', title: T('base.sci.plus1'), why: room <= 0 ? roomWhy : null, on: () => set(p.scientists + 1) }),
-        btn('+5', { cls: 'small', title: T('base.sci.plus5'), why: room <= 0 ? roomWhy : null, on: () => set(p.scientists + Math.min(5, room)) }),
-        btn(T('base.btn.all'), { cls: 'small', title: T('base.sci.all'), tip: T('base.sci.allTip'), why: room <= 0 ? roomWhy : null, on: () => set(p.scientists + room) }));
+        btn('+', { cls: 'small', title: T('base.sci.plus1'), aria: ar('base.sci.plus1'), why: room <= 0 ? roomWhy : null, on: () => set(p.scientists + 1) }),
+        btn('+5', { cls: 'small', title: T('base.sci.plus5'), aria: ar('base.sci.plus5'), why: room <= 0 ? roomWhy : null, on: () => set(p.scientists + Math.min(5, room)) }),
+        btn(T('base.btn.all'), { cls: 'small', title: T('base.sci.all'), aria: ar('base.sci.all'), tip: T('base.sci.allTip'), why: room <= 0 ? roomWhy : null, on: () => set(p.scientists + room) }));
     }
     function tabResearch() {
       const g = S.G, b = base();
@@ -731,7 +760,7 @@
       const avail = C().availableResearch(g, b.id);
       const wrap = el('div', { class: 'bsc-tab-res' });
       const newWhy = !avail.length ? T('base.research.none') : caps.labs.cap <= 0 ? errText('labs') : null;
-      wrap.appendChild(head(T('base.tab.research'), T('base.research.sub', { n: avail.length }),
+      wrap.appendChild(head(T('base.tab.research'), Tn('base.research.sub', avail.length),
         btn(T('base.research.new') + (avail.length ? ' (' + avail.length + ')' : ''), { cls: 'primary', title: T('base.research.new'), tip: T('base.research.newTip'), key: 'N', why: newWhy, on: researchPicker, data: { act: 'newResearch' } })));
       wrap.appendChild(el('div', { class: 'bsc-meters2' },
         meter(T('base.personnel.scientists'), st.scientists.total - st.scientists.free, st.scientists.total, { text: T('base.sci.busyOf', { busy: st.scientists.total - st.scientists.free, total: st.scientists.total }) }),
@@ -757,7 +786,7 @@
             el('span', { class: 'bsc-chip prog ' + (PROG_CLS[lbl] || ''), text: T(lbl) })),
           el('div', { class: 'bsc-card-row' }, el('span', { class: 'bsc-lbl', text: T('base.research.scientists') }), sciStepper(p)),
           el('div', { class: 'bsc-card-act' },
-            art ? btn(T('base.btn.ufopaedia'), { cls: 'small ghost', title: T('base.tip.article'), on: () => openUfopaedia(art) }) : null,
+            art ? btn(T('base.btn.ufopaedia'), { cls: 'small ghost', title: T('base.tip.article'), aria: T('base.tip.articleFor', { name: articleTitle(art) }), on: () => openUfopaedia(art) }) : null,
             btn(T('base.research.cancel'), { cls: 'small danger', title: T('base.research.cancel'), tip: T('base.research.cancelTip'), on: () => cancelResearchDlg(p) })));
         if (!p.scientists) card.appendChild(note(T('base.research.stopped'), 'warn'));
         list.appendChild(card);
@@ -807,9 +836,9 @@
             el('div', { class: 'bsc-row-main' }, el('div', { class: 'bsc-row-name', text: topicName(id) }),
               notes.length ? el('div', { class: 'bsc-row-sub', text: notes.join(' · ') }) : null),
             el('div', { class: 'bsc-row-btns' },
-              art ? btn(T('base.btn.ufopaedia'), { cls: 'small ghost', title: T('base.tip.article'), on: () => { s.close(); openUfopaedia(art); } }) : null,
+              art ? btn(T('base.btn.ufopaedia'), { cls: 'small ghost', title: T('base.tip.article'), aria: T('base.tip.articleFor', { name: articleTitle(art) }), on: () => { s.close(); openUfopaedia(art); } }) : null,
               btn(T('base.research.start'), {
-                cls: 'small primary', title: T('base.research.start'), aria: T('base.research.startAria', { name: topicName(id) }), tip: Tn('base.research.startTip', give), data: { start: id },
+                cls: 'small primary', title: T('base.research.start'), aria: T('base.research.startAria', { name: topicName(id) }), tip: Tn('base.research.startTip', give), data: { start: id }, once: true,
                 on: () => {
                   s.close();
                   act(() => BS().startResearch(g, b.id, id, give), T('base.toast.researchStarted', { name: topicName(id), who: Tn('base.nSci', give) }));
@@ -862,6 +891,7 @@
         const engWhy = st.engineers.free <= 0 ? errText('engineers') : errText('workshops');
         const setE = (n) => act(() => BS().setEngineers(g, b.id, p.id, n));
         const setQ = (q) => act(() => BS().setQty(g, b.id, p.id, q));
+        const ar = (k) => ctxName(T(k), prodName(p.item));
         const card = el('div', { class: 'bsc-card bsc-order' + (p.stalled ? ' stalled' : ''), dataset: { pid: p.id } },
           el('div', { class: 'bsc-card-h' }, itemOrCraftIcon(m, 40),
             el('div', { class: 'bsc-card-t' }, el('div', { class: 'bsc-row-name', text: prodName(p.item) }),
@@ -874,20 +904,20 @@
           el('div', { class: 'bsc-card-row' }, el('span', { class: 'bsc-lbl', text: T('base.prod.materials') }), materialsLine(m, b.stores)),
           el('div', { class: 'bsc-card-row' }, el('span', { class: 'bsc-lbl', text: T('base.prod.engineers') }),
             el('div', { class: 'bsc-stepper' },
-              btn('−5', { cls: 'small', title: T('base.eng.minus5'), why: p.engineers <= 0 ? T('base.eng.none') : null, on: () => setE(Math.max(0, p.engineers - 5)) }),
-              btn('−', { cls: 'small', title: T('base.eng.minus1'), why: p.engineers <= 0 ? T('base.eng.none') : null, on: () => setE(p.engineers - 1) }),
+              btn('−5', { cls: 'small', title: T('base.eng.minus5'), aria: ar('base.eng.minus5'), why: p.engineers <= 0 ? T('base.eng.none') : null, on: () => setE(Math.max(0, p.engineers - 5)) }),
+              btn('−', { cls: 'small', title: T('base.eng.minus1'), aria: ar('base.eng.minus1'), why: p.engineers <= 0 ? T('base.eng.none') : null, on: () => setE(p.engineers - 1) }),
               el('b', { class: 'bsc-step-v', text: String(p.engineers) }),
-              btn('+', { cls: 'small', title: T('base.eng.plus1'), why: roomEng <= 0 ? engWhy : null, on: () => setE(p.engineers + 1) }),
-              btn('+5', { cls: 'small', title: T('base.eng.plus5'), why: roomEng <= 0 ? engWhy : null, on: () => setE(p.engineers + Math.min(5, roomEng)) }),
-              btn(T('base.btn.all'), { cls: 'small', title: T('base.eng.all'), why: roomEng <= 0 ? engWhy : null, on: () => setE(p.engineers + roomEng) }))),
+              btn('+', { cls: 'small', title: T('base.eng.plus1'), aria: ar('base.eng.plus1'), why: roomEng <= 0 ? engWhy : null, on: () => setE(p.engineers + 1) }),
+              btn('+5', { cls: 'small', title: T('base.eng.plus5'), aria: ar('base.eng.plus5'), why: roomEng <= 0 ? engWhy : null, on: () => setE(p.engineers + Math.min(5, roomEng)) }),
+              btn(T('base.btn.all'), { cls: 'small', title: T('base.eng.all'), aria: ar('base.eng.all'), why: roomEng <= 0 ? engWhy : null, on: () => setE(p.engineers + roomEng) }))),
           el('div', { class: 'bsc-card-row' }, el('span', { class: 'bsc-lbl', text: T('base.prod.qty') }),
             el('div', { class: 'bsc-stepper' },
-              btn('−', { cls: 'small', title: T('base.prod.qtyMinus'), why: p.qty <= 1 || p.qty - 1 <= p.done ? T('base.prod.qtyMin') : null, on: () => setQ(p.qty - 1) }),
+              btn('−', { cls: 'small', title: T('base.prod.qtyMinus'), aria: ar('base.prod.qtyMinus'), why: p.qty <= 1 || p.qty - 1 <= p.done ? T('base.prod.qtyMin') : null, on: () => setQ(p.qty - 1) }),
               el('b', { class: 'bsc-step-v', text: p.qty > 0 ? String(p.qty) : '∞' }),
-              btn('+', { cls: 'small', title: T('base.prod.qtyPlus'), on: () => setQ(p.qty > 0 ? p.qty + 1 : p.done + 1) }),
-              btn(T('base.prod.continuous'), { cls: 'small' + (p.qty === 0 ? ' on' : ''), title: T('base.prod.continuous'), tip: T('base.prod.continuousTip'), on: () => setQ(p.qty === 0 ? p.done + 1 : 0) }))),
+              btn('+', { cls: 'small', title: T('base.prod.qtyPlus'), aria: ar('base.prod.qtyPlus'), on: () => setQ(p.qty > 0 ? p.qty + 1 : p.done + 1) }),
+              btn(T('base.prod.continuous'), { cls: 'small' + (p.qty === 0 ? ' on' : ''), title: T('base.prod.continuous'), aria: ar('base.prod.continuous'), tip: T('base.prod.continuousTip'), on: () => setQ(p.qty === 0 ? p.done + 1 : 0) }))),
           el('div', { class: 'bsc-card-act' },
-            btn(T('base.prod.cancel'), { cls: 'small danger', title: T('base.prod.cancel'), tip: T('base.prod.cancelTip'), on: () => cancelProdDlg(p) })));
+            btn(T('base.prod.cancel'), { cls: 'small danger', title: T('base.prod.cancel'), aria: ar('base.prod.cancel'), tip: T('base.prod.cancelTip'), on: () => cancelProdDlg(p) })));
         if (p.stalled) card.insertBefore(note(T('base.prod.stalledHelp.' + p.stalled), 'bad'), card.lastChild);
         list.appendChild(card);
       }
@@ -935,8 +965,8 @@
               warns.length ? el('div', { class: 'bsc-row-why warn', text: warns.join(' · ') }) : null,
               why ? el('div', { class: 'bsc-row-why', text: why }) : null),
             el('div', { class: 'bsc-row-btns' },
-              ...[1, 5, 10].map((q) => btn('×' + q, { cls: 'small' + (q === 1 ? ' primary' : ''), title: T('base.prod.startN', { n: q }), tip: Tn('base.prod.startTip', eng), why, data: { start: id, q: String(q) }, on: () => start(q) })),
-              btn('∞', { cls: 'small', title: T('base.prod.startCont'), tip: T('base.prod.continuousTip'), why, data: { start: id, q: '0' }, on: () => start(0) })));
+              ...[1, 5, 10].map((q) => btn('×' + q, { cls: 'small' + (q === 1 ? ' primary' : ''), title: T('base.prod.startN', { n: q }), tip: Tn('base.prod.startTip', eng), why, data: { start: id, q: String(q) }, once: true, on: () => start(q) })),
+              btn('∞', { cls: 'small', title: T('base.prod.startCont'), tip: T('base.prod.continuousTip'), why, data: { start: id, q: '0' }, once: true, on: () => start(0) })));
           list.appendChild(row);
         }
         body.appendChild(section(T('base.prod.cat.' + cat), list));
@@ -966,13 +996,13 @@
           const why = BS().canHire(g, b.id, k.kind, n);
           return btn(T('base.pers.hireN', { n }), {
             cls: 'small' + (n === 1 ? ' primary' : ''), title: T('base.pers.hireTitle', { n, kind: Tn('base.kind.' + k.kind, n) }), data: { hire: k.kind, n: String(n) },
-            tip: T('base.pers.hireTip', { cost: money(cost * n), h: tune('DELIVERY_PERSONNEL_H', 48) }), why: why ? errText(why) : null,
+            tip: T('base.pers.hireTip', { cost: money(cost * n), h: tune('DELIVERY_PERSONNEL_H', 48) }), why: why ? errText(why) : null, once: true,
             on: () => act(() => BS().hire(g, b.id, k.kind, n), T('base.toast.hired', { n, kind: Tn('base.kind.' + k.kind, n), h: tune('DELIVERY_PERSONNEL_H', 48) })),
           });
         });
         const sackBtns = (k.sack || []).map((n) => btn(T('base.pers.sackN', { n }), {
           cls: 'small danger', title: T('base.pers.sackTitle', { n, kind: Tn('base.kind.' + k.kind, n) }), tip: T('base.pers.sackTip'), data: { sack: k.kind, n: String(n) },
-          why: k.total < n ? errText('count') : k.free < n ? errText('busy') : null,
+          why: k.total < n ? errText('count') : k.free < n ? errText('busy') : null, once: true,
           on: () => act(() => BS().sack(g, b.id, k.kind, n), T('base.toast.sacked', { n, kind: Tn('base.kind.' + k.kind, n) })),
         }));
         grid.appendChild(el('div', { class: 'bsc-card bsc-pcard', dataset: { kind: k.kind } },
@@ -1473,12 +1503,6 @@
     // ---------------------------------------------------------------------------------------------------- 8
     /* comprar/vender: o 2.º clique de um duplo clique (event.detail ≥ 2) ou um clique a menos de 400 ms do anterior
        não repete a encomenda (o botão é recriado depois de cada compra) */
-    function oneShot(e) {
-      const t = typeof performance !== 'undefined' ? performance.now() : Date.now();
-      if ((e && e.detail > 1) || t - (S.lastTradeT || -1e9) < 400) return false;
-      S.lastTradeT = t;
-      return true;
-    }
     function qtyCtl(map, id, max, onChange, tag) {
       const v = Math.max(1, Math.min(max || 999, map[id] || 1));
       map[id] = v;
@@ -1636,7 +1660,7 @@
           const caps2 = BS().capacities(g, b.id);
           const give = Math.max(0, Math.min(st.scientists.free, caps2.labs.cap - caps2.labs.used));
           btnNode = btn(T('base.cont.interrogate'), {
-            cls: 'small primary', title: T('base.cont.interrogate'), tip: T('base.cont.interrogateTip', { who: Tn('base.nSci', give) }), why: caps2.labs.cap <= 0 ? errText('labs') : null, data: { interrogate: u },
+            cls: 'small primary', title: T('base.cont.interrogate'), tip: T('base.cont.interrogateTip', { who: Tn('base.nSci', give) }), why: caps2.labs.cap <= 0 ? errText('labs') : null, data: { interrogate: u }, once: true,
             on: () => act(() => BS().startResearch(g, b.id, topic, give), T('base.toast.researchStarted', { name: topicName(topic), who: Tn('base.nSci', give) })),
           });
         } else status = el('span', { class: 'bsc-chip muted', text: done ? T('base.cont.nothingNew') : T('base.cont.unavailable') });
@@ -1649,7 +1673,7 @@
               el('div', { class: 'bsc-row-sub muted', text: T('base.cont.hint.' + (rr ? rr.rank : 'soldier')) })),
             status),
           el('div', { class: 'bsc-card-act' },
-            art ? btn(T('base.btn.ufopaedia'), { cls: 'small ghost', title: T('base.tip.article'), on: () => openUfopaedia(art) }) : null,
+            art ? btn(T('base.btn.ufopaedia'), { cls: 'small ghost', title: T('base.tip.article'), aria: T('base.tip.articleFor', { name: articleTitle(art) }), on: () => openUfopaedia(art) }) : null,
             btnNode)));
       }
       wrap.appendChild(list);
@@ -1657,6 +1681,8 @@
     }
 
     // ---- folha modal genérica (listas de escolha) -----------------------------------------------------------
+    /* returnTo: para onde volta o foco ao fechar quando a folha abriu sem foco ou a partir de fora do conteúdo (tecla N
+       com o foco num separador, que se redesenha: o foco iria para o <body>) */
     function sheet(title, body, buttons, cls, returnTo) {
       if (S.sheet) S.sheet.close();
       const host = OV.Dom.$('modals');
@@ -1687,7 +1713,7 @@
       host.appendChild(back);
       // foco preso na folha (o resto inerte) e devolvido a quem a abriu
       const cur = document.activeElement;
-      release = OV.Dom.trapFocus(back, returnTo && (!cur || cur === document.body) ? { returnTo } : undefined);
+      release = OV.Dom.trapFocus(back, returnTo && (!cur || cur === document.body || !S.r.content.contains(cur)) ? { returnTo } : undefined);
       document.addEventListener('keydown', onKey, true);
       const api = { close, box };
       S.sheet = api;
@@ -1784,9 +1810,19 @@
       const x = L.x + (gh.x + size) * L.cell + 8, y = L.y + gh.y * L.cell;
       tip.style.left = Math.round(x) + 'px';
       tip.style.top = Math.round(y) + 'px';
-      // não sair do ecrã à direita: encosta à esquerda da instalação
-      const w = tip.offsetWidth;
-      if (x + w > L.host.right - 4) tip.style.left = Math.round(L.x + gh.x * L.cell - w - 8) + 'px';
+      // não sair do ecrã à direita: encosta à esquerda da instalação; se também não cabe aí, fica por baixo (ou por
+      // cima) da instalação, sempre dentro da janela
+      const w = tip.offsetWidth, h = tip.offsetHeight;
+      const vw = typeof window !== 'undefined' ? window.innerWidth : L.host.right, vh = typeof window !== 'undefined' ? window.innerHeight : L.host.bottom;
+      if (x + w > L.host.right - 4) {
+        const lx = L.x + gh.x * L.cell - w - 8;
+        if (lx >= 4) tip.style.left = Math.round(lx) + 'px';
+        else {
+          const below = L.y + (gh.y + size) * L.cell + 6;
+          tip.style.left = Math.round(Math.max(4, Math.min(vw - w - 4, L.x + gh.x * L.cell))) + 'px';
+          tip.style.top = Math.round(below + h <= vh - 4 ? below : Math.max(4, L.y + gh.y * L.cell - h - 6)) + 'px';
+        }
+      }
     }
     function hideGhostTip() { if (S.r.ghost) S.r.ghost.className = 'bsc-ghosttip hidden'; }
 
@@ -2007,6 +2043,13 @@
           if (b && OV.Input.lastPointerType !== 'touch') b.focus({ preventScroll: true });
         }, 60);
       }
+      // vindo de «Pôr na nave» (material entregue): Naves com o transporte escolhido e o equipamento aberto
+      if (P.equip && C().findCraft(g, P.equip)) {
+        S.tab = 'crafts';
+        S.craftSel = P.equip;
+        refresh();
+        setTimeout(() => { if (S.root && OV.Scenes.top() === sc) openEquip(P.equip); }, 60);
+      }
       if (P.tab === 'research' && (P.pick || !base().research.length)) {
         const b = base(), st = BS().staff(g, b.id), caps = BS().capacities(g, b.id);
         if (st.scientists.free > 0 && caps.labs.used < caps.labs.cap && C().availableResearch(g, b.id).length) setTimeout(() => { if (S.root && OV.Scenes.top() === sc) researchPicker(); }, 220);
@@ -2056,7 +2099,7 @@
       top.go(baseId, tab);
       return top;
     }
-    return OV.Scenes.push('basescape', { G, baseId: baseId || null, tab: tab || null, pick: !!(opts && opts.pick), item: (opts && opts.item) || null });
+    return OV.Scenes.push('basescape', { G, baseId: baseId || null, tab: tab || null, pick: !!(opts && opts.pick), item: (opts && opts.item) || null, equip: (opts && opts.equip) || null });
   }
   function close() {
     const top = OV.Scenes.top();
