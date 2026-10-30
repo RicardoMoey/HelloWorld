@@ -55,6 +55,37 @@
     if (v === 'never' || v === 'off' || v === false) return false;
     return (difficulty | 0) <= 1;
   }
+  /* aliados (soldados e civis) vistos a ≤ 1 casa da linha atirador → alvo, à frente do atirador e até 2 casas
+     depois do alvo: os tiros falhados desviam-se e apanham-nos. Pura (só lê B). → [{id, d, t}] do mais perto do
+     atirador para o mais longe (d = distância à linha em casas, t = distância ao longo dela). */
+  const LINE_NEAR = 1, LINE_PAST = 2;
+  function lineRisk(B, shooter, tx, ty, tz, opts) {
+    const o = opts || {};
+    const isSeen = o.seen || (() => true);
+    const skip = new Set([shooter.id].concat(o.exclude || []));
+    const ax = shooter.x, ay = shooter.y, dx = tx - ax, dy = ty - ay;
+    const L = Math.hypot(dx, dy);
+    const out = [];
+    if (L < 1) return out;
+    for (const f of B.units) {
+      if (skip.has(f.id) || f.side === 'alien' || !f.onMap || f.x < 0 || !LIVE[f.status]) continue;
+      if (Math.min(Math.abs(f.z - shooter.z), Math.abs(f.z - tz)) > 1 || !isSeen(f)) continue;
+      const px = f.x - ax, py = f.y - ay;
+      const t = (px * dx + py * dy) / L;
+      if (t <= 0 || t > L + LINE_PAST) continue;
+      const d = Math.abs(px * dy - py * dx) / L;
+      if (d <= LINE_NEAR) out.push({ id: f.id, d: Math.round(d * 100) / 100, t: Math.round(t * 100) / 100 });
+    }
+    return out.sort((a, b) => a.t - b.t);
+  }
+  // 2.º clique num tiro fraco com aliados perto da linha: 'auto' só em Recruta (as opções dos explosivos mandam)
+  const LINE_CONFIRM_PCT = 50;
+  function lineConfirm(st, difficulty, pct) {
+    const v = (st && st.confirmBlast) || 'auto';
+    if (v === 'never' || v === 'off' || v === false) return false;
+    if (!(typeof pct === 'number' && pct < LINE_CONFIRM_PCT)) return false;
+    return v === 'always' || v === 'on' || v === true || (difficulty | 0) === 0;
+  }
   // nome curto para a ranhura da mão (o nome completo fica na dica)
   function handName(type) {
     const d = OV.Data.items[type];
@@ -462,6 +493,7 @@
       return;
     }
     kbPlace(a.x, a.y, a.z);
+    showTag(a);
     sfx('ui_click', { vol: 0.6 });
   }
   function kbCycleAlien(dir) {
@@ -526,8 +558,11 @@
   }
 
   // ---- foco do cursor / pré-visualizações -----------------------------------------------------------------
+  // a apontar ou a lançar, um inimigo à vista ganha ao soldado desenhado à frente dele (folga de 20 px no toque)
+  const HOSTILE_TOL_TOUCH = 20, HOSTILE_TOL_PTR = 4;
   function pickAt(px, py) {
-    const p = OV.BattleRender.pick(S.view, px, py, S.B);
+    const aiming = S.mode === 'target' || S.mode === 'throw';
+    const p = OV.BattleRender.pick(S.view, px, py, S.B, aiming ? { hostileFirst: true, tol: isTouch() ? HOSTILE_TOL_TOUCH : HOSTILE_TOL_PTR } : null);
     if (!p) return null;
     if (p.unitId !== null && p.unitId !== undefined && !seen(unitOf(p.unitId))) p.unitId = null;
     return p;
@@ -536,11 +571,12 @@
     if (!S) return;
     const kb = S.kcur.armed && kbOn();
     S.view.kcur = kb && !S.playing && !S.ended ? { x: S.kcur.x, y: S.kcur.y, z: S.view.viewZ } : null;
-    if ((!S.mouse && !kb) || S.playing || S.ended) {
+    if ((!S.mouse && !kb && !S.pin) || S.playing || S.ended) {
       clearPreview();
       return;
     }
-    const p = kb ? kbPick() : pickAt(S.mouse.x, S.mouse.y);
+    // S.pin: alvo escolhido no botão do alienígena (fica até o ponteiro voltar ao mapa)
+    const p = kb ? kbPick() : S.pin ? Object.assign({}, S.pin) : pickAt(S.mouse.x, S.mouse.y);
     const key = (p ? p.x + ',' + p.y + ',' + p.z + ',' + p.unitId : '-') + '|' + S.mode + '|' + S.ver + '|' + S.lock + '|' + S.tapLock + '|' + S.view.viewZ + '|' + (S.force ? 1 : 0) + '|' + (S.alt ? 1 : 0) + '|' + (kb ? 'k' : 'm') + '|' + S.view.cam.zoom.toFixed(2);
     if (key === S.hoverKey) return;
     S.hoverKey = key;
@@ -737,10 +773,27 @@
         T0.subCol = 'out';
       }
     }
+    /* aliados perto da linha de tiro (não exatamente nela): os falhanços desviam-se e apanham-nos — aviso por
+       palavras e contorno nesses soldados (o aliado que bloqueia a linha também fica marcado) */
+    if (!route && S.aim.mode !== 'melee' && (v.ok || v.reason === 'noTU')) {
+      const [tx, ty, tz] = xyzOf(toI);
+      const near = lineRisk(S.B, u, tx, ty, tz, { seen, exclude: [tgtUnit ? tgtUnit.id : -1, friend ? friend.id : -1] });
+      if (near.length) {
+        T0.risk = near.map((r) => r.id);
+        if (!T0.sub) {
+          T0.sub = Tn('hud.target.nearLine', near.length, { n: near.length, name: uname(unitOf(near[0].id)) });
+          T0.subCol = 'out';
+        }
+      }
+    }
+    if (friend) T0.risk = [friend.id].concat(T0.risk || []);
     if (S.tapLock === toI && !T0.blocked) {
-      const risk = T0.blast && T0.blast.risk && blastConfirm(settings(), S.B.mission && S.B.mission.difficulty) ? T0.blast.risk : 0;
-      T0.sub = risk ? Tn('hud.confirmBlast.' + confirmVia(), risk, { n: risk }) : T(confirmKey('hud.confirmFire'));
-      T0.subCol = risk ? 'out' : null;
+      const diff = S.B.mission && S.B.mission.difficulty;
+      const risk = T0.blast && T0.blast.risk && blastConfirm(settings(), diff) ? T0.blast.risk : 0;
+      const line = !risk && T0.risk && T0.risk.length && lineRiskConfirm(u, tgtUnit, toI) > 0 ? T0.risk : null;
+      T0.sub = risk ? Tn('hud.confirmBlast.' + confirmVia(), risk, { n: risk })
+        : line ? Tn('hud.confirmLine.' + confirmVia(), line.length, { n: line.length, name: uname(unitOf(line[0])) }) : T(confirmKey('hud.confirmFire'));
+      T0.subCol = risk || line ? 'out' : null;
       T0.lock = true;
     }
     S.view.target = T0;
@@ -844,6 +897,7 @@
     S.throwPlan = null;
     S.lock = -1;
     S.tapLock = -1;
+    S.pin = null;
     S.view.cursor = 'move';
     S.view.throwRange = null;
     if (isTouch()) S.mouse = null;
@@ -1040,6 +1094,19 @@
     const b = blastPreview(u, it, i);
     return b && !b.smoke ? b.risk | 0 : 0;
   }
+  /* Recruta: tiro com acerto < LINE_CONFIRM_PCT % e aliados perto da linha pede o mesmo 2.º clique dos explosivos
+     → n.º de aliados em risco (0 = dispara logo) */
+  function lineRiskConfirm(u, tgt, i) {
+    if (!S.aim || S.aim.kind === 'psi' || S.aim.mode === 'melee') return 0;
+    const it = itemOf(S.aim.itemId), d = defOf(it);
+    if (!it || (d && d.guided)) return 0;
+    const b = blastPreview(u, it, i);
+    if (b && !b.smoke) return 0;
+    const pct = hitChance(u, it, S.aim.mode, tgt || i, tgt ? 'u' + tgt.id + '@' + i : 't' + i);
+    if (!lineConfirm(settings(), S.B.mission && S.B.mission.difficulty, pct)) return 0;
+    const [tx, ty, tz] = xyzOf(i);
+    return lineRisk(S.B, u, tx, ty, tz, { seen, exclude: [tgt ? tgt.id : -1] }).length;
+  }
   /* 2.ª confirmação de explosivos com aliados no raio: o 2.º clique de um duplo clique (detail > 1) ou um clique a
      menos de CONFIRM_GAP ms do que armou a confirmação não conta — a criança que clica depressa vê sempre o aviso */
   const CONFIRM_GAP = 400;
@@ -1074,7 +1141,7 @@
       return;
     }
     // toque: 1.º toque mostra, 2.º dispara; explosivo com aliados no raio: 2.º clique/Enter no mesmo alvo
-    const risky = a.type === 'shoot' && blastRisk(u, itemOf(S.aim.itemId), i) > 0;
+    const risky = a.type === 'shoot' && (blastRisk(u, itemOf(S.aim.itemId), i) > 0 || lineRiskConfirm(u, tgt, i) > 0);
     if ((pointerType === 'touch' || isTouch() || risky) && S.tapLock !== i) {
       armConfirm(i, risky);
       return;
@@ -1210,7 +1277,37 @@
     if (!a) return;
     if (a.z > S.view.viewZ) setViewZ(a.z);
     centreUnit(a);
+    showTag(a);
     sfx('ui_click');
+  }
+  // etiqueta com o nome por cima do alienígena centrado (1–0, botões do HUD): diz o que é e onde está
+  const TAG_MS = 2600;
+  function showTag(a) {
+    if (!a) return;
+    S.view.unitTag = { unitId: a.id, text: uname(a) };
+    S.tagUntil = realNow() + (reduceMotion() ? TAG_MS * 1.5 : TAG_MS);
+  }
+  /* a apontar ou a lançar, o botão do alienígena escolhe-o como alvo: 1.º toque/clique mostra o tiro (acerto, custo,
+     avisos) e arma a confirmação; o 2.º no mesmo botão (ou no alienígena) dispara */
+  function aimAlien(k, detail) {
+    const a = visibleAliens()[k];
+    if (!a) return;
+    if (a.z !== S.view.viewZ) setViewZ(a.z);
+    centreUnit(a);
+    showTag(a);
+    const p = { x: a.x, y: a.y, z: a.z, unitId: a.id };
+    if (S.kcur.armed && kbOn()) kbPlace(a.x, a.y, a.z);
+    else {
+      S.pin = p;
+      S.hoverKey = '';
+      refreshHover();
+    }
+    if (S.mode === 'target') clickTarget(p, null, 'touch', undefined, detail);
+    else if (S.mode === 'throw') clickThrow(p, 'touch', detail);
+    if (S) {
+      S.hoverKey = '';
+      refreshHover();
+    }
   }
   function openInventory(unitId) {
     const id = unitId === undefined || unitId === null ? S && S.selId : unitId;
@@ -1376,6 +1473,47 @@
       return a && !mine(a) && C.seenAt[a.id] === undefined && !seenNow(a) ? a.id : -1;
     };
     const tileOf = (u) => (typeof ev.pos === 'number' && ev.pos >= 0 ? ev.pos : typeof ev.i === 'number' ? ev.i : u && u.x >= 0 ? (u.z * B.map.h + u.y) * B.map.w + u.x : -1);
+    /* tiros dos nossos: uma entrada por disparo/rajada, atualizada à medida que chegam os danos («acertou 2 de 3 em
+       Sectoide (−18)», «falhou»); no turno alienígena (fogo de reação) entra também no relatório do turno */
+    if (ev.t === 'shot') {
+      const a = find(ev.shooterId);
+      if (!(ev.round > 0)) C.burst = null;
+      if (!a || !mine(a) || a.side !== 'xcom') return null;
+      if (ev.round > 0 && C.burst && C.burst.shooterId === a.id) {
+        C.burst.round = ev.round | 0;
+        return null;
+      }
+      const tgt = find(ev.targetId);
+      const tgtName = tgt && tgt.side !== 'xcom' ? nm(tgt) : null;
+      const e = { key: tgtName ? 'hud.log.shot.miss' : 'hud.log.shot.missTile', params: { name: nm(a), target: tgtName || '', shots: ev.shots | 0 || 1 }, kind: 'miss', ic: '○', own: B.side !== 'xcom', at: typeof ev.targetI === 'number' ? ev.targetI : -1, from: -1 };
+      C.burst = { shooterId: a.id, shots: ev.shots | 0 || 1, round: 0, rounds: new Set(), dmg: 0, victims: [], names: [], entry: e, shown: !!tgtName, tgtName };
+      if (e.params.shots > 1) e.key = tgtName ? 'hud.log.shot.burstMiss' : 'hud.log.shot.burstMissTile';
+      return tgtName ? e : null;
+    }
+    if (ev.t === 'throw' || ev.t === 'melee' || ev.t === 'walk' || ev.t === 'turn') C.burst = null;
+    if (ev.t === 'damage' && C.burst && ev.attackerId === C.burst.shooterId && ev.cause === 'shot') {
+      const v = find(ev.unitId);
+      const W = C.burst;
+      if (v && !mine(v) && v.origSide !== 'civ' && v.side !== 'civ') {
+        W.dmg += Math.max(0, ev.amount | 0);
+        if (W.victims.indexOf(v.id) < 0) {
+          W.victims.push(v.id);
+          W.names.push(ev.vis || seenNow(v) || W.tgtName === nm(v) ? nm(v) : T('hud.log.unseenAlien'));
+        }
+        W.rounds.add(W.round | 0);
+        const e = W.entry, hits = W.rounds.size;
+        e.kind = 'good';
+        e.ic = '✔';
+        e.params = { name: e.params.name, target: W.names[0], shots: W.shots, hits, n: W.dmg, k: W.victims.length };
+        e.key = W.victims.length > 1 ? 'hud.log.shot.hitMany' : W.dmg <= 0 ? 'hud.log.shot.noDmg' : W.shots > 1 ? 'hud.log.shot.burstHit' : 'hud.log.shot.hit';
+        if (!W.shown) {
+          // tiro a uma casa que acertou num alienígena: a entrada só aparece agora
+          W.shown = true;
+          C.last[v.id] = { dmgType: ev.dmgType, cause: ev.cause, attackerId: ev.attackerId };
+          return e;
+        }
+      }
+    }
     if (ev.t === 'damage') {
       const u = find(ev.unitId);
       if (!u) return null;
@@ -1780,7 +1918,7 @@
     H.tools.append(H.level, H.grid);
 
     // reservas de UT
-    H.reserve = el('div', { class: 'bs-reserve' });
+    H.reserve = el('div', { class: 'bs-reserve', role: 'group', 'aria-label': T('hud.reserve.group') });
     H.res = {};
     const RES = [['none', 'rNone', 'Shift+1'], ['snap', 'rSnap', 'Shift+2'], ['aimed', 'rAimed', 'Shift+3'], ['auto', 'rAuto', 'Shift+4']];
     for (const [mode, ic, key] of RES) {
@@ -2021,8 +2159,12 @@
       const b = el('button', { class: 'bs-alien', type: 'button' },
         el('span', { class: 'bs-alien-ic', 'aria-hidden': 'true', html: '<svg viewBox="0 0 24 24"><path d="M12 2.5c-5 0-8 3.6-8 8 0 4.6 4.3 9.6 8 11 3.7-1.4 8-6.4 8-11 0-4.4-3-8-8-8z" fill="currentColor"/><path d="M6.6 10.2c1.9-.2 3.7.8 4.2 2.6-1.9.4-3.7-.6-4.2-2.6zM17.4 10.2c-1.9-.2-3.7.8-4.2 2.6 1.9.4 3.7-.6 4.2-2.6z" fill="#120406"/></svg>' }),
         el('span', { class: 'bs-alien-n', text: String(n) }));
-      b.addEventListener('click', () => S && centreAlien(k));
-      tip(b, T('hud.tip.alien', { n, name: uname(u) }), n <= 10 ? String(n % 10) : null, T(tk('hud.tip.alienKeys'), { n: n % 10 }));
+      b.addEventListener('click', (e) => {
+        if (!S || S.playing || S.ended) return;
+        if (S.mode === 'target' || S.mode === 'throw') aimAlien(k, e.detail);
+        else centreAlien(k);
+      });
+      tip(b, T('hud.tip.alien', { n, name: uname(u) }), n <= 10 ? String(n % 10) : null, () => T(tk('hud.tip.alienKeys'), { n: n % 10 }) + ' ' + T(tk('hud.tip.alienAim')));
       H.aliens.appendChild(b);
     });
   }
@@ -2055,10 +2197,15 @@
     const sig = [u ? u.id + ':' + u.kneel + ':' + u.tu : '-', B.reserve, B.reserveKneel, S.miniOn, S.mode, S.view.viewZ].join('|');
     if (S.sig.tools === sig) return;
     S.sig.tools = sig;
-    for (const k of Object.keys(H.res)) H.res[k].classList.toggle('on', (B.reserve || 'none') === k);
-    H.resKneel.classList.toggle('on', !!B.reserveKneel);
-    H.bKneel.classList.toggle('on', !!(u && u.kneel));
-    H.bMap.classList.toggle('on', !!S.miniOn);
+    // botões de estado: a classe .on (cor + marca ✓ no canto, css/battle.css) e aria-pressed dizem o mesmo
+    const press = (b, on) => {
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    };
+    for (const k of Object.keys(H.res)) press(H.res[k], (B.reserve || 'none') === k);
+    press(H.resKneel, !!B.reserveKneel);
+    press(H.bKneel, !!(u && u.kneel));
+    press(H.bMap, !!S.miniOn);
     const noUnit = !u;
     for (const b of [H.bKneel, H.bInv, H.bReload, H.bGrenade, H.bFlare, H.bDone, H.bCentre]) b.disabled = noUnit;
   }
@@ -2090,7 +2237,10 @@
     S.view.palette = cvd ? 'cvd' : 'normal';
     S.view.reduceMotion = rm;
     S.view.textScale = Math.max(1, Math.min(1.5, +st.textScale || 1));
-    if (OV.FX) OV.FX.reduceMotion = rm;
+    if (OV.FX) {
+      OV.FX.reduceMotion = rm;
+      OV.FX.palette = cvd ? 'cvd' : 'normal';
+    }
     OV.Presenter.reduceMotion = rm;
   }
 
@@ -2420,6 +2570,7 @@
         if (S.mode === 'move') setHint('');
       }
       S.mouse = { x: ev.x, y: ev.y };
+      S.pin = null;
       S.force = forceMods(ev.mods);
       S.alt = !!(ev.mods && ev.mods.alt);
       refreshHover();
@@ -2451,7 +2602,14 @@
       return true;
     }
     if (k === 'zoom') {
-      zoomAround(S.view.cam.zoom * ev.factor, ev.x, ev.y);
+      // pinça: zoom absoluto por gesto (zoom do início × escala) — o corte em ZMAX nunca vira um zoom out
+      if (ev.gid !== undefined && ev.scale > 0 && ev.factor > 0) {
+        if (S.pinchGid !== ev.gid) {
+          S.pinchGid = ev.gid;
+          S.pinchZ0 = S.view.cam.zoom / (ev.scale / ev.factor);
+        }
+        zoomAround(S.pinchZ0 * ev.scale, ev.x, ev.y);
+      } else zoomAround(S.view.cam.zoom * ev.factor, ev.x, ev.y);
       S.zoomTween = null;
       scheduleSnap(ev.x, ev.y);
       S.hoverKey = '';
@@ -2529,6 +2687,7 @@
         return true;
       }
       if (ev.pointerType === 'touch' || !S.mouse) S.mouse = { x: ev.x, y: ev.y };
+      S.pin = null;
       if (ev.mods) S.alt = !!ev.mods.alt;
       // pré-visualização atualizada para o ponto do clique (no toque não houve pairar antes)
       S.hoverKey = '';
@@ -2880,6 +3039,7 @@
       refreshHover();
     }
     if (v.blips && v.blips.length && now - v.blips[0].t0 > 4000) v.blips = null;
+    if (v.unitTag && realNow() > (S.tagUntil || 0)) v.unitTag = null;
     pruneDangers();
     updateReach();
     S.hudT = (S.hudT || 0) + dt;
@@ -3018,6 +3178,7 @@
       if (OV.FX) {
         OV.FX.clear();
         OV.FX.reduceMotion = false;
+        OV.FX.palette = 'normal';
       }
       document.body.classList.remove('in-battle', 'bs-cvd', 'bs-rm');
       document.body.style.removeProperty('--bs-bot');
@@ -3091,7 +3252,8 @@
         pathStates: S.view.path ? S.view.path.steps.map((s) => s.state) : [],
         reachCount: S.view.reach ? S.view.reach.count : 0,
         dangers: S.view.dangers ? S.view.dangers.map((g) => ({ x: g.x, y: g.y, z: g.z, r: g.r })) : [],
-        target: S.view.target ? { label: S.view.target.label, hitPct: S.view.target.hitPct, blocked: S.view.target.blocked, sub: S.view.target.sub, blastR: S.view.target.blast ? S.view.target.blast.r : 0, route: S.view.target.route ? S.view.target.line.length - 1 : 0 } : null,
+        target: S.view.target ? { label: S.view.target.label, hitPct: S.view.target.hitPct, blocked: S.view.target.blocked, sub: S.view.target.sub, blastR: S.view.target.blast ? S.view.target.blast.r : 0, route: S.view.target.route ? S.view.target.line.length - 1 : 0, risk: S.view.target.risk || [], toI: S.view.target.toI, lock: !!S.view.target.lock } : null,
+        unitTag: S.view.unitTag ? Object.assign({}, S.view.unitTag) : null, tapLock: S.tapLock,
         throwInfo: S.view.throwInfo ? { label: S.view.throwInfo.label, ok: S.view.throwInfo.ok, sub: S.view.throwInfo.sub || null, blastR: S.view.throwInfo.blast ? S.view.throwInfo.blast.r : 0 } : null,
         menu: S.menu ? { hand: S.menu.hand, page: S.menu.page, entries: (S.menu.entries || []).map((e) => ({ label: e.label, cost: e.cost, acc: e.acc, enabled: e.enabled })) } : null,
         turn: S.B.turn, side: S.B.side, phase: S.B.phase, result: S.B.result || null, reserve: S.B.reserve, reserveKneel: !!S.B.reserveKneel,
@@ -3174,7 +3336,7 @@
     refresh() { if (S) invalidate(); },
     // abortar a missão (com a confirmação de sempre): botão do HUD, tecla X e o painel Opções (Esc)
     abort() { if (S) abortMission(); },
-    model: { kbStep, logEntry, blastConfirm, handName, confirmEarly, reportSummary, turnReportRows, ufoHintDue, UFO_HINT_TURNS },
+    model: { kbStep, logEntry, blastConfirm, lineRisk, lineConfirm, handName, confirmEarly, reportSummary, turnReportRows, ufoHintDue, UFO_HINT_TURNS },
     debug,
   };
 })(globalThis.OV || (globalThis.OV = {}));

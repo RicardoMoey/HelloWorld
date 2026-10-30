@@ -7,7 +7,8 @@
      smoke, fire, sparks, impact, blood, psi, spotted, damage.
    OV.FX.projectile(kind, from, toOrPath, tilesPerSec?) → Promise (resolvida à chegada; laser = instantâneo)
    OV.FX.update(dtMs) ; draw(ctx, cam, viewZ) ; drawDecals(ctx, cam, z) ; shake(intensity) ; offset() → {x, y}
-   OV.FX.reduceMotion (bool, posto pela interface): sem tremor de ecrã (movimento reduzido)
+   OV.FX.reduceMotion (bool, posto pela interface): sem tremor de ecrã; números de dano parados e 1,8 s à vista
+   OV.FX.palette ('normal'|'cvd', posto pela interface): números de dano brancos com contorno na paleta 'cvd'
    OV.FX.clear() ; active() → bool ; inFlight() → projéteis por chegar ; flame(ctx, X, Y, S, t, seed, k) / smokeTile(ctx, X, Y, S, t, seed, density)
    (fogo e fumo dos tiles, chamados pelo renderizador em px do dispositivo, escala S). */
 (function (OV) {
@@ -18,6 +19,7 @@
   const MAX_DECALS = 160;
   const SHAKE_MAX = 8;
   const SPEED = { tracer: 30, bullet: 30, plasma: 18, rocket: 11, thrown: 12, laser: 0 };
+  const DMG_LIFE = 1000, DMG_LIFE_RM = 1800;
   const GUN_COL = { ballistic: 0xffd27a, laser: 0xff5a4a, plasma: 0x7aff8a, stun: 0x8ec8ff, psi: 0xd77dff };
 
   let makeCanvas = function (w, h) {
@@ -199,8 +201,14 @@
         return add({ kind, v, to: o.to ? vox(o.to) : null, life: 800 });
       case 'spotted':
         return add({ kind, v, life: o.life || 1100 });
-      case 'damage':
-        return add({ kind, v, life: 1000, text: o.text !== undefined ? String(o.text) : String(o.amount | 0), col: o.colour !== undefined ? o.colour : o.stun ? 0x8ec8ff : 0xff5a4a });
+      case 'damage': {
+        /* número de dano: −n; na paleta 'cvd' branco com contorno escuro (o vermelho fica castanho na deuteranopia);
+           com movimento reduzido não sobe e fica DMG_LIFE_RM ms à vista */
+        const num = o.text === undefined;
+        const col = o.colour !== undefined ? o.colour : o.stun ? 0x8ec8ff : OV.FX.palette === 'cvd' ? 0xffffff : 0xff5a4a;
+        const text = num ? (o.stun ? '' : '−') + String(o.amount | 0) : String(o.text);
+        return add({ kind, v, life: OV.FX.reduceMotion ? DMG_LIFE_RM : DMG_LIFE, text, col, still: !!OV.FX.reduceMotion, big: num && !o.stun });
+      }
       default:
         return add({ kind: 'impact', v, life: 1 });
     }
@@ -569,14 +577,14 @@
       }
       case 'damage': {
         const [x, y0] = scr(p.v, cam);
-        const y = y0 - 10 * z - f * 30;
+        const y = y0 - 10 * z - (p.still ? 0 : f * 30);
         const a = f > 0.7 ? (1 - f) / 0.3 : 1;
-        const sz = Math.round(13 + 4 * Math.max(0, 1 - f * 4));
+        const sz = Math.round((p.big ? 15 : 13) + (p.still ? 2 : 4 * Math.max(0, 1 - f * 4)));
         ctx.globalAlpha = a;
         ctx.font = 'bold ' + sz + 'px sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.lineWidth = 3;
+        ctx.lineWidth = 4;
         ctx.strokeStyle = 'rgba(0,0,0,0.85)';
         ctx.strokeText(p.text, x, y);
         ctx.fillStyle = css(p.col);
@@ -654,6 +662,7 @@
 
   OV.FX = {
     reduceMotion: false,
+    palette: 'normal',
     spawn, projectile, update, draw, drawDecals, shake, clear, flame, smokeTile, tileVoxel,
     offset: () => ({ x: S.off.x, y: S.off.y }),
     active: () => S.parts.length > 0 || S.trauma > 0 || S.pending.length > 0,

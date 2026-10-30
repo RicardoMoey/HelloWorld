@@ -396,6 +396,7 @@
       const maxMs = kind === 'laser' ? 200 : (L / (TPS[kind] || 20)) * 1000 + 300;
       await Promise.race([flight, wait(maxMs)]);
     }
+    missNote(C, B, ev, sh);
     if (ev.shots > 1 && ev.round < ev.shots - 1) await wait(DUR.between);
     else if (sh) {
       wait(DUR.shotHold).then(() => {
@@ -404,6 +405,21 @@
       });
     }
   };
+
+  /* tiro dos nossos a um alienígena que não lhe acertou (nenhuma bala da rajada): «falhou» por cima do alvo — o
+     número de dano diz o acerto, isto diz o falhanço (munição explosiva fica de fora: a explosão fala por si) */
+  function missNote(C, B, ev, sh) {
+    if (!OV.FX || !sh || sh.side !== 'xcom' || ev.targetId === null || ev.targetId === undefined) return;
+    const t = unit(B, ev.targetId);
+    if (!t || t.side === 'xcom' || !t.onMap) return;
+    const am = OV.Data.items[ev.ammo] || {};
+    if ((am.radius | 0) > 0) return;
+    const hit = !!ev.hit && ev.hit.kind === 'unit' && ev.hit.unitId === ev.targetId;
+    if (!(ev.round > 0)) C.burstHit = false;
+    C.burstHit = C.burstHit || hit;
+    if ((ev.round | 0) < (ev.shots | 0 || 1) - 1 || C.burstHit) return;
+    OV.FX.spawn('damage', unitVoxel(t, 'head'), { text: OV.T('hud.fx.miss'), colour: 0xe8eef4, label: true });
+  }
 
   H.melee = async function (C, B, ev) {
     const at = unit(B, ev.attackerId);

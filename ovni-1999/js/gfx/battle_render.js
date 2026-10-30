@@ -25,7 +25,8 @@
    Névoa: tiles por descobrir a negro (map.disc), descobertos mas fora de vista a 55 % + dessaturados; inimigos só
    se vistos pela X-COM (B._.visible / u.visible / u.vis, lidos com cautela: sem informação desenha todos).
    Luz: B._.light (0..15) quando calculada pela LOS; senão uma aproximação cosmética local (ambiente + fontes).
-   pick(view, px, py) → {x, y, z, unitId|null}|null ; bounds(B) ; centerOn(view, x, y, z) ; markDirty(i?) ;
+   pick(view, px, py, B?, {hostileFirst, tol}?) → {x, y, z, unitId|null}|null ; view.target.risk = [unitId] aliados perto
+   da linha de tiro (anel tracejado + triângulo «!»); view.unitTag = {unitId, text} etiqueta com o nome por cima ; bounds(B) ; centerOn(view, x, y, z) ; markDirty(i?) ;
    reset(B) (nova batalha: estado do zero + prewarm em segundo plano) ; prewarm(B, opts?) ; warmStats() ;
    labels() → [{x0,y0,x1,y1,text}] e unitRects() → [{unitId,x0,y0,x1,y1}] do último fotograma (px CSS) */
 (function (OV) {
@@ -663,8 +664,11 @@
       const ti = (lz * m.h + cy) * m.w + cx;
       const bx = Math.max(0, Math.min(m.w - 1, Math.round(fx))), by = Math.max(0, Math.min(m.h - 1, Math.round(fy)));
       const ownTile = (lz * m.h + by) * m.w + bx;
-      if (u.side !== 'xcom' && !F.revealAll && !forced && !(m.disc[ownTile] & 1)) continue;
-      const rec = { u, a, fx, fy, fz, dir, size, ownTile };
+      /* inimigo visto numa casa ainda por descobrir (visto por uma janela, de um 2×2 só uma parte à vista): desenha-se
+         na mesma — e por cima de tudo, em transparência (drawGhosts) — senão o HUD contava «1» e o mapa não o mostrava */
+      const seenNow = u.side !== 'xcom' && !F.revealAll && seenByXcom(B, u);
+      if (u.side !== 'xcom' && !F.revealAll && !forced && !seenNow && !(m.disc[ownTile] & 1)) continue;
+      const rec = { u, a, fx, fy, fz, dir, size, ownTile, unknown: !F.revealAll && !(m.disc[ti] & 1 && m.disc[ownTile] & 1) };
       const list = unitsAt.get(ti);
       if (list) list.push(rec);
       else unitsAt.set(ti, [rec]);
@@ -763,7 +767,11 @@
             const spr = tileSpr(st, S, nth, st.variant[i], 0);
             if (spr) { TS.blitDev(ctx, spr, X, Y, S, dark, grayA); statsInfo.sprites++; }
           }
-          if (!(disc & 1)) continue;
+          if (!(disc & 1)) {
+            const ul0 = unitsAt.get(i);
+            if (ul0 && !DBG.noUnits) for (const r of ul0) drawUnit(ctx, B, F, st, r, rects, lvlDim, glows);
+            continue;
+          }
           const items = itemsAt.get(i);
           if (items && OV.ItemSprites) {
             const n = Math.min(3, items.length);
@@ -928,18 +936,68 @@
     for (const q of rects) {
       const r = q.rec;
       if (!r || !r.spr || !US) continue;
-      if (occluded(B, F, r)) {
-        // o soldado selecionado (quem dispara) e o alvo apontado veem-se melhor através das paredes, com o anel
+      if (r.unknown || occluded(B, F, r)) {
+        // o soldado selecionado (quem dispara), o alvo apontado e os inimigos veem-se melhor através das paredes
         const sel = q.unitId === F.view.selectedId;
         const tgt = !!F.view.target && F.view.target.toI >= 0 && q.hostile && q.rec && tileOfRec(B, q.rec) === F.view.target.toI;
         ctx.save();
-        ctx.globalAlpha = sel || tgt ? 0.72 : 0.42;
+        ctx.globalAlpha = sel || tgt ? 0.72 : q.hostile ? 0.6 : 0.42;
         if (sel) US.selectionRing(ctx, r.X, r.Y, F.S, PAL.select, r.size);
         US.blit(ctx, r.spr, r.X, r.Y, F.S, 0, 0);
         ctx.restore();
+        // inimigo tapado: o losango (forma própria) também por cima da parede
+        if (q.hostile) hostileRing(ctx, r.X, r.Y, F.S, r.size, F);
       }
       if (q.hostile) hostileChevron(ctx, F, q);
     }
+    // aliados perto da linha de tiro (ou nela): marca de perigo por cima de tudo
+    const risk = F.view.target && Array.isArray(F.view.target.risk) ? F.view.target.risk : null;
+    if (risk && risk.length) for (const q of rects) if (risk.indexOf(q.unitId) >= 0) riskMark(ctx, F, q);
+    // etiqueta com o nome do inimigo centrado com 1–0 (ou escolhido no HUD)
+    const tag = F.view.unitTag;
+    if (tag && tag.text) {
+      const q = rects.find((x) => x.unitId === tag.unitId);
+      if (q) {
+        const d = F.dpr;
+        const y = q.Y - q.hgt * d - (q.rec && q.rec.size > 1 ? 4 : 18) * F.S - 22 * d * (F.ts || 1);
+        pill(ctx, F, q.X, y, String(tag.text), PAL.target);
+      }
+    }
+  }
+  /* aliado em risco: anel tracejado aos pés e um triângulo com «!» por cima da cabeça (forma + cor da paleta 'out') */
+  function riskMark(ctx, F, q) {
+    const d = F.dpr, S = F.S, big = q.rec && q.rec.size > 1;
+    const X = q.X, Y = q.Y + (big ? 16 * S : 0), rx = (big ? 34 : 18) * S;
+    const col = PAL.out;
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(X, Y, rx, rx / 2, 0, 0, TAU);
+    ctx.lineWidth = Math.max(1, 3.4 * S);
+    ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+    ctx.stroke();
+    ctx.setLineDash([Math.max(2, 4 * S), Math.max(2, 3 * S)]);
+    ctx.lineWidth = Math.max(1, 2 * S);
+    ctx.strokeStyle = css(col);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    const ty = q.Y - q.hgt * d - 14 * d, w = Math.max(6 * d, 8 * S);
+    ctx.beginPath();
+    ctx.moveTo(X, ty - w * 1.6);
+    ctx.lineTo(X + w, ty);
+    ctx.lineTo(X - w, ty);
+    ctx.closePath();
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = 3 * d;
+    ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+    ctx.stroke();
+    ctx.fillStyle = css(col);
+    ctx.fill();
+    ctx.fillStyle = '#000';
+    ctx.font = 'bold ' + Math.round(w * 1.25) + 'px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('!', X, ty - w * 0.55);
+    ctx.restore();
   }
   // seta para baixo por cima da cabeça de um inimigo à vista (forma própria: não depende da cor)
   function hostileChevron(ctx, F, q) {
@@ -1398,12 +1456,30 @@
   }
 
   // ---- picking, limites e câmara -------------------------------------------------------------------------------
-  function pick(view, px, py, Bopt) {
+  /* opts.hostileFirst (a apontar/lançar): a caixa de um inimigo à vista ganha a qualquer unidade desenhada à frente
+     dele (o próprio atirador colado ao alvo), com opts.tol px CSS de folga à volta (toque); se várias servirem, a
+     de centro mais perto do ponto */
+  function pickHostile(rects, px, py, tol) {
+    let best = null, bd = Infinity;
+    for (const r of rects) {
+      if (!r.hostile) continue;
+      if (px < r.x0 - tol || px > r.x1 + tol || py < r.y0 - tol || py > r.y1 + tol) continue;
+      const cx = (r.x0 + r.x1) / 2, cy = (r.y0 + r.y1) / 2;
+      const dd = (px - cx) * (px - cx) + (py - cy) * (py - cy);
+      if (dd < bd) { bd = dd; best = r; }
+    }
+    return best;
+  }
+  function pick(view, px, py, Bopt, opts) {
     const B = Bopt || (last && last.B);
     if (!B) return null;
     const m = B.map;
     const cam = view.cam;
     const sh = OV.FX && OV.FX.offset ? OV.FX.offset() : { x: 0, y: 0 };
+    if (last && last.B === B && opts && opts.hostileFirst) {
+      const h = pickHostile(last.rects, px, py, Math.max(0, +opts.tol || 0));
+      if (h) return { x: h.x, y: h.y, z: h.z, unitId: h.unitId };
+    }
     if (last && last.B === B) {
       // a mover, a cabeça de um soldado não tapa o tile atrás dele (só o corpo seleciona)
       const moving = !view.cursor || view.cursor === 'move' || view.cursor === 'none';
@@ -1585,7 +1661,7 @@
   }
 
   OV.BattleRender = {
-    draw, pick, bounds, centerOn, clampCam, markDirty, clearCache, reset, prewarm,
+    draw, pick, pickHostile, bounds, centerOn, clampCam, markDirty, clearCache, reset, prewarm,
     warmStats: () => Object.assign({}, warmInfo, { scales: warmInfo.scales.slice() }),
     stats: () => Object.assign({}, statsInfo),
     // etiquetas (caminho, alvo, arremesso) e caixas das unidades desenhadas no último fotograma, em px CSS

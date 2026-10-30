@@ -174,7 +174,8 @@ module.exports = function (OV, t) {
     t.ok(/const KB_HINT_MS = 6000;/.test(ui) && /case '\?': showKbHint\(\); openKeys\(\); return true;/.test(ui), 'dica 6 s por turno; ? volta a mostrá-la');
     const gfx = read('js/gfx/battle_render.js');
     t.ok(/function labelSide\(B, F, T, X, Y, gap, wMax, box\)/.test(gfx) && /const side = labelSide\(B, F, T, X, Y, gap, wMax, box\);/.test(gfx), 'lado oposto ao atirador');
-    t.ok(/ctx\.globalAlpha = sel \|\| tgt \? 0\.72 : 0\.42;/.test(gfx), 'atirador e alvo mais visíveis através das paredes');
+    // ronda 4: os inimigos tapados também ficam mais nítidos (0,6) e com o losango
+    t.ok(/ctx\.globalAlpha = sel \|\| tgt \? 0\.72 : q\.hostile \? 0\.6 : 0\.42;/.test(gfx), 'atirador e alvo mais visíveis através das paredes');
     const css = read('css/battle.css');
     t.ok(/@media \(hover: none\) \{\s*\.inv-equip \.eq-grid \.eq-main \.inv-head\.eq \.eq-btns \.btn \{ min-height: 36px; \}/.test(css), 'botões do Equipar ≥ 36 px no toque');
     t.ok(/\.inv-equip \.eq-grid \.eq-main \.eq-stores \{ flex: 1 1 260px; min-height: 260px; \}/.test(css) && /\.eq-stores-list \{ flex: 1; min-height: 0; max-height: none; \}/.test(css), 'armazém com a altura que sobra no retrato');

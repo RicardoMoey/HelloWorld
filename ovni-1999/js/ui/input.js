@@ -8,7 +8,8 @@
      'secondary' {x,y,mods}                 botão direito, ctrl+clique (Mac), toque de dois dedos, toque longo
      'dragstart'/'drag'/'dragend' {x,y,dx,dy,button,pointerType}  arrasto (dx,dy = delta do ponteiro)
      'pan'       {cx,cy}                    mover a câmara (px CSS; positivo = câmara para a direita/baixo)
-     'zoom'      {factor,x,y}               zoom multiplicativo ancorado em (x,y)
+     'zoom'      {factor,x,y,gid?,scale?}   zoom multiplicativo ancorado em (x,y); na pinça, gid = gesto e scale =
+                                            escala absoluta desde o início do zoom desse gesto (preferir zoom0·scale)
      'wheelnotch'{delta,x,y}                roda de rato "clássica" (±1 por entalhe): nível ou zoom (decide a cena)
      'key'       {key,code,mods,repeat}     a cena devolve true se consumiu (preventDefault)
      'keyup'     {key,code}
@@ -21,7 +22,7 @@
   'use strict';
 
   const isMac = /Mac|iPhone|iPad|iPod/.test((typeof navigator !== 'undefined' && (navigator.platform || navigator.userAgent)) || '');
-  const DRAG_PX = 5, LONG_MS = 450, DBL_MS = 320, PINCH_DEAD = 0.06;
+  const DRAG_PX = 5, LONG_MS = 450, DBL_MS = 320, PINCH_DEAD = 0.06, PINCH_FRAMES = 2;
 
   const I = {
     isMac,
@@ -34,6 +35,32 @@
     _streakTP: false, // a rajada atual contém eventos de trackpad
   };
   const WHEEL_STREAK_MS = 150, TP_QUIET_MS = 300;
+
+  /* passo da pinça (puro, testado em Node): st = {d0, d, mx, my, zooming, over, base}; d = distância atual entre os
+     dedos e (mx, my) o ponto médio → {zoom: {factor, scale}|null, pan: {cx, cy}|null}. O zoom só arranca quando a
+     distância se afasta mais de PINCH_DEAD da inicial em PINCH_FRAMES passos seguidos: um dedo cuja amostra chega um
+     fotograma atrasada (iPad, Chrome) não conta como pinça. Depois, scale = d / distância inicial é absoluto para o
+     gesto inteiro — quem recebe faz zoom0 · scale, e um corte no limite (zoom 2) não se transforma num zoom out. */
+  I.pinchStep = function (st, d, mx, my) {
+    const out = { zoom: null, pan: null };
+    if (!st.zooming && st.d0 > 10) {
+      st.over = Math.abs(d / st.d0 - 1) > PINCH_DEAD ? (st.over | 0) + 1 : 0;
+      if (st.over >= PINCH_FRAMES) {
+        st.zooming = true;
+        st.base = st.d0;
+        st.d = st.d0;
+      }
+    }
+    if (st.zooming && st.d > 10 && Math.abs(d - st.d) > 0.5) {
+      out.zoom = { factor: d / st.d, scale: d / st.base };
+      st.d = d;
+    }
+    if (mx !== st.mx || my !== st.my) out.pan = { cx: -(mx - st.mx), cy: -(my - st.my) };
+    st.mx = mx;
+    st.my = my;
+    return out;
+  };
+  let pinchGid = 0;
 
   // classificação de um evento de roda: {notch} (entalhe de rato) ou deslocação contínua (trackpad / roda livre)
   I.classifyWheel = function (e, now) {
@@ -91,6 +118,12 @@
       const p = pos(e);
       I.lastPointerType = e.pointerType;
       if (e.pointerType === 'touch') {
+        // 1.º dedo de um gesto novo: nenhum dedo antigo (sem pointerup, perdido) pode entrar na pinça
+        if (e.isPrimary) {
+          touches.clear();
+          if (pinch && pinch.raf) cancelAnimationFrame(pinch.raf);
+          pinch = null;
+        }
         touches.set(e.pointerId, { x: p.x, y: p.y, x0: p.x, y0: p.y, t0: performance.now() });
         try { canvas.setPointerCapture(e.pointerId); } catch (_) { /* ignora */ }
         if (touches.size === 2) {
@@ -99,7 +132,7 @@
           press = null;
           const [a, b] = [...touches.values()];
           const d0 = Math.hypot(a.x - b.x, a.y - b.y);
-          pinch = { d0, d: d0, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2, moved: false, zooming: false, t0: performance.now(), raf: 0 };
+          pinch = { d0, d: d0, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2, moved: false, zooming: false, over: 0, base: d0, gid: ++pinchGid, t0: performance.now(), raf: 0 };
           return;
         }
         if (touches.size > 2) return;
@@ -127,9 +160,7 @@
       if (e.button === 1) e.preventDefault();
     });
 
-    /* pinça: o zoom só arranca quando a distância entre os dedos muda mais de PINCH_DEAD (fração) desde o início
-       do gesto — um deslize com dois dedos não mexe no zoom (no limite de zoom, o fator > 1 cortado e o < 1
-       seguinte faziam-no descer sozinho). Depois de arrancar, o fator é relativo ao fotograma anterior. */
+    // pinça: um passo por fotograma (I.pinchStep); 'zoom' leva gid (gesto) e scale (absoluto desde o início do zoom)
     function pinchStep() {
       if (!pinch) return;
       pinch.raf = 0;
@@ -137,20 +168,15 @@
       const [a, b] = [...touches.values()];
       const d = Math.hypot(a.x - b.x, a.y - b.y);
       const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
-      if (!pinch.zooming && pinch.d0 > 10 && Math.abs(d / pinch.d0 - 1) > PINCH_DEAD) {
-        pinch.zooming = true;
-        pinch.d = pinch.d0;
-      }
-      if (pinch.zooming && pinch.d > 10 && Math.abs(d - pinch.d) > 0.5) {
-        emit({ kind: 'zoom', factor: d / pinch.d, x: mx, y: my });
-        pinch.moved = true;
-        pinch.d = d;
-      }
-      if (mx !== pinch.mx || my !== pinch.my) {
-        emit({ kind: 'pan', cx: -(mx - pinch.mx), cy: -(my - pinch.my) });
+      const r = I.pinchStep(pinch, d, mx, my);
+      if (r.zoom) {
+        emit({ kind: 'zoom', factor: r.zoom.factor, scale: r.zoom.scale, gid: pinch.gid, x: mx, y: my });
         pinch.moved = true;
       }
-      pinch.mx = mx; pinch.my = my;
+      if (r.pan) {
+        emit({ kind: 'pan', cx: r.pan.cx, cy: r.pan.cy });
+        pinch.moved = true;
+      }
     }
     canvas.addEventListener('pointermove', (e) => {
       const p = pos(e);
@@ -211,6 +237,8 @@
     };
     canvas.addEventListener('pointerup', (e) => finish(e, false));
     canvas.addEventListener('pointercancel', (e) => finish(e, true));
+    // captura perdida sem pointerup (o sistema roubou o toque): o dedo sai do mapa de toques
+    canvas.addEventListener('lostpointercapture', (e) => { if (e.pointerType === 'touch' && touches.has(e.pointerId)) finish(e, true); });
     // toque: o navegador ainda gera um «click» de compatibilidade depois do pointerup, no elemento que estiver então
     // por baixo do dedo — se o toque abriu um modal ou uma janela, esse clique fantasma fechava-a (fundo) ou carregava
     // num botão. Cancelar o touchend no canvas suprime-o (os pointer events já trataram o toque).

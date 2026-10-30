@@ -516,6 +516,13 @@ try {
         await page.keyboard.press('ArrowRight');
         f = await focusKey();
       }
+      // ronda 4: as setas só vão para casas inteiramente para lá da aresta (sem saltos na diagonal) — no painel de
+      // informação, em baixo e a toda a largura, → não tem nada: sobe primeiro, como uma pessoa
+      if (f === prevF) {
+        await page.keyboard.press('ArrowUp');
+        await page.keyboard.press('ArrowRight');
+        f = await focusKey();
+      }
       prevF = f;
       trail.push(f.split('@')[0]);
       if (f === 'st:rifle') moved = true;
@@ -542,7 +549,8 @@ try {
         await page.keyboard.press('Enter');
         dropped = true;
       } else {
-        await page.keyboard.press(f === prevF ? 'ArrowUp' : 'ArrowLeft');
+        // ←; num botão do topo (Copiar/Auto-equipar/Esvaziar), ↓ desce às mãos
+        await page.keyboard.press(f === prevF ? 'ArrowUp' : /^(copy|paste|auto|clear)$/.test(f) ? 'ArrowDown' : 'ArrowLeft');
         prevF = f;
       }
     }

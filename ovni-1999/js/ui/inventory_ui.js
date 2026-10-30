@@ -17,7 +17,8 @@
      loadPlan(loadout) → {R, L}: {slot, k, type}|null (carregador que entra em cada arma, como BUnits.autoLoad),
      inWeapon(loadout) → {belt:Set(k), pack:Set(k)}, visibleIn(loadout, slot) → [tipos que ocupam espaço],
      eqMove(loadout, from, k, type, to) → {ok, lo, back[], label?}|{ok:false, reason}, settleOrder(loadout) → loadout
-     (ordem guardada: o carregador «na arma» que é o único compatível do cinto passa para o fim)}
+     (ordem guardada: o carregador «na arma» que é o único compatível do cinto passa para o fim),
+     navPick(rects, k, dir) → índice (setas do teclado: vizinho só para lá da aresta do atual; k = fica)}
      squad = [{id, name, rank, stats{str,tu,hp…}, armour, portraitSeed, female, nat, loadout{R,L,belt[],pack[]}}]
      stores = {tipoDeItem: quantidade}. Trabalha sobre cópias (sem UT; o armazém é a reserva) e chama
      onChange({loadouts: {id: loadout}, stores}) a cada alteração; quem chama aplica-as ao jogo.
@@ -262,6 +263,7 @@
   /* ---- motor de escolha: arrastar e largar + clicar/clicar + teclado -----------------------------------------
      api = {preview(src, drop) → {ok, label, bad?, warn?}|null, commit(src, drop, p), canPick(src), busy(),
             changed(sel, hot, hotP), background()}  — fontes com data-src, destinos com data-drop */
+  const HOLD_MS = 300; // toque longo que levanta um objeto de uma lista que rola
   function makePicker(root, api) {
     const P = { sel: null, hot: null, hotP: null, drag: null, press: null };
     let ghost = null;
@@ -399,9 +401,11 @@
       ghost.classList.add('inv-ghost');
       ghost.classList.remove('picked', 'kfocus', 'drop-ok', 'drop-bad', 'drop-warn', 'hot');
       const r = pr.el.getBoundingClientRect();
-      ghost.style.width = r.width + 'px';
+      // linha do armazém (larga como a lista): o fantasma fica do tamanho de um cartão, centrado no dedo/cursor
+      const w = pr.el.classList.contains('row') ? Math.min(r.width, 260) : r.width;
+      ghost.style.width = w + 'px';
       ghost.style.height = r.height + 'px';
-      pr.dx = pr.x0 - r.left;
+      pr.dx = w < r.width ? w / 2 : pr.x0 - r.left;
       pr.dy = pr.y0 - r.top;
       root.appendChild(ghost);
       pr.el.classList.add('dragging');
@@ -417,16 +421,37 @@
       P.drag = null;
     }
 
+    /* toque: as linhas do armazém (e as listas que rolam) têm touch-action: pan-y — arrastar na vertical rola a
+       lista. Segurar o dedo HOLD_MS sem mexer levanta o objeto (fantasma + som) e, a partir daí, o touchmove é
+       cancelado (ouvinte não passivo) para a lista não rolar; na horizontal o arrasto começa logo, como no rato. */
     function onDown(e) {
       if (e.button !== 0 || api.busy()) return;
       const srcEl = e.target.closest('[data-src]');
-      P.press = { x0: e.clientX, y0: e.clientY, id: e.pointerId, node: e.target, src: srcEl && root.contains(srcEl) ? srcEl.dataset.src : null, el: srcEl, type: e.pointerType };
+      const pr = { x0: e.clientX, y0: e.clientY, id: e.pointerId, node: e.target, src: srcEl && root.contains(srcEl) ? srcEl.dataset.src : null, el: srcEl, type: e.pointerType };
+      P.press = pr;
       if (srcEl) e.preventDefault();
+      clearTimeout(P.holdT);
+      if (pr.type === 'touch' && pr.src) {
+        P.holdT = setTimeout(() => {
+          if (P.press !== pr || P.drag || api.busy() || !api.canPick(pr.src)) return;
+          pr.held = true;
+          if (OV.Dom.hideLongPress) OV.Dom.hideLongPress();
+          startDrag(pr);
+          moveGhost(pr.x0, pr.y0);
+          if (navigator.vibrate) try { navigator.vibrate(12); } catch (_) { /* ignora */ }
+        }, HOLD_MS);
+      }
     }
     function onMove(e) {
       const pr = P.press;
       if (pr && pr.id === e.pointerId) {
-        if (!P.drag && pr.src && api.canPick(pr.src) && Math.hypot(e.clientX - pr.x0, e.clientY - pr.y0) > 6) startDrag(pr);
+        const ddx = e.clientX - pr.x0, ddy = e.clientY - pr.y0;
+        // toque antes de segurar: na vertical é a lista a rolar (o navegador fica com o gesto)
+        if (!P.drag && pr.type === 'touch' && !pr.held && Math.hypot(ddx, ddy) > 6) {
+          clearTimeout(P.holdT);
+          if (Math.abs(ddy) >= Math.abs(ddx)) return;
+        }
+        if (!P.drag && pr.src && api.canPick(pr.src) && Math.hypot(ddx, ddy) > 6) startDrag(pr);
         if (P.drag) {
           moveGhost(e.clientX, e.clientY);
           const under = document.elementFromPoint(e.clientX, e.clientY);
@@ -441,6 +466,12 @@
       const pr = P.press;
       if (!pr || pr.id !== e.pointerId) return;
       P.press = null;
+      clearTimeout(P.holdT);
+      // toque longo largado no sítio: fica escolhido (o toque seguinte no destino pousa-o)
+      if (P.drag && pr.held && Math.hypot(e.clientX - pr.x0, e.clientY - pr.y0) < 10) {
+        endDrag();
+        return;
+      }
       if (P.drag) {
         const under = document.elementFromPoint(e.clientX, e.clientY);
         const r = resolve(under);
@@ -462,13 +493,19 @@
       activate(pr.node);
     }
     function onCancel(e) {
+      clearTimeout(P.holdT);
       if (P.press && P.press.id === e.pointerId) P.press = null;
       if (P.drag) {
         endDrag();
         select(null, true);
       }
     }
+    // objeto levantado pelo toque longo (ou já a arrastar): o dedo arrasta o objeto, não a lista
+    const onTouchMove = (e) => {
+      if ((P.drag || (P.press && P.press.held)) && e.cancelable) e.preventDefault();
+    };
     root.addEventListener('pointerdown', onDown);
+    root.addEventListener('touchmove', onTouchMove, { passive: false });
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
     window.addEventListener('pointercancel', onCancel);
@@ -479,6 +516,7 @@
     P.decorate = decorate;
     P.setHotNode = (node) => setHot(node ? clickTarget(node) : null);
     P.destroy = function () {
+      clearTimeout(P.holdT);
       endDrag();
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
@@ -498,40 +536,54 @@
   /* zonas: cabeçalho, boneco (mãos, cinto, mochila), chão/armazém, painel de informação, equipa. ↑/↓ ficam na
      zona enquanto houver para onde ir (↓ da mão direita vai ao cinto, não às ações); ←/→ preferem a mesma linha. */
   const NAV_ZONES = '.inv-head, .inv-doll, .inv-ground, .inv-info, .eq-squad';
+  /* vizinho para uma seta (pura, testada em Node): rects = [{left, top, right, bottom, zone}], k = o atual → índice
+     do destino ou k (fica onde está). Só contam casas que estão inteiras para lá da aresta do atual (com EDGE_TOL px
+     de folga): ↓ da mão nunca vai à outra mão (mesma linha) e ← da mão esquerda não desce para o cinto. ←/→ ficam
+     na mesma linha (sobreposição vertical) ou num cone estreito; ↑/↓ vão à linha mais próxima da mesma zona e, nela,
+     ao vizinho mais próximo na horizontal. */
+  const EDGE_TOL = 6;
+  function navPick(rects, k, dir) {
+    const a = rects[k];
+    if (!a) return 0;
+    const horiz = dir === 'left' || dir === 'right';
+    const ax = (a.left + a.right) / 2, ay = (a.top + a.bottom) / 2;
+    const cands = [];
+    rects.forEach((b, j) => {
+      if (j === k) return;
+      const gap = dir === 'left' ? a.left - b.right : dir === 'right' ? b.left - a.right : dir === 'up' ? a.top - b.bottom : b.top - a.bottom;
+      if (gap < -EDGE_TOL) return;
+      const dx = (b.left + b.right) / 2 - ax, dy = (b.top + b.bottom) / 2 - ay;
+      const main = horiz ? Math.abs(dx) : Math.abs(dy), side = horiz ? Math.abs(dy) : Math.abs(dx);
+      const overlap = horiz ? Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) : Math.min(a.right, b.right) - Math.max(a.left, b.left);
+      const ov = overlap > 4;
+      if (horiz && !ov && side > main * 0.75) return;
+      cands.push({ j, gap: Math.max(0, gap), main, side, ov, same: (b.zone || null) === (a.zone || null) });
+    });
+    const rowMin = horiz ? 0 : Math.min(Infinity, ...cands.filter((c) => c.same).map((c) => c.gap));
+    let best = k, bd = Infinity;
+    for (const c of cands) {
+      let d;
+      if (horiz) d = ((c.ov ? 0 : 2) + (c.same ? 0 : 1)) * 1e6 + (c.ov ? c.main : c.main + c.side * 3);
+      else if (c.same) d = (c.gap <= rowMin + 12 ? 0 : 1e5 + c.gap * 10) + (c.ov ? c.side : 1e4 + c.side);
+      else d = 2e6 + (c.ov ? c.gap + c.side * 0.1 : 1e5 + c.gap + c.side * 3);
+      if (d < bd) { bd = d; best = c.j; }
+    }
+    return best;
+  }
   function navMove(scope, cur, dir) {
     const list = navTargets(scope);
     if (!list.length) return null;
     if (!cur || !scope.contains(cur)) return list[0];
-    const a = cur.getBoundingClientRect();
-    const ax = a.left + a.width / 2, ay = a.top + a.height / 2;
-    const horiz = dir === 'left' || dir === 'right';
-    const zone = cur.closest(NAV_ZONES);
-    const cands = [];
-    for (const n of list) {
-      if (n === cur) continue;
-      const b = n.getBoundingClientRect();
-      const dx = b.left + b.width / 2 - ax, dy = b.top + b.height / 2 - ay;
-      let main, side;
-      if (dir === 'left') { main = -dx; side = Math.abs(dy); } else if (dir === 'right') { main = dx; side = Math.abs(dy); } else if (dir === 'up') { main = -dy; side = Math.abs(dx); } else { main = dy; side = Math.abs(dx); }
-      if (main <= 4) continue;
-      // sobreposição no eixo perpendicular (mesma linha ou coluna)
-      const overlap = horiz ? Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) : Math.min(a.right, b.right) - Math.max(a.left, b.left);
-      // ←/→ fora da linha: só dentro de um cone (nunca uma casa muito mais abaixo ou acima)
-      if (horiz && overlap <= 4 && side > main * 2.5) continue;
-      cands.push({ n, main, side, overlap: overlap > 4, same: n.closest(NAV_ZONES) === zone });
+    let k = list.indexOf(cur);
+    if (k < 0) {
+      list.push(cur);
+      k = list.length - 1;
     }
-    // ↑/↓ dentro da zona: a linha mais próxima primeiro (da mão vai-se ao cinto, não à mochila nem às ações) e,
-    // nela, o vizinho mais próximo na horizontal
-    const rowMin = horiz ? 0 : Math.min(Infinity, ...cands.filter((c) => c.same).map((c) => c.main));
-    let best = null, bd = Infinity;
-    for (const c of cands) {
-      let d;
-      if (horiz) d = ((c.overlap ? 0 : 2) + (c.same ? 0 : 1)) * 1e6 + (c.overlap ? c.main : c.main + c.side * 3);
-      else if (c.same) d = (c.main <= rowMin + 12 ? 0 : 1e5 + c.main * 10) + (c.overlap ? 0 : c.side);
-      else d = 2e6 + (c.overlap ? c.main : 1e5 + c.main + c.side * 3);
-      if (d < bd) { bd = d; best = c.n; }
-    }
-    return best || cur;
+    const rects = list.map((n) => {
+      const r = n.getBoundingClientRect();
+      return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, zone: n.closest(NAV_ZONES) };
+    });
+    return list[navPick(rects, k, dir)] || cur;
   }
   function setFocus(V, node) {
     if (V.focusEl && V.focusEl !== node) V.focusEl.classList.remove('kfocus');
@@ -2225,7 +2277,7 @@
     isOpen: () => !!V,
     refresh() { if (V) render(); },
     equipScreen,
-    model: { autoLoadout, armedLo, loadPlan, inWeapon, visibleIn, eqMove, settleOrder },
+    model: { autoLoadout, armedLo, loadPlan, inWeapon, visibleIn, eqMove, settleOrder, navPick },
     debug: {
       state() {
         if (!V) return { open: false };
