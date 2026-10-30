@@ -343,3 +343,10 @@ table.scr-ktable { width: 100%; border-collapse: collapse; font-size: 13.5px; li
   .scr-mi-hint { font-size: 11.5px; }
   .scr-logo-big { font-size: clamp(36px, 10vh, 80px); }
 }
+
+/* ---- ronda de personas 4 ----------------------------------------------------------------------------------------- */
+/* resumo da Batalha Rápida: «Mês» abaixo do recomendado para a missão (forma ⚠ sempre, cor da paleta) */
+.scr-qb-warn { margin: 8px 0 0; padding: 7px 10px; font-size: 13px; font-weight: 700; line-height: 1.4; color: var(--red); background: rgba(255, 79, 67, 0.08); border: 1px solid currentColor; border-left-width: 3px; border-radius: 3px; }
+.scr-qb-warn::before { content: '⚠ '; }
+/* toque longo no iPad: sem teclado, a etiqueta não mostra a tecla («Ajoelhar / levantar», sem «K») */
+@media (hover: none) { .lp-tip .key, .lp-tip kbd { display: none; } }

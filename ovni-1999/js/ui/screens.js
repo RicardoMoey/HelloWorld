@@ -14,8 +14,9 @@
                        spareClip(soldado da missão) → bool (+1 carregador de reserva se a Força deixar)
                        trimToStr(soldado da missão, armazém?) → [ids retirados] (extras para a nave até peso ≤ Força)
                        defaultQuick, openOptions, saves, resumeGame, missionRating, battleExit,
-                       crewText({min,max}) → texto ; lossCauses(B) → {enemy, friendly, wounds, other, total, main, tip}
-                       lossNotes(B, resultado, {campaign?}) → [nós DOM] (lossCauses também dá weak/race: armas fracas),
+                       crewText({min,max}) → texto ; lossCauses(B, {mission?}) → {enemy, friendly, wounds, other, total, main,
+                       tip, civ (civis mortos pela X-COM)} ; monthWarn(q) → texto|null (Mês abaixo de MONTH_MIN da missão)
+                       lossNotes(B, resultado, {campaign?, debrief?, mission?}) → [nós DOM] (lossCauses também dá weak/race),
                        loadoutFor(nível, k, noite, pesada?, kitMédico?) — sem o 5.º argumento, kit pelas posições 1 e 5,
                        ui: {makeScreen, header, panelSection, seg, goBack, portraitEl, itemIconEl, unitSpriteEl, canvasCopy,
                             statLegend(['tu', …]) → <p> «UT Unidades de Tempo · …», scrollKeys(ev, caixa) → bool} } */
@@ -39,6 +40,8 @@
   const uiRng = OV.RNG.create((Date.now() ^ 0x5c4ee5) >>> 0);
   const reduceMotion = () => (OV.Game && typeof OV.Game.reduceMotion === 'function' ? OV.Game.reduceMotion() : typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches);
   const isTouch = () => !!(OV.Input && OV.Input.lastPointerType === 'touch') || (typeof matchMedia === 'function' && matchMedia('(hover: none) and (pointer: coarse)').matches);
+  // aparelho só de toque (iPad sem trackpad): as opções do rato (margens, roda) não se mostram
+  const mouseLess = () => typeof matchMedia === 'function' && matchMedia('(hover: none) and (pointer: coarse)').matches;
   // texto com variante de toque (iPad) quando existe a chave «….touch»
   const TT = (k, p) => (isTouch() && OV.T.has(k + '.touch') ? T(k + '.touch', p) : T(k, p));
   const dpr = () => (OV.View && OV.View.dpr) || Math.min(2, (typeof devicePixelRatio === 'number' && devicePixelRatio) || 1);
@@ -49,6 +52,8 @@
   const UFO_TERRAINS = ['FARM', 'FOREST', 'JUNGLE', 'DESERT', 'MOUNTAIN', 'POLAR'];
   const TERRAINS = ['auto', 'FARM', 'FOREST', 'JUNGLE', 'DESERT', 'MOUNTAIN', 'POLAR', 'URBAN'];
   const TIMES = ['day', 'dusk', 'night'];
+  // mês mínimo recomendado na Batalha Rápida: com espingardas, Etéreos, Sectópodes e Mutões são quase invencíveis
+  const MONTH_MIN = { alienBase: 2, cydonia: 4 };
   const GAME_SCENES = { battlescape: 1, geoscape: 1, basescape: 1, dogfight: 1, equip: 1, inventory: 1, ufopaedia: 1 };
   const MY_SCENES = { menu: 1, quickbattle: 1, briefing: 1, qequip: 1, debrief: 1, options: 1, howto: 1, credits: 1 };
 
@@ -507,7 +512,10 @@
     return false;
   }
 
-  // spec.trap = seletor do painel de um diálogo sobreposto: foco preso nele (o resto inerte) e devolvido ao sair
+  /* spec.trap = seletor do painel de um diálogo sobreposto: foco preso nele (o resto inerte) e devolvido ao sair;
+     spec.scroll = seletor da área que ↑/↓/PageUp/PageDown/Início/Fim deslocam quando nenhuma outra tecla da cena as
+     usa (por omissão o corpo do briefing, também o da campanha: o foco começa em «Iniciar missão») */
+  const SCROLL_DEFAULT = '.scr-brief-body';
   function makeScreen(id, spec) {
     let release = null;
     const sc = {
@@ -546,6 +554,10 @@
         if (ev.repeat && (ev.key === 'Escape' || ev.key === 'Enter')) return true;
         if (spec.keys && spec.keys(ev, sc)) return true;
         if (sc.root && arrowNav(sc.root, ev)) return true;
+        if (sc.root && spec.scroll !== false) {
+          const box = sc.root.querySelector(spec.scroll || SCROLL_DEFAULT);
+          if (box && scrollKeys(ev, box)) return true;
+        }
         if (ev.key === 'Escape' && spec.back) { sfx('ui_click'); spec.back(sc); return true; }
         return false;
       },
@@ -913,6 +925,13 @@
     return tune('SHADE_DAY', 0);
   }
 
+  // aviso do resumo quando o «Mês» está abaixo do recomendado para a missão (null se não há aviso)
+  function monthWarn(q) {
+    const min = MONTH_MIN[q && q.kind] | 0;
+    if (!q || (q.month | 0) >= min) return null;
+    return T('scr.qb.warn.month', { tier: T('scr.tier.' + OV.U.clamp(q.month | 0, 0, 4)), kind: T('scr.qb.kind.' + q.kind), n: min });
+  }
+
   // definições rápidas → {mission, meta}
   function buildQuickMission(q) {
     const qs = sanitizeQuick(q);
@@ -955,9 +974,12 @@
      Também: ff = [{victim, killer, how: 'shot'|'blast'|'self', reaction}] (quem atingiu quem; reaction = morto no turno
      do outro lado, quando o motor o regista em u.deathSide), squad/aliens = soldiers X-COM e alienígenas da missão,
      tip2 = 2.ª dica (feridas com kit médico a bordo) e costly = vitória cara (metade da equipa, ou 3 em Recruta). */
-  function lossCauses(B) {
-    const out = { enemy: 0, friendly: 0, wounds: 0, other: 0, total: 0, main: null, tip: null, tip2: null, ff: [], squad: 0, aliens: 0, costly: false };
+  function lossCauses(B, o) {
+    const squad = o && o.mission && Array.isArray(o.mission.squad) ? o.mission.squad : null;
+    const out = { enemy: 0, friendly: 0, wounds: 0, other: 0, total: 0, main: null, tip: null, tip2: null, ff: [], squad: 0, aliens: 0, costly: false, civ: 0 };
     if (!B || !Array.isArray(B.units)) return out;
+    // civis mortos pelas armas da X-COM (a contagem do motor, a mesma da linha de pontos do relatório)
+    out.civ = (B.stats && B.stats.civKilledByXcom) | 0;
     const byId = new Map(B.units.map((u) => [u.id, u]));
     for (const u of B.units) {
       if (u.origSide === 'alien') out.aliens++;
@@ -968,7 +990,7 @@
       const k = u.killedBy !== null && u.killedBy !== undefined ? byId.get(u.killedBy) : null;
       if (k && (k.origSide === 'xcom' || k === u)) {
         out.friendly++;
-        const how = k === u ? 'self' : friendlyHow(B, u, k);
+        const how = k === u ? 'self' : friendlyHow(B, u, k, squad);
         out.ff.push({ victim: u.name || '', killer: k.name || '', how, reaction: how === 'shot' && !!u.deathSide && u.deathSide !== 'xcom' });
       } else if (k && k.origSide === 'alien') out.enemy++;
       else if (u.deathCause === 'wounds' || u.deathCause === 'burn') out.wounds++;
@@ -995,22 +1017,50 @@
     return out;
   }
   /* como morreu um soldado às mãos de um colega: 'blast' (granada, foguete, Blaster, explosão em cadeia, fogo) ou
-     'shot' (bala, laser, plasma). O motor marca com 'shot' também os foguetes: decide a arma na mão do atirador (com
-     munição explosiva = 'blast'); sem arma conhecida, 'shot' fica tiro e outra causa fica explosão. */
-  function friendlyHow(B, u, k) {
+     'shot' (bala, laser, plasma). O motor marca com 'shot' também os foguetes: decide o tipo de dano do golpe fatal
+     (u.deathDmg, quando o motor o guarda), senão a arma na mão do atirador (com munição explosiva = 'blast'); um
+     atirador que já morreu largou tudo, por isso conta a arma com que partiu (squad = mission.squad da missão, quando
+     o relatório a tem) ou, sem ela, as armas largadas junto ao seu cadáver; sem arma conhecida, 'shot' fica tiro e
+     outra causa fica explosão. */
+  const BLAST_DMG = { HE: 1, IN: 1, STUN: 1, SMOKE: 1 };
+  function friendlyHow(B, u, k, squad) {
     const c = u.deathCause;
     if (c && c !== 'shot') return 'blast';
+    if (u.deathDmg) return BLAST_DMG[u.deathDmg] ? 'blast' : 'shot';
     const Data = D();
+    const boom = (id) => ((Data.items[id] && Data.items[id].radius) | 0) > 0;
+    // arma (e munição, quando se sabe) explosiva? lança-foguetes já vazio: todas as munições da arma explodem
+    const blastGun = (type, ammoType) => {
+      const gd = Data.items[type];
+      if (!gd || gd.kind !== 'firearm') return null;
+      if ((gd.radius | 0) > 0) return true;
+      if (ammoType) return boom(ammoType);
+      return Array.isArray(gd.ammo) && gd.ammo.length > 0 && gd.ammo.every(boom);
+    };
     const items = new Map((B.items || []).map((it) => [it.id, it]));
+    let held = false;
     for (const h of ['R', 'L']) {
       const it = k.items && k.items[h] !== null && k.items[h] !== undefined ? items.get(k.items[h]) : null;
-      const gd = it && Data.items[it.type];
-      if (!gd || gd.kind !== 'firearm') continue;
-      const am = it.ammo && Data.items[it.ammo.type];
-      const boom = (id) => ((Data.items[id] && Data.items[id].radius) | 0) > 0;
-      // lança-foguetes já vazio (o único foguete saiu): todas as munições da arma explodem
-      const allBoom = !am && Array.isArray(gd.ammo) && gd.ammo.length > 0 && gd.ammo.every(boom);
-      if (((am && am.radius) | 0) > 0 || (gd.radius | 0) > 0 || allBoom) return 'blast';
+      const r = it ? blastGun(it.type, it.ammo && it.ammo.type) : null;
+      if (r === null) continue;
+      held = true;
+      if (r) return 'blast';
+    }
+    if (!held) {
+      const sid = k.soldierId !== null && k.soldierId !== undefined ? k.soldierId : k.id;
+      const s = (squad || (B.mission && B.mission.squad) || []).find((x) => x && x.soldierId === sid);
+      const lo = s && s.loadout;
+      const carried = lo ? (lo.belt || []).concat(lo.pack || []) : [];
+      for (const h of ['R', 'L']) {
+        if (!lo || !lo[h]) continue;
+        const gd = Data.items[lo[h]];
+        // munição levada para a arma: só explosiva (foguetes) ⇒ explosão
+        const ammo = gd && Array.isArray(gd.ammo) ? carried.filter((a) => gd.ammo.indexOf(a) >= 0) : [];
+        if (blastGun(lo[h], ammo.length && ammo.every(boom) ? ammo[0] : null)) return 'blast';
+      }
+      // sem a missão: o que largou ao morrer está no chão, no tile do cadáver
+      const corpse = !lo && k.status === 'dead' ? (B.items || []).find((it) => it.unitId === k.id && it.at !== null && it.at !== undefined) : null;
+      if (corpse && (B.items || []).some((it) => it !== corpse && it.at === corpse.at && (it.owner === null || it.owner === undefined) && blastGun(it.type, it.ammo && it.ammo.type))) return 'blast';
     }
     return c === 'shot' ? 'shot' : 'blast';
   }
@@ -1037,21 +1087,36 @@
   /* linhas do relatório: «N soldados mortos por fogo amigo: vítima ← tiro de atirador (reação)» e a dica (sem vitória,
      ou numa vitória cara com o título «Vitória cara — dica para a próxima:»); o.campaign: dica de investigação */
   const FF_SHOW = 3;
+  // pontos perdidos por cada civil morto pela X-COM (a regra de Battle.debrief: valor + 2 × valor/3); o.debrief: a linha real
+  function civPenalty(B, n, deb) {
+    const line = deb && Array.isArray(deb.lines) ? deb.lines.find((l) => l.key === 'bs.debrief.civKilledByXcom') : null;
+    if (line && (line.n | 0) > 0) return Math.abs(line.points | 0);
+    const v = (D().units.civilian_m && D().units.civilian_m.value) | 0 || 30;
+    return n * (v + 2 * OV.U.idiv(v, 3));
+  }
   function lossNotes(B, result, o) {
-    const c = lossCauses(B);
+    const c = lossCauses(B, o);
     const out = [];
     if (c.friendly) {
       const who = c.ff.slice(0, FF_SHOW).map((f) => T('scr.db.ff.' + f.how + (f.reaction ? '.r' : ''), { victim: f.victim, killer: f.killer }));
       if (c.ff.length > FF_SHOW) who.push(T('scr.db.ff.more', { n: c.ff.length - FF_SHOW }));
       out.push(el('p', { class: 'scr-cause bad', text: Tn('scr.db.friendly', c.friendly) + (who.length ? ' ' + who.join(' · ') : '') }));
     }
+    // civis mortos pelas armas da equipa: a causa de uma nota fraca numa vitória de terror
+    const civPts = c.civ ? civPenalty(B, c.civ, o && o.debrief) : 0;
+    if (c.civ) out.push(el('p', { class: 'scr-cause bad', text: Tn('scr.db.civ', c.civ, { pts: OV.U.fmtInt(civPts) }) }));
     const win = result === 'win';
+    const tips = [];
     if ((!win || c.costly) && c.tip) {
       const race = c.race && D().races[c.race];
       const key = c.tip === 'scr.db.tip.weapons' && o && o.campaign ? 'scr.db.tip.weapons.cp' : c.tip;
-      const tips = [TT(key, { race: race ? T(race.pluralKey || race.nameKey) : '', n: c.squad, aliens: c.aliens })];
+      tips.push(TT(key, { race: race ? T(race.pluralKey || race.nameKey) : '', n: c.squad, aliens: c.aliens }));
       if (c.tip2) tips.push(TT(c.tip2));
-      out.push(el('p', { class: 'scr-tip' + (win ? ' costly' : ''), role: 'note' }, el('b', { text: T(win ? 'scr.db.tip.costly' : 'scr.db.tip') }), ' ', tips.join(' ')));
+    }
+    if (c.civ) tips.push(TT('scr.db.tip.civ', { pts: OV.U.fmtInt(Math.round(civPts / c.civ)) }));
+    if (tips.length) {
+      const costly = win && c.costly && !!c.tip;
+      out.push(el('p', { class: 'scr-tip' + (costly ? ' costly' : ''), role: 'note' }, el('b', { text: T(costly ? 'scr.db.tip.costly' : 'scr.db.tip') }), ' ', tips.join(' ')));
     }
     return out;
   }
@@ -1241,8 +1306,12 @@
     const controls = [];
     let summary = null, startBtn = null, reroll = null, seedInp = null, squadOut = null, squadInp = null, autoGo = !!urlQuick;
 
+    let bumped = false;
     function set(k, v) {
       q[k] = v;
+      // escolher Base Alienígena ou Cidónia sobe o «Mês» para o equipamento recomendado (pode voltar a baixá-lo)
+      bumped = false;
+      if (k === 'kind' && (q.month | 0) < (MONTH_MIN[v] | 0)) { q.month = MONTH_MIN[v]; bumped = true; }
       q = sanitizeQuick(q);
       refresh();
     }
@@ -1331,10 +1400,13 @@
           get: () => q.month, set: (v) => set('month', v), cls: 'months',
         });
         const monthNote = el('div', { class: 'scr-fnote' });
+        // aviso por baixo do «Mês» (onde se escolhe; no iPad vertical o resumo fica fora da vista)
+        const monthWarnEl = el('p', { class: 'scr-qb-warn hidden', role: 'note', 'aria-live': 'polite' });
         controls.push(cKind, cUfo, cTerrain, cTime, cDiff, cMonth,
           { refresh: () => { ufoNote.textContent = UFO_KINDS[q.kind] ? '' : T('scr.qb.ufo.none'); } },
           { refresh: () => { terrNote.textContent = KIND_TERRAIN[q.kind] ? T('scr.qb.terrain.fixed', { terrain: T('terrain.' + KIND_TERRAIN[q.kind]) }) : ''; } },
-          { refresh: () => { monthNote.textContent = T('scr.tier.' + q.month); } },
+          { refresh: () => { monthNote.textContent = T('scr.tier.' + q.month) + (bumped ? ' · ' + T('scr.qb.month.auto', { kind: T('scr.qb.kind.' + q.kind) }) : ''); } },
+          { refresh: () => { const w = monthWarn(q); monthWarnEl.textContent = w || ''; monthWarnEl.classList.toggle('hidden', !w); } },
           { refresh: () => { timeNote.textContent = q.kind === 'alienBase' || q.kind === 'cydonia' ? T('scr.qb.time.fixed', { time: T('scr.time.dim') }) : ''; } });
 
         squadInp = el('input', { type: 'range', min: '4', max: String(maxSquad(q.kind)), step: '1', 'aria-label': T('scr.qb.squad') });
@@ -1361,7 +1433,7 @@
               row(T('scr.qb.terrain'), cTerrain, terrNote),
               row(T('scr.qb.time'), cTime, timeNote),
               row(T('scr.qb.diff'), cDiff),
-              row(T('scr.qb.month'), cMonth, monthNote),
+              row(T('scr.qb.month'), cMonth, el('div', null, monthNote, monthWarnEl)),
               row(T('scr.qb.squad'), el('div', { class: 'scr-range' }, squadInp, squadOut)),
               row(T('scr.qb.seed'), el('div', { class: 'row' }, seedInp, reroll))),
             summary),
@@ -1729,7 +1801,7 @@
             el('h1', { class: 'scr-result', text: T('scr.db.result.' + result) }),
             el('div', { class: 'scr-result-sub', text: T('scr.db.sub.' + result) + (deb.turns ? ' · ' + Tn('scr.db.turns', deb.turns | 0) : '') }),
             // a causa principal das baixas e a dica ficam à vista, por baixo do resultado
-            el('div', { class: 'scr-deb-cause' }, lossNotes(B, result))),
+            el('div', { class: 'scr-deb-cause' }, lossNotes(B, result, { debrief: deb, mission }))),
           el('div', { class: 'scr-deb-body', tabindex: '0', 'aria-label': T('scr.db.bodyAria') },
             el('div', { class: 'scr-deb-col' }, scoreSec, alienSec),
             el('div', { class: 'scr-deb-col' }, lossSec, woundSec, recSec),
@@ -1852,12 +1924,13 @@
                 optRow(T('scr.opt.speedAlien'), sseg('speedAlien', speeds), TT('scr.opt.speed.hint')))),
             el('div', { class: 'scr-deb-col' },
               panelSection(T('scr.opt.sec.controls'),
-                optRow(T('scr.opt.confirmMove'), sseg('confirmMove', ['auto', 'always', 'never'].map((v) => ({ v, label: T('scr.opt.confirmMove.' + v) }))), T('scr.opt.confirmMove.hint')),
-                optRow(T('scr.opt.edgeScroll'), toggleBtn(getK('edgeScroll'), setK('edgeScroll'), T('scr.opt.edgeScroll'))),
-                optRow(T('scr.opt.wheel'), sseg('wheel', ['level', 'zoom'].map((v) => ({ v, label: T('scr.opt.wheel.' + v) }))))),
+                optRow(T('scr.opt.confirmMove'), sseg('confirmMove', ['auto', 'always', 'never'].map((v) => ({ v, label: T('scr.opt.confirmMove.' + v) }))), TT('scr.opt.confirmMove.hint')),
+                // ecrã tátil sem rato: margens do ecrã e roda do rato não existem
+                mouseLess() ? null : optRow(T('scr.opt.edgeScroll'), toggleBtn(getK('edgeScroll'), setK('edgeScroll'), T('scr.opt.edgeScroll'))),
+                mouseLess() ? null : optRow(T('scr.opt.wheel'), sseg('wheel', ['level', 'zoom'].map((v) => ({ v, label: T('scr.opt.wheel.' + v) }))))),
               panelSection(T('scr.opt.sec.game'),
                 optRow(T('scr.opt.instantGrenades'), toggleBtn(getK('instantGrenades'), setK('instantGrenades'), T('scr.opt.instantGrenades')), TT('scr.opt.instantGrenades.hint')),
-                optRow(T('scr.opt.confirmBlast'), sseg('confirmBlast', ['auto', 'always', 'never'].map((v) => ({ v, label: T('scr.opt.confirmBlast.' + v) }))), T('scr.opt.confirmBlast.hint')),
+                optRow(T('scr.opt.confirmBlast'), sseg('confirmBlast', ['auto', 'always', 'never'].map((v) => ({ v, label: T('scr.opt.confirmBlast.' + v) }))), TT('scr.opt.confirmBlast.hint')),
                 optRow(T('scr.opt.confirmEndTurn'), toggleBtn(getK('confirmEndTurn'), setK('confirmEndTurn'), T('scr.opt.confirmEndTurn'))),
                 optRow(T('scr.opt.hitPreview'), toggleBtn(getK('hitPreview'), setK('hitPreview'), T('scr.opt.hitPreview')))),
               panelSection(T(ACC + 'title'),
@@ -2013,7 +2086,7 @@
   };
 
   OV.Screens = Object.assign(OV.Screens || {}, {
-    VERSION, Backdrop, startBattle, buildQuickMission, quickFromURL, missionTitle, loadoutFor, heavyPicks, quickStore, spareClip, trimToStr, defaultQuick,
+    VERSION, Backdrop, startBattle, buildQuickMission, quickFromURL, monthWarn, MONTH_MIN, missionTitle, loadoutFor, heavyPicks, quickStore, spareClip, trimToStr, defaultQuick,
     openOptions, saves, resumeGame, missionRating, battleExit, crewText, lossCauses, lossNotes, _urlUsed: false,
     ui: { makeScreen, header, panelSection, seg, goBack, portraitEl, itemIconEl, unitSpriteEl, canvasCopy, statLegend, scrollKeys },
   });
