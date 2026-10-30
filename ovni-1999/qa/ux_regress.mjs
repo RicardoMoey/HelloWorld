@@ -243,7 +243,7 @@ try {
     await page.keyboard.up('Meta');
     await frames(2);
     const s2 = (await st()).target;
-    log(s0.sub === '⌘ + clique: tiro forçado' && /^Tiro forçado/.test(s1.label) && !/^Tiro forçado/.test(s2.label),
+    log(s0.sub === '⌘ + clique ou ⌃ Control + Enter: tiro forçado' && /^Tiro forçado/.test(s1.label) && !/^Tiro forçado/.test(s2.label),
       '⌘ sozinho mostra/retira o tiro forçado sem mexer o rato: «' + s0.label + '» → «' + s1.label + '» → «' + s2.label + '»');
     await page.keyboard.down('Control');
     await page.mouse.move(bl.x + 1, bl.y);

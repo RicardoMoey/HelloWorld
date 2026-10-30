@@ -395,6 +395,7 @@
        siteRefOf(mission) → siteRef ; briefingMeta(G, mission) → meta
        startMission(G, siteRef, craftId, {settings}?) → missão para OV.Battle.create (marca G.activeMission)
        cancelMission(G) → bool (sai do briefing sem batalha) ; abortMission(G, B) → modelo (abortar + finishMission)
+       reseedMap(G, salt) → novo G.rng.map (mistura determinística do sal na stream 'map'; repetir uma missão)
        finishMission(G, B) → modelo do debriefing
        baseVolley(G, baseId, ufoId) → {shots, destroyed} (defesas atiram uma vez; ufo.siege)
        baseDefence(G, baseId, ufoId) → {result, shots, soldiersLost} }
@@ -668,6 +669,16 @@
     return true;
   }
 
+  /* «Repetir a missão» a partir da gravação «Antes da missão»: mistura um sal (n.º da tentativa) na stream 'map', para
+     que o próximo startMission sorteie outro mapa (sem repetição com informação perfeita). Determinística: o mesmo
+     G.rng.map e o mesmo sal dão sempre o mesmo estado. Não toca nas outras streams → G.rng.map */
+  function reseedMap(G, salt) {
+    if (!G || !G.rng || typeof G.rng.map !== 'number') throw fail('noGame');
+    const k = Math.imul(((salt >>> 0) + 1) >>> 0, 0x9e3779b1) >>> 0;
+    G.rng.map = OV.RNG.create(((G.rng.map >>> 0) ^ k) >>> 0).u32() >>> 0;
+    return G.rng.map;
+  }
+
   function containmentRoom(G, baseId) {
     const cap = OV.BaseSim.capacities(G, baseId).aliens;
     return Math.max(0, (cap.cap | 0) - (cap.used | 0));
@@ -901,6 +912,6 @@
 
   Object.assign(OV.Campaign, {
     availableResearch, availableManufacture, equipPool, applyEquip, siteRefOf, briefingMeta,
-    startMission, cancelMission, abortMission, finishMission, baseVolley, baseDefence,
+    startMission, cancelMission, reseedMap, abortMission, finishMission, baseVolley, baseDefence,
   });
 })(globalThis.OV || (globalThis.OV = {}));

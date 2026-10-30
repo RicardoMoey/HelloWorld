@@ -364,24 +364,77 @@ async function tryShoot(id, alien, kit) {
   }
   return false;
 }
+/* Casas candidatas para a granada: o alienígena e as casas à volta (a explosão apanha-o), só as que têm trajetória
+   (Act.planArc, aterra a ≤ 1 casa do alvo), estão ao alcance e longe dos aliados; e UT que cheguem para tirar do
+   cinto, ativar e lançar. Lido de B (só para escolher onde clicar) → {need, have, tiles:[{x,y,z}], why} */
+const grenadeTargets = (id, aid) => page.evaluate(([id, aid]) => {
+  const B = OV.Game.B, u = OV.BUnits.findUnit(B, id), a = OV.BUnits.findUnit(B, aid), m = B.map, D = OV.Data.items;
+  if (!u || !a) return { tiles: [], why: 'sem unidade' };
+  let best = null;
+  for (const slot of ['R', 'L', 'belt', 'pack']) {
+    const ids = slot === 'R' || slot === 'L' ? [u.items[slot]] : u.items[slot] || [];
+    for (const iid of ids) {
+      const it = iid === null || iid === undefined ? null : OV.BUnits.findItem(B, iid);
+      const d = it && D[it.type];
+      if (!d || d.kind !== 'grenade' || d.proximity || d.dmg === 'SMOKE') continue;
+      const sc = (slot === 'R' || slot === 'L' ? 1000 : slot === 'belt' ? 500 : 0) + (d.power | 0);
+      if (!best || sc > best.sc) best = { it, d, slot, sc };
+    }
+  }
+  if (!best) return { tiles: [], why: 'sem granada' };
+  const hand = u.items.L === null || u.items.L === undefined ? 'L' : u.items.R === null || u.items.R === undefined ? 'R' : null;
+  const inHand = best.slot === 'R' || best.slot === 'L';
+  if (!inHand && !hand) return { tiles: [], why: 'mãos ocupadas' };
+  const need = (inHand ? 0 : OV.Data.invMoveTU(best.slot, hand) | 0) + (OV.BUnits.actionTU(B, u, best.it.id, 'prime') | 0) + (OV.BUnits.actionTU(B, u, best.it.id, 'throw') | 0) + 3;
+  if ((u.tu | 0) < need) return { tiles: [], need, have: u.tu | 0, why: 'UT' };
+  const wt = (best.d.weight | 0) + (best.it.ammo && best.it.ammo.type && D[best.it.ammo.type] ? D[best.it.ammo.type].weight | 0 : 0);
+  const range = OV.Data.throwRange(u.stats.str | 0, wt);
+  const allies = B.units.filter((q) => q.side === 'xcom' && q.onMap && q.x >= 0 && q.status === 'ok');
+  const out = [];
+  for (let dy = -2; dy <= 2; dy++) {
+    for (let dx = -2; dx <= 2; dx++) {
+      const x = a.x + dx, y = a.y + dy, z = a.z;
+      if (x < 0 || y < 0 || x >= m.w || y >= m.h) continue;
+      const near = Math.min(...allies.map((q) => Math.max(Math.abs(q.x - x), Math.abs(q.y - y)) + (q.z !== z ? 2 : 0)));
+      if (near < 4) continue;
+      const ddx = x - u.x, ddy = y - u.y, ddz = OV.U.idiv((z - u.z) * 3, 2);
+      if (OV.U.isqrt(ddx * ddx + ddy * ddy + ddz * ddz) > range) continue;
+      const i = (z * m.h + y) * m.w + x;
+      const plan = OV.Act.planArc(B, u, i);
+      if (!plan) continue;
+      const gz = (plan.goal / (m.w * m.h)) | 0, gr = plan.goal - gz * m.w * m.h, gx = gr % m.w, gy = (gr / m.w) | 0;
+      if (gz !== a.z || Math.max(Math.abs(gx - a.x), Math.abs(gy - a.y)) > 1) continue;
+      out.push({ x, y, z, d: Math.max(Math.abs(dx), Math.abs(dy)), near });
+    }
+  }
+  out.sort((p, q) => p.d - q.d || q.near - p.near);
+  return { tiles: out.slice(0, 5), need, have: u.tu | 0, why: out.length ? null : 'sem trajetória' };
+}, [id, aid]);
 async function tryGrenade(id, alien) {
+  const gt = await grenadeTargets(id, alien.id);
+  if (!gt.tiles.length) {
+    note('  granada em ' + alien.id + ': ' + gt.why + (gt.why === 'UT' ? ' (precisa ' + gt.need + ', tem ' + gt.have + ')' : '') + ' — não tento');
+    return false;
+  }
   await page.keyboard.press('g');
   await sleep(120);
   if ((await st()).mode !== 'throw') return false;
-  const p = await bringIntoView(tilePoint(alien.x, alien.y, alien.z));
-  if (!p) {
-    await page.keyboard.press('Escape');
-    return false;
-  }
-  await page.mouse.move(p.x, p.y, { steps: 2 });
-  await sleep(140);
-  const s = await st();
-  if (!s.throwInfo || !s.throwInfo.ok || s.throwInfo.sub) {
-    note('  granada: ' + (s.throwInfo ? s.throwInfo.label + (s.throwInfo.sub ? ' / ' + s.throwInfo.sub : '') : 'sem informação') + ' — cancelo');
+  let p = null, s = null;
+  for (const c of gt.tiles) {
+    const q = await bringIntoView(tilePoint(c.x, c.y, c.z));
+    if (!q) continue;
+    await page.mouse.move(q.x, q.y, { steps: 2 });
+    await sleep(140);
+    s = await st();
+    if (s.throwInfo && s.throwInfo.ok && !s.throwInfo.sub) { p = q; break; }
+    note('  granada (' + c.x + ',' + c.y + '): ' + (s.throwInfo ? s.throwInfo.label + (s.throwInfo.sub ? ' / ' + s.throwInfo.sub : '') : 'sem informação'));
     if (s.throwInfo && s.throwInfo.sub && !sawRisk) {
       sawRisk = true;
       await shot('grenade_risk');
     }
+  }
+  if (!p) {
+    note('  granada: nenhuma casa serve — cancelo');
     await page.keyboard.press('Escape');
     await sleep(60);
     return false;
@@ -487,7 +540,7 @@ async function soldierTurn(id, plan) {
       }
       let acted = false;
       if (!grenadeUsed && kit.grenades && u.tu >= 20) {
-        for (const a of vis.filter((q) => Math.hypot(q.x - u.x, q.y - u.y) <= 14).slice(0, 2)) {
+        for (const a of vis.filter((q) => Math.hypot(q.x - u.x, q.y - u.y) <= 14).slice(0, 3)) {
           acted = await tryGrenade(id, a);
           if (acted) {
             grenadeUsed = true;

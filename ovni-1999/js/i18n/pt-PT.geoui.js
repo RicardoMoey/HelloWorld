@@ -313,7 +313,7 @@
     'geo.ev.terrorSite': 'Ataque terrorista!',
     'geo.ev.terrorSite.kicker': 'Emergência',
     'geo.ev.terrorSite.body': '{race} estão a atacar {city}!',
-    'geo.ev.terrorSite.stakes': 'Sem resposta, o conselho perde a confiança: −{points} pontos quando o ataque terminar.',
+    'geo.ev.terrorSite.stakes': 'Sem resposta, o conselho perde a confiança: −{points} pontos quando o ataque terminar. Abandonar a batalha custa pelo menos o mesmo.',
     'geo.ev.terrorSite.eta': '{craft} chega em {t}: há tempo para responder.',
     'geo.ev.terrorSite.late': '{craft} demora {t} — o ataque termina antes.',
     'geo.ev.terrorSite.noTeam': 'Nenhum transporte com soldados pode partir agora.',

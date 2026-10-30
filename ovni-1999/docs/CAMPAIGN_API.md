@@ -109,7 +109,7 @@ own `OV.RNG.create(...)`.
 |---|---|
 | `geo` | World (detection rolls, patrol discovery), Missions (waypoint points, landing points, site and crash timers, alien-base discovery and supply rolls), Economy (funding changes), BaseSim (research cost randomisation), Soldiers (recruit generation), newCampaign |
 | `ai` | Missions strategic choices only: region, mission type, race, terror city, retaliation rolls, infiltration pact country |
-| `map` | `Campaign.startMission`: one `u32()` per battle, used as `mission.seed` |
+| `map` | `Campaign.startMission`: one `u32()` per battle, used as `mission.seed`; `Campaign.reseedMap` mixes a retry salt into it (§5.9) |
 | `combat` | Dogfight (all rolls), `Campaign.finishMission` (stat growth via `OV.Morale.postMission`, wound days), `Campaign.baseDefence` |
 
 Draws happen in the fixed handler order of §3.1. Within a handler, iterate arrays in index order and object maps in
@@ -707,6 +707,8 @@ equipPool(G, craftId) → {squad, stores}    input for OV.InventoryUI.equipScree
 applyEquip(G, craftId, {loadouts, stores}) applies the equip screen result (rules below)
 briefingMeta(G, mission) → meta
 startMission(G, siteRef, craftId, {settings}?) → mission       (mutates: map draw, G.activeMission)
+cancelMission(G) → bool                                        (leaves the briefing: G.activeMission = null)
+reseedMap(G, salt) → G.rng.map                                 (mutates only G.rng.map; retry with a fresh map, below)
 finishMission(G, B) → model                                    (mutates: everything after a battle)
 baseDefence(G, baseId, ufoId) → {result, shots, soldiersLost}
 ```
@@ -744,6 +746,12 @@ mission = {
 - `meta = {time: dayPhase, cityKey: site ? 'city.'+cityId : null, regionKey, countryKey|null,
   campaign:{siteRef, craftId}}`.
 - `startMission` sets `G.activeMission = {siteRef, craftId, startedT: G.t}`.
+
+**`reseedMap(G, salt)`** (§11.9): `G.rng.map = RNG.create((G.rng.map ^ imul(salt + 1, 0x9E3779B1)) >>> 0).u32()`
+(all uint32). Same state and same salt ⇒ same new state; no other stream moves. The UI calls it right after loading the
+«Antes da missão» slot (from «Repetir a missão» or the load dialog), with the attempt number it keeps in that save
+(`obj.preMission.retries`, 1, 2, …), so the next `startMission` draws a different `mission.seed`: a retry is a fresh
+map and alien layout, not a perfect-information replay. Throws `campaign.err.noGame` without `G.rng.map`.
 
 **`finishMission(G, B) → model`**, applied in this order:
 1. `deb = OV.Battle.debrief(B, {researched: G.researched, captureRoom, terrorFloor})`: `captureRoom` = free containment
@@ -1250,7 +1258,7 @@ battles while the battle sweep shows no terror change by day or at month 2/4.
 ### 11.8 Persona round 2 (sim/data fixer)
 Verified persona findings, fixed at the root. Tests: `tools/tests/sim_persona_r2.test.js` (plus the pinned item value in
 `data_items_units`). New: `OV.Battle.TERROR_ABANDONED_KEY` (the debrief line key, `'cp.mr.alienTerror.one'` =
-«Ataque terrorista sem resposta», an existing text) and the `Battle.debrief` context fields `captureRoom` and
+«Ataque terrorista sem resposta», an existing text; since §11.9 `'bs.debrief.terrorAbandoned'`) and the `Battle.debrief` context fields `captureRoom` and
 `terrorFloor` (both optional; a skirmish passes neither and keeps the old report).
 
 | Change | Where | Before → after | Why / measured |
@@ -1276,3 +1284,13 @@ Campaign bot, `node ovni-1999/tools/sim.js campaign --seeds 6 [--seed0 7] --diff
 
 Twelve seeds per difficulty are still noisy (any change re-rolls every later battle); the Veterano Cydonia result swings
 40–100 % between seed sets both before and after.
+
+### 11.9 Persona round 2 (integration)
+- `OV.Battle.TERROR_ABANDONED_KEY` is now `'bs.debrief.terrorAbandoned'` («Local de terror abandonado», a dedicated
+  debrief line) instead of reusing the monthly-report text `'cp.mr.alienTerror.one'`. The points rule of §11.8 is
+  unchanged. The Geoscape terror popup says that abandoning the battle costs at least as much as ignoring the site.
+- New `Campaign.reseedMap(G, salt)` (§5.9). Before, loading «Antes da missão» and launching again gave the same
+  `mission.seed`, so the map and every alien position repeated: a retry was a perfect-information replay. Now each load
+  of that slot is attempt n (kept in the save as `preMission.retries`) and the map stream is salted with n. Loading the
+  same slot state with the same attempt number still gives the same map (deterministic, tested in
+  `tools/tests/integration_r2.test.js`); other saves (manual slots, autosaves) are untouched.

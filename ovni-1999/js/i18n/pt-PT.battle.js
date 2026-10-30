@@ -144,6 +144,7 @@
     'bs.debrief.civSaved': 'Civis salvos',
     'bs.debrief.civKilledByAliens': 'Civis mortos por alienígenas',
     'bs.debrief.civKilledByXcom': 'Civis mortos pela X-COM',
+    'bs.debrief.terrorAbandoned': 'Local de terror abandonado',
     'bs.debrief.xcomKilled': 'Soldados X-COM mortos',
     'bs.debrief.xcomMia': 'Soldados desaparecidos em combate',
     'bs.debrief.craftLost': 'Nave X-COM perdida',

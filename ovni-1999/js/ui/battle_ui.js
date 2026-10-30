@@ -2583,6 +2583,7 @@
     }
     if (key === 'Enter') {
       if (kbActive()) kbConfirm(m);
+      else if ((m.ctrl || m.meta) && aiming) kbForceAtPointer();
       else endTurn();
       return true;
     }
@@ -2658,6 +2659,13 @@
     }
     return isPanKey(code, m);
   }
+  /* Ctrl + Enter a apontar sem cursor de teclado: tiro forçado na casa debaixo do ponteiro (no Mac ⌘ + tecla nunca
+     chega, ver input.js; ⌃ + Enter chega). Nunca termina o turno por engano. */
+  function kbForceAtPointer() {
+    const p = S.mode === 'target' && S.mouse && !isTouch() ? pickAt(S.mouse.x, S.mouse.y) : null;
+    if (!p) { toast(isMac() ? 'hud.kb.forceHint.mac' : 'hud.kb.forceHint', null, 'info'); return; }
+    clickTarget(p, { shift: false, alt: false, ctrl: false, meta: false }, 'kb', true);
+  }
   // T: rodar o soldado para o cursor de teclado ou, sem ele, para a casa debaixo do ponteiro (como o clique secundário)
   function kbTurn() {
     const u = sel();
@@ -2676,7 +2684,8 @@
   function openKeys() {
     const rows = [];
     for (let k = 1; OV.T.has('hud.keys.' + k); k++) {
-      const [a, b] = T('hud.keys.' + k).split('|');
+      const kk = 'hud.keys.' + k;
+      const [a, b] = T(isMac() && OV.T.has(kk + '.mac') ? kk + '.mac' : kk).split('|');
       rows.push(el('tr', null, el('td', null, el('kbd', { class: 'key', text: a })), el('td', { text: b || '' })));
     }
     const body = el('table', { class: 'tbl bs-keys' }, el('tbody', null, rows));

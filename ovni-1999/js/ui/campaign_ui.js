@@ -17,6 +17,8 @@
      Equipa (puras sobre G, só via BaseSim/Campaign): armedLo(lo) → bool ; idleFit(G, baseId) → [ids] ;
        unarmedAboard(G, craftId) → [ids] ; boardAll(G, craftId) → [ids embarcados] ;
        autoKit(G, craftId, {all?}) → {ok, equipped, unarmed, reason?} ; crewUp(G, craftId) → {boarded, equipped, unarmed} ;
+       emptyHands(lo) → ['R'|'L'] (arma de fogo sem carregador) ; noAmmoCount([{loadout}]) → n ;
+       loadAmmo(G, craftId) → {ok, loaded, left, reason?} (um carregador do que há para cada arma vazia) ;
        crewText(G, craftId, r) → texto ; starterKit(G, baseId, n) → {items:[{id,n}], cost} ;
        buyStarterKit(G, baseId, kit) → {ok, reason?, cost, eta} ; orderStarterKit(G, baseId, n) → Promise(bool) (diálogo)
      Gravações extra (ranhuras do OV.Save): EXTRA_SLOTS ['auto2','preMission'] (rodam com a automática; «Antes da missão» ao abrir
@@ -218,6 +220,59 @@
     if (!r || !r.ok) return { ok: false, reason: (r && r.reason) || 'mismatch', equipped: 0, unarmed: unarmedAboard(G, craftId).length };
     return { ok: true, equipped, unarmed: unarmedAboard(G, craftId).length };
   }
+  // mãos com arma de fogo que começa vazia: nenhum carregador compatível no cinto/mochila (como BUnits.autoLoad) → ['R'|'L']
+  function emptyHands(lo) {
+    const M = OV.InventoryUI && OV.InventoryUI.model;
+    if (!lo || !M || !M.loadPlan) return [];
+    const plan = M.loadPlan(lo);
+    return ['R', 'L'].filter((h) => {
+      const d = lo[h] ? D().items[lo[h]] : null;
+      return !!d && d.kind === 'firearm' && Array.isArray(d.ammo) && d.ammo.length > 0 && !plan[h];
+    });
+  }
+  // quantos soldados (loadouts) levam pelo menos uma arma sem munição
+  const noAmmoCount = (list) => (list || []).filter((s) => s && emptyHands(s.loadout).length > 0).length;
+  /* Dá a cada arma vazia um carregador compatível do que há a bordo (e no armazém, com a nave na base): primeiro
+     dentro da Força, depois mesmo com excesso de peso (uma arma vazia é pior) → {ok, loaded, left, reason?} */
+  function loadAmmo(G, craftId) {
+    let pool;
+    try { pool = C().equipPool(G, craftId); } catch (e) { return { ok: false, reason: 'noCraft', loaded: 0, left: 0 }; }
+    const st = Object.assign({}, pool.stores);
+    const loadouts = {};
+    let loaded = 0, left = 0;
+    for (const s of pool.squad) {
+      const hands = emptyHands(s.loadout);
+      if (!hands.length) continue;
+      const lo = { R: s.loadout.R || null, L: s.loadout.L || null, belt: (s.loadout.belt || []).slice(), pack: (s.loadout.pack || []).slice() };
+      const str = Math.max(1, (s.stats && s.stats.str) | 0);
+      let w = loItems(lo).reduce((a, id) => a + weightOf(id), 0);
+      for (const h of hands) {
+        const ammo = D().items[lo[h]].ammo.filter((x) => usable(G, x) && (st[x] | 0) > 0);
+        let done = false;
+        for (let pass = 0; pass < 2 && !done; pass++) {
+          for (const x of ammo) {
+            if (done) break;
+            if (pass === 0 && w + weightOf(x) > str) continue;
+            for (const sl of ['belt', 'pack']) {
+              if (!D().fitsSlot(x, sl, lo[sl])) continue;
+              lo[sl].push(x);
+              w += weightOf(x);
+              st[x]--;
+              if (!st[x]) delete st[x];
+              done = true;
+              break;
+            }
+          }
+        }
+        if (done) loaded++; else left++;
+      }
+      loadouts[s.id] = lo;
+    }
+    if (!loaded) return { ok: true, loaded: 0, left };
+    const r = C().applyEquip(G, craftId, { loadouts, stores: st });
+    if (!r || !r.ok) return { ok: false, reason: (r && r.reason) || 'mismatch', loaded: 0, left: left + loaded };
+    return { ok: true, loaded, left };
+  }
   // embarcar todos os aptos e equipar os que ficaram sem arma → {boarded, equipped, unarmed}
   function crewUp(G, craftId) {
     const boarded = boardAll(G, craftId);
@@ -347,7 +402,24 @@
     return e ? Object.assign({ extra: true }, e) : null;
   }
   function loadExtra(slot) {
-    return OV.Save ? OV.Save.load(slot) : null;
+    const st = OV.Save ? OV.Save.load(slot) : null;
+    if (slot === 'preMission' && st && st.G) retrySalt(st.G);
+    return st;
+  }
+  /* Cada carga da gravação «Antes da missão» é uma nova tentativa: o n.º fica na própria gravação e é o sal de
+     Campaign.reseedMap, por isso a repetição tem outro mapa (sem informação perfeita) e continua determinística. */
+  function retrySalt(G) {
+    let n = 1;
+    try {
+      const obj = OV.Save.read('preMission');
+      if (obj && obj.preMission) {
+        n = (obj.preMission.retries | 0) + 1;
+        obj.preMission.retries = n;
+        OV.Save.write('preMission', obj);
+      }
+    } catch (e) { /* sem armazenamento: tentativa 1 */ }
+    try { C().reseedMap(G, n); } catch (e) { return 0; }
+    return n;
   }
   // antes de cada missão (ao abrir o briefing): a gravação «Antes da missão» para repetir depois de uma derrota
   function saveBeforeMission(G, siteRef, craftId) {
@@ -915,6 +987,9 @@
     }
     if (missing) out.unshift({ cls: 'bad', text: Tn('cp.br.warn.missing', missing) });
     const unarmed = squad.filter((s) => !armedLo(s.loadout)).length;
+    // arma na mão sem carregador: entra em combate vazia (BUnits.autoLoad só carrega do cinto e da mochila)
+    const dry = noAmmoCount(squad);
+    if (dry) out.unshift({ cls: 'bad', id: 'unarmed', text: Tn('cp.br.warn.noAmmo', dry) });
     if (unarmed) out.unshift({ cls: 'bad', id: 'unarmed', text: Tn('cp.br.warn.unarmed', unarmed) });
     if (!has('medikit')) out.push({ cls: 'warn', text: T('cp.br.warn.medikit') });
     if (M.night && !has('electro_flare')) out.push({ cls: 'warn', text: T('cp.br.warn.flares') });
@@ -969,8 +1044,15 @@
     function autoKitNow() {
       if (busy) return;
       const r = autoKit(G, craftId);
-      if (r.ok && r.equipped) {
-        OV.Dom.toast(Tn('cp.crew.equipped', r.equipped) + (r.unarmed ? ' ' + Tn('cp.crew.unarmed', r.unarmed) : ''), null, r.unarmed ? 'warn' : 'good');
+      // e quem leva arma sem munição recebe um carregador do que há
+      const a = loadAmmo(G, craftId);
+      if ((r.ok && r.equipped) || (a.ok && a.loaded)) {
+        const parts = [];
+        if (r.equipped) parts.push(Tn('cp.crew.equipped', r.equipped));
+        if (a.loaded) parts.push(Tn('cp.crew.loaded', a.loaded));
+        if (r.unarmed) parts.push(Tn('cp.crew.unarmed', r.unarmed));
+        if (a.left) parts.push(Tn('cp.crew.dry', a.left));
+        OV.Dom.toast(parts.join(' '), null, r.unarmed || a.left ? 'warn' : 'good');
         if (restart()) render();
       } else {
         sfx('ui_deny');
@@ -1006,7 +1088,7 @@
       const where = whereOf(G, siteRef, meta);
       const notes = [];
       if (time === 'night') notes.push(T('scr.br.note.night'));
-      if (time === 'night' && nightUfo()) notes.push(T('cp.br.note.waitDay'));
+      if (time === 'night' && nightUfo()) notes.push(touchT('cp.br.note.waitDay'));
       if (time === 'dusk') notes.push(T('scr.br.note.dusk'));
       if (time === 'dim') notes.push(T('scr.br.note.dim'));
       if (M.kind === 'crash') notes.push(T('scr.br.note.crash'));
@@ -1030,6 +1112,10 @@
                 el('li', { text: T('scr.br.obj.' + M.kind + '.1') }),
                 el('li', { text: T('scr.br.obj.' + M.kind + '.2') }),
                 el('li', { class: 'scr-muted', text: T('scr.br.obj.abort') }))),
+            // avisos com ação (sem arma, sem munição) logo a seguir aos objetivos: à vista sem deslocar a 1280×800
+            warns.length ? ui.panelSection(T('cp.br.warnings'), el('ul', { class: 'cp-warns' }, warns.map((w) => el('li', { class: w.cls },
+              el('span', { text: w.text }),
+              w.id === 'unarmed' ? btn(T('cp.br.autoKit'), { cls: 'small', key: 'A', tip: T('cp.br.autoKit.tip'), onClick: autoKitNow }) : null)))) : null,
             ui.panelSection(T('scr.br.intel'),
               el('div', { class: 'scr-intel' }, sprite ? el('div', { class: 'scr-intel-sprite' }, sprite) : el('div', { class: 'scr-intel-sprite cp-unknown', text: '?' }),
                 el('dl', null,
@@ -1037,14 +1123,12 @@
                   el('dt', { text: T('scr.br.crew') }), el('dd', { text: OV.Screens.crewText(range) }))),
               race ? null : el('p', { class: 'scr-note', text: T('cp.br.raceHint') }),
               notes.map((n) => el('p', { class: 'scr-note', text: n }))),
-            warns.length ? ui.panelSection(T('cp.br.warnings'), el('ul', { class: 'cp-warns' }, warns.map((w) => el('li', { class: w.cls },
-              el('span', { text: w.text }),
-              w.id === 'unarmed' ? btn(T('cp.br.autoKit'), { cls: 'small', key: 'A', tip: T('cp.br.autoKit.tip'), onClick: autoKitNow }) : null)))) : null),
+),
           ui.panelSection(T('scr.br.squad') + ' · ' + squad.length,
             squad.length ? el('div', { class: 'scr-roster' }, squad.map(soldierCard)) : el('p', { class: 'cp-note bad', text: T('cp.br.noSquad') }),
             squad.length && ui.statLegend ? ui.statLegend(['tu', 'hp', 'fire', 'react', 'brav']) : null)),
         el('footer', { class: 'scr-foot' },
-          el('span', { class: 'scr-hint', text: T(nightUfo() ? 'cp.br.hint.night' : 'cp.br.hint') }),
+          el('span', { class: 'scr-hint', text: touchT(nightUfo() ? 'cp.br.hint.night' : 'cp.br.hint') }),
           el('div', { class: 'scr-foot-btns' },
             btn(T('common.cancel'), { key: 'Esc', tip: T('cp.br.cancel.tip'), onClick: cancel }),
             nightUfo() ? btn(T('geo.a.waitDay'), { key: 'W', tip: T('cp.br.waitDay.tip'), onClick: waitDay }) : null,
@@ -1117,7 +1201,7 @@
               pool ? el('span', { class: 'scr-chip' }, el('i', { text: T('cp.eq.squad') }), String(pool.squad.length)) : null)),
           host,
           el('footer', { class: 'scr-foot' },
-            el('span', { class: 'scr-hint', text: T('cp.eq.hint') }),
+            el('span', { class: 'scr-hint', text: touchT('cp.eq.hint') }),
             el('div', { class: 'scr-foot-btns' }, doneBtn))));
         if (!pool || !pool.squad.length || !OV.InventoryUI || !OV.InventoryUI.equipScreen) {
           host.appendChild(el('p', { class: 'cp-note warn', text: T(pool ? 'cp.eq.empty' : 'cp.eq.noCraft') }));
@@ -1466,7 +1550,7 @@
     resume(st);
     const G = st.G;
     const ok = pm && pm.siteRef && pm.craftId && C().findCraft(G, pm.craftId) && (pm.siteRef.kind === 'cydonia' || C().targetOf(G, pm.siteRef));
-    if (ok) launchMission(G, pm.siteRef, pm.craftId);
+    if (ok && launchMission(G, pm.siteRef, pm.craftId)) OV.Dom.toast(T('cp.db.retry.newMap'), null, 'info');
     return true;
   }
 
@@ -1903,7 +1987,7 @@
       confirmLeave().then((ok) => {
         if (!ok) return;
         let st = null;
-        try { st = OV.Save.load(e.slot); } catch (err) { failLoad(err); return; }
+        try { st = isExtra(e.slot) ? loadExtra(e.slot) : OV.Save.load(e.slot); } catch (err) { failLoad(err); return; }
         if (!st) { failLoad(new Error('save.err.parse')); return; }
         openState(st);
       });
@@ -2065,7 +2149,7 @@
     launchMission, startBattle, afterBattle, resume, openGeo, popToGeo, equip,
     cydoniaState, cydoniaPick, cydoniaWhy, cydoniaCapable, launchCydonia, monthAlienSplit, fundingTotals,
     monthReport, gameOver, victory, baseDefence, saveDialog, loadDialog, autosave, saveLabel, errText,
-    armedLo, idleFit, unarmedAboard, boardAll, autoKit, crewUp, crewText, starterKit, buyStarterKit, orderStarterKit,
+    armedLo, idleFit, unarmedAboard, boardAll, autoKit, crewUp, emptyHands, noAmmoCount, loadAmmo, crewText, starterKit, buyStarterKit, orderStarterKit,
     markUfoKnown, saveBeforeMission, preMissionFor, retryMission, EXTRA_SLOTS, extraSummary, loadExtra,
   });
 })(globalThis.OV || (globalThis.OV = {}));

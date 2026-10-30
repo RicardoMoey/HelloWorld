@@ -333,7 +333,7 @@
     }
 
     // ---- separadores ----------------------------------------------------------------------------------------
-    function setTab(tab, quiet) {
+    function setTab(tab, quiet, byKey) {
       if (TABS.indexOf(tab) < 0) return;
       if (S.tab !== tab) {
         if (S.r.content) S.scroll[S.tab] = S.r.content.scrollTop;
@@ -341,8 +341,16 @@
         if (!quiet) sfx('ui_select');
       }
       if (S.G && S.G.ui) S.G.ui.baseTab = tab;
+      // o separador redesenhado (ou o botão que mudou de separador) perde o foco: devolve-o ao separador ativo
+      const a = document.activeElement;
+      // (atalho 1–9: não — o foco fica no <body> e as setas continuam a mover o cursor da grelha)
+      const lost = !byKey && !!a && ((S.r.tabs && S.r.tabs.contains(a)) || (S.r.content && S.r.content.contains(a)));
       renderTabs();
       renderContent();
+      if (lost && (!document.activeElement || document.activeElement === document.body || !document.activeElement.isConnected) && !OV.Dom.trapOpen()) {
+        const t = S.r.tabs.querySelector('.bsc-tab.on');
+        if (t) t.focus({ preventScroll: true });
+      }
     }
     function switchBase(d) {
       const g = S.G;
@@ -811,7 +819,8 @@
         }
         body.appendChild(section(T('research.cat.' + cat), list));
       }
-      const s = sheet(T('base.research.new'), body, [{ label: T('common.close') }], 'bsc-sheet-research');
+      // aberto pela tecla N: ao fechar, o foco volta ao botão «Novo projeto» e não ao <body>
+      const s = sheet(T('base.research.new'), body, [{ label: T('common.close') }], 'bsc-sheet-research', S.r.content.querySelector('[data-act="newResearch"]'));
     }
 
     // ---------------------------------------------------------------------------------------------------- 3
@@ -1299,6 +1308,9 @@
         sfx('ui_click');
         if (E.changed) OV.Dom.toast(T('base.toast.equipSaved', { craft: craftName(C().findCraft(S.G, E.craftId)) }), null, 'good');
         refresh();
+        // aberto pela tecla E o foco estava no <body>: volta ao botão «Equipar»
+        const a = document.activeElement;
+        if (!a || a === document.body || !a.isConnected) OV.Dom.refocus('[data-act="equip"]', S.root);
       }
     }
 
@@ -1645,7 +1657,7 @@
     }
 
     // ---- folha modal genérica (listas de escolha) -----------------------------------------------------------
-    function sheet(title, body, buttons, cls) {
+    function sheet(title, body, buttons, cls, returnTo) {
       if (S.sheet) S.sheet.close();
       const host = OV.Dom.$('modals');
       const box = el('div', { class: 'modal wide bsc-sheet ' + (cls || ''), role: 'dialog', 'aria-modal': 'true', 'aria-label': title });
@@ -1674,7 +1686,8 @@
       back.addEventListener('click', (e) => { if (e.target === back) close(); });
       host.appendChild(back);
       // foco preso na folha (o resto inerte) e devolvido a quem a abriu
-      release = OV.Dom.trapFocus(back);
+      const cur = document.activeElement;
+      release = OV.Dom.trapFocus(back, returnTo && (!cur || cur === document.body) ? { returnTo } : undefined);
       document.addEventListener('keydown', onKey, true);
       const api = { close, box };
       S.sheet = api;
@@ -1891,7 +1904,7 @@
         if (k === 'Enter' && S.kcur) { tryPlace(S.kcur, !!m.shift); return true; }
       }
       if (ev.repeat) return false;
-      if (/^[1-9]$/.test(k) && !m.shift) { setTab(TABS[+k - 1]); return true; }
+      if (/^[1-9]$/.test(k) && !m.shift) { setTab(TABS[+k - 1], false, true); return true; }
       const lk = k.length === 1 ? k.toLowerCase() : k;
       if (lk === 'u' && OV.Ufopaedia) { openUfopaedia(null); return true; }
       if (lk === 'b') { setTab('facilities'); const list = S.r.content.querySelector('.bsc-buildlist'); if (list) list.scrollIntoView({ block: 'start', behavior: 'smooth' }); return true; }

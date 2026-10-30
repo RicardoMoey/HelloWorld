@@ -359,7 +359,6 @@ body:has(.scr.bsc:not(.scr-paused):not(.scr-leaving)) #toasts { top: calc(132px 
   .bsc-mrow { grid-template-columns: 36px minmax(0, 1fr) auto 76px auto; gap: 6px; }
   .bsc-stat { grid-template-columns: 124px minmax(0, 1fr) 26px 24px; }
   .bsc-soltbl .c-craft { display: none; }
-  .bsc-stepper.qty .btn:last-child { display: none; }
 }
 @media (max-height: 760px) {
   .bsc-top { min-height: 50px; padding: 5px 12px; }

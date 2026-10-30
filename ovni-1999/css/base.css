@@ -136,7 +136,11 @@ input[type=checkbox] { accent-color: var(--amber); }
 #tooltip { position: fixed; z-index: 80; max-width: 280px; background: rgba(6, 12, 18, 0.97); border: 1px solid var(--line2); border-radius: var(--r); padding: 7px 9px; font-size: 12px; line-height: 1.4; color: var(--ink); pointer-events: none; box-shadow: var(--shadow); }
 #tooltip b { color: var(--amber); }
 
-@media (hover: none) { #tooltip { display: none !important; } }
+@media (hover: none) {
+  #tooltip { display: none !important; }
+  /* toque: sem teclado não há emblemas de tecla («Esc», «↵», «E») nos botões e diálogos */
+  .btn kbd, .btn .key, .modal .key { display: none; }
+}
 /* etiqueta de toque longo (iPad: sem pairar não há dicas; OV.Dom.tooltip) */
 .lp-tip {
   position: fixed; z-index: 85; max-width: 260px; padding: 7px 10px; pointer-events: none; font: 600 13px/1.4 var(--sans); color: var(--ink);

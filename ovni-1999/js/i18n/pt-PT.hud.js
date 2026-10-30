@@ -184,8 +184,10 @@
     'hud.hint.aim.kb': 'Escolha um modo de tiro (Q ou E, depois 1–3) e Enter para disparar',
     'hud.kb.noAliens': 'Nenhum alienígena à vista',
     'hud.kb.turnHint': 'Mova o cursor (setas) para onde o soldado deve virar-se e prima T',
-    'hud.hint.forceFire': 'Ctrl + clique: tiro forçado',
-    'hud.hint.forceFire.mac': '⌘ + clique: tiro forçado',
+    'hud.kb.forceHint': 'Tiro forçado: aponte com o ponteiro ou com o cursor (setas) e prima Ctrl + Enter',
+    'hud.kb.forceHint.mac': 'Tiro forçado: aponte com o ponteiro ou com o cursor (setas) e prima ⌃ Control + Enter',
+    'hud.hint.forceFire': 'Ctrl + clique ou Ctrl + Enter: tiro forçado',
+    'hud.hint.forceFire.mac': '⌘ + clique ou ⌃ Control + Enter: tiro forçado',
 
     // ---- toasts do HUD
     'hud.noInventory': 'Inventário indisponível',
@@ -255,7 +257,8 @@
     'hud.keys.4': 'Tab / ⇧ Tab|Soldado seguinte / anterior; a apontar ou a lançar: alienígena seguinte',
     'hud.keys.5': '1 … 0|Centrar no alienígena à vista n (a apontar: o cursor salta para ele)',
     'hud.keys.6': 'Q / E e depois 1–3|Menu da mão esquerda / direita e modo de tiro',
-    'hud.keys.7': 'Ctrl + Enter|Tiro forçado na casa do cursor',
+    'hud.keys.7': 'Ctrl + Enter|Tiro forçado na casa do cursor (ou sob o ponteiro)',
+    'hud.keys.7.mac': '⌃ Control + Enter|Tiro forçado na casa do cursor (ou sob o ponteiro)',
     'hud.keys.8': '⌥ + Enter|Abrir a porta do cursor sem entrar',
     'hud.keys.9': 'T|Rodar o soldado para o cursor (sem cursor: para a casa do ponteiro; também clique secundário ou ⌃ + clique)',
     'hud.keys.10': 'G / L|Granada rápida / sinalizador (o cursor vai para o alienígena mais próximo)',

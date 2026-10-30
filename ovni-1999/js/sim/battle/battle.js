@@ -25,7 +25,7 @@
   const SIDES = ['xcom', 'alien', 'civ'];
   const LIVE = { ok: 1, panic: 1 };
   // chave da linha do relatório de um terror abandonado (texto «Ataque terrorista sem resposta»)
-  const TERROR_ABANDONED_KEY = 'cp.mr.alienTerror.one';
+  const TERROR_ABANDONED_KEY = 'bs.debrief.terrorAbandoned';
 
   // ---- missão normalizada ------------------------------------------------------------------------------
   const KIND_TERRAIN = { terror: 'URBAN', alienBase: 'ALIENBASE', cydonia: 'MARS' };

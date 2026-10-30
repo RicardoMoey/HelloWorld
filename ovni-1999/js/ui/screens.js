@@ -11,6 +11,7 @@
    chama OV.CampaignUI.newGame / loadDialog quando existem.
    API: OV.Screens = { VERSION, Backdrop, startBattle, buildQuickMission, quickFromURL, missionTitle, loadoutFor,
                        heavyPicks(squad, n) → Set de índices ; quickStore(mês, noite) → {item: n}
+                       spareClip(soldado da missão) → bool (+1 carregador de reserva se a Força deixar)
                        defaultQuick, openOptions, saves, resumeGame, missionRating, battleExit,
                        crewText({min,max}) → texto ; lossCauses(B) → {enemy, friendly, wounds, other, total, main, tip}
                        lossNotes(B, resultado, {campaign?}) → [nós DOM] (lossCauses também dá weak/race: armas fracas),
@@ -35,6 +36,8 @@
   const uiRng = OV.RNG.create((Date.now() ^ 0x5c4ee5) >>> 0);
   const reduceMotion = () => (OV.Game && typeof OV.Game.reduceMotion === 'function' ? OV.Game.reduceMotion() : typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches);
   const isTouch = () => !!(OV.Input && OV.Input.lastPointerType === 'touch') || (typeof matchMedia === 'function' && matchMedia('(hover: none) and (pointer: coarse)').matches);
+  // texto com variante de toque (iPad) quando existe a chave «….touch»
+  const TT = (k, p) => (isTouch() && OV.T.has(k + '.touch') ? T(k + '.touch', p) : T(k, p));
   const dpr = () => (OV.View && OV.View.dpr) || Math.min(2, (typeof devicePixelRatio === 'number' && devicePixelRatio) || 1);
 
   const UFO_KINDS = { crash: 1, landed: 1 };
@@ -815,6 +818,25 @@
     idx.sort((a, b) => slack(b) - slack(a) || a - b);
     return new Set(idx.slice(0, Math.max(0, n)));
   }
+  /* Um carregador de reserva a mais (arma carregada + 2 de reserva) quando a Força o aguenta e há lugar no cinto ou
+     na mochila: o autoLoad mete um dos carregadores na arma. Devolve true se o acrescentou. */
+  function spareClip(s) {
+    const lo = s && s.loadout;
+    const gd = lo && lo.R ? D().items[lo.R] : null;
+    if (!gd || gd.kind !== 'firearm' || !Array.isArray(gd.ammo) || !gd.ammo.length) return false;
+    const clips = (lo.belt || []).concat(lo.pack || []).filter((id) => gd.ammo.indexOf(id) >= 0);
+    if (!clips.length || clips.length >= 3) return false;
+    const clip = clips[0];
+    const str = (s.stats && s.stats.str) | 0;
+    if (loWeight(lo) + ((D().items[clip] && D().items[clip].weight) | 0) > str) return false;
+    for (const sl of ['belt', 'pack']) {
+      if (!lo[sl]) lo[sl] = [];
+      if (D().fitsSlot && !D().fitsSlot(clip, sl, lo[sl])) continue;
+      lo[sl].push(clip);
+      return true;
+    }
+    return false;
+  }
   // os n soldados com mais Força levam a arma pesada (empates: a ordem da equipa)
   function heavyPicks(squad, n) {
     const idx = squad.map((s, k) => k);
@@ -880,6 +902,7 @@
       for (const k of meds) mission.squad[k].loadout.pack.push('medikit');
       if (meds.size < want) mission.craftItems.medikit = (mission.craftItems.medikit | 0) + want - meds.size;
     }
+    for (const s of mission.squad) spareClip(s);
     mission.settings = { instantGrenades: settings().instantGrenades !== false };
     const meta = { quick: qs, time: fixedShade ? 'dim' : qs.time, terrain };
     if (qs.kind === 'terror' && Data.cities && Data.cities.length) meta.cityKey = pickRng.pick(Data.cities).nameKey;
@@ -940,7 +963,7 @@
     if (result !== 'win' && c.tip) {
       const race = c.race && D().races[c.race];
       const key = c.tip === 'scr.db.tip.weapons' && o && o.campaign ? 'scr.db.tip.weapons.cp' : c.tip;
-      out.push(el('p', { class: 'scr-tip', role: 'note' }, el('b', { text: T('scr.db.tip') }), ' ', T(key, { race: race ? T(race.pluralKey || race.nameKey) : '' })));
+      out.push(el('p', { class: 'scr-tip', role: 'note' }, el('b', { text: T('scr.db.tip') }), ' ', TT(key, { race: race ? T(race.pluralKey || race.nameKey) : '' })));
     }
     return out;
   }
@@ -1066,7 +1089,7 @@
       backdrop: {},
       build(root) {
         items = ENTRIES.map((e) => {
-          const hint = el('span', { class: 'scr-mi-hint', text: T(e.key + '.hint') });
+          const hint = el('span', { class: 'scr-mi-hint', text: TT(e.key + '.hint') });
           const b = el('button', { type: 'button', class: 'scr-mi', role: 'menuitem', dataset: { id: e.id } },
             el('span', { class: 'scr-mi-mark', 'aria-hidden': 'true' }),
             el('span', { class: 'scr-mi-label', text: T(e.key) }), hint);
@@ -1307,10 +1330,19 @@
           el('div', { class: 'scr-stats' }, ['tu', 'hp', 'fire', 'react', 'str'].map(statCell))),
         el('div', { class: 'scr-soldier-kit' }, s.loadout && s.loadout.R ? itemIconEl(s.loadout.R, 40) : null));
     }
+    let warnBox = null;
     function renderRoster() {
       if (!roster) return;
       OV.Dom.clear(roster);
       roster.append(...(mission.squad || []).map(soldierCard));
+      // arma na mão sem carregador (tirado no «Equipar»): avisa antes de partir
+      if (warnBox) {
+        OV.Dom.clear(warnBox);
+        const CU = OV.CampaignUI;
+        const dry = CU && CU.noAmmoCount ? CU.noAmmoCount(mission.squad) : 0;
+        warnBox.classList.toggle('hidden', !dry);
+        if (dry) warnBox.appendChild(panelSection(T('cp.br.warnings'), el('ul', { class: 'cp-warns' }, el('li', { class: 'bad' }, el('span', { text: Tn('cp.br.warn.noAmmo', dry) + ' ' + TT('scr.br.warn.noAmmo.fix') })))));
+      }
     }
     // o 2.º clique de um duplo clique em «Começar» (formulário) cai neste botão: só conta depois de a cena assentar
     function start(e) {
@@ -1359,6 +1391,7 @@
                   el('li', { text: T('scr.br.obj.' + M.kind + '.1') }),
                   el('li', { text: T('scr.br.obj.' + M.kind + '.2') }),
                   el('li', { class: 'scr-muted', text: T('scr.br.obj.abort') }))),
+              warnBox = el('div', { class: 'scr-br-warn hidden' }),
               panelSection(T('scr.br.intel'),
                 el('div', { class: 'scr-intel' }, sprite ? el('div', { class: 'scr-intel-sprite' }, sprite) : null,
                   el('dl', null,
@@ -1718,14 +1751,14 @@
                 optRow(T('scr.opt.volMusic'), slider(getK('volMusic'), setK('volMusic'), T('scr.opt.volMusic')))),
               panelSection(T('scr.opt.sec.speed'),
                 optRow(T('scr.opt.speedXcom'), sseg('speedXcom', speeds)),
-                optRow(T('scr.opt.speedAlien'), sseg('speedAlien', speeds), T('scr.opt.speed.hint')))),
+                optRow(T('scr.opt.speedAlien'), sseg('speedAlien', speeds), TT('scr.opt.speed.hint')))),
             el('div', { class: 'scr-deb-col' },
               panelSection(T('scr.opt.sec.controls'),
                 optRow(T('scr.opt.confirmMove'), sseg('confirmMove', ['auto', 'always', 'never'].map((v) => ({ v, label: T('scr.opt.confirmMove.' + v) }))), T('scr.opt.confirmMove.hint')),
                 optRow(T('scr.opt.edgeScroll'), toggleBtn(getK('edgeScroll'), setK('edgeScroll'), T('scr.opt.edgeScroll'))),
                 optRow(T('scr.opt.wheel'), sseg('wheel', ['level', 'zoom'].map((v) => ({ v, label: T('scr.opt.wheel.' + v) }))))),
               panelSection(T('scr.opt.sec.game'),
-                optRow(T('scr.opt.instantGrenades'), toggleBtn(getK('instantGrenades'), setK('instantGrenades'), T('scr.opt.instantGrenades')), T('scr.opt.instantGrenades.hint')),
+                optRow(T('scr.opt.instantGrenades'), toggleBtn(getK('instantGrenades'), setK('instantGrenades'), T('scr.opt.instantGrenades')), TT('scr.opt.instantGrenades.hint')),
                 optRow(T('scr.opt.confirmBlast'), sseg('confirmBlast', ['auto', 'always', 'never'].map((v) => ({ v, label: T('scr.opt.confirmBlast.' + v) }))), T('scr.opt.confirmBlast.hint')),
                 optRow(T('scr.opt.confirmEndTurn'), toggleBtn(getK('confirmEndTurn'), setK('confirmEndTurn'), T('scr.opt.confirmEndTurn'))),
                 optRow(T('scr.opt.hitPreview'), toggleBtn(getK('hitPreview'), setK('hitPreview'), T('scr.opt.hitPreview')))),
@@ -1876,7 +1909,7 @@
   };
 
   OV.Screens = Object.assign(OV.Screens || {}, {
-    VERSION, Backdrop, startBattle, buildQuickMission, quickFromURL, missionTitle, loadoutFor, heavyPicks, quickStore, defaultQuick,
+    VERSION, Backdrop, startBattle, buildQuickMission, quickFromURL, missionTitle, loadoutFor, heavyPicks, quickStore, spareClip, defaultQuick,
     openOptions, saves, resumeGame, missionRating, battleExit, crewText, lossCauses, lossNotes, _urlUsed: false,
     ui: { makeScreen, header, panelSection, seg, goBack, portraitEl, itemIconEl, unitSpriteEl, canvasCopy, statLegend, scrollKeys },
   });
