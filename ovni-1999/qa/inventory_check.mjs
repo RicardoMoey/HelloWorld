@@ -243,15 +243,17 @@ try {
   await refill();
   await page.mouse.move(5, 450);
   s = await inv();
-  const keyTarget = s.pack[s.pack.length - 1];
+  // a mochila pode estar vazia (desde a ronda 3 o carregador da arma não ocupa o cinto: nada transborda para lá)
+  const keyZone = s.pack.length ? 'pack' : 'belt';
+  const keyTarget = s[keyZone][s[keyZone].length - 1];
   let found = false;
   const focusIn = (sel) => page.evaluate((q) => { const f = document.querySelector('.kfocus'); return !!f && !!f.closest(q); }, sel);
-  for (let n = 0; n < 6 && !(await focusIn('[data-drop="slot:pack"]')); n++) await page.keyboard.press('ArrowDown');
+  for (let n = 0; n < 6 && !(await focusIn('[data-drop="slot:' + keyZone + '"]')); n++) await page.keyboard.press('ArrowDown');
   for (let n = 0; n < 10 && !found; n++) {
     found = await page.evaluate((id) => !!document.querySelector('.kfocus[data-src="i:' + id + '"]'), keyTarget.id);
     if (!found) await page.keyboard.press('ArrowRight');
   }
-  log(found, 'setas levam o foco até ao carregador');
+  log(found, 'setas levam o foco até ao objeto (' + keyZone + ')');
   await page.keyboard.press('Enter');
   s = await inv();
   log(s.selected === 'i:' + keyTarget.id, 'Enter escolhe o objeto focado');

@@ -573,6 +573,7 @@
     u.killedBy = killerId === undefined ? null : killerId;
     u.deathCause = cause || 'damage';
     u.deathTurn = B.turn | 0;
+    u.deathSide = B.side || null; // lado em jogo na morte (≠ 'xcom' = tiro de reação/turno alienígena)
     const dropped = tile >= 0 ? dropAll(B, u, tile, true) : [];
     const spawnType = u.spawnOnDeath && Data.units[u.spawnOnDeath] ? u.spawnOnDeath : null;
     if (!body && !spawnType && tile >= 0 && u.corpse && Data.items[u.corpse]) body = BU().newItem(B, u.corpse, { at: tile, unitId: u.id });

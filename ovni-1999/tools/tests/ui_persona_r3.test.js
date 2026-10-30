@@ -105,6 +105,7 @@ module.exports = function (OV, t) {
   }
 
   t.test('persona r3: cinto cheio + carregador de reserva + arma carregada — nada se perde no combate', () => {
+    t.ok(PRELOAD, 'o motor pré-carrega as armas (integração r3): o cinto do combate é exatamente o do ecrã');
     const lo = { R: 'rifle', L: null, belt: ['rifle_clip', 'rifle_clip', 'grenade', 'smoke_grenade', 'electro_flare'], pack: [] };
     t.eq(IM.visibleIn(lo, 'belt').length, 4, 'o ecrã mostra 4/4');
     sameKit(lo, 'cinto clássico');

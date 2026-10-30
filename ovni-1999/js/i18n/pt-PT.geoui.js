@@ -255,6 +255,7 @@
     'geo.ev.arrived.mission': 'Equipa no local',
     'geo.ev.arrived.mission.body': '{craft} chegou a {target} com {n} soldados prontos. Iniciar a missão?',
     'geo.ev.arrived.night': 'Lá é noite: os alienígenas veem no escuro e os soldados só veem bem perto das luzes. Esperar pelo dia (cerca de {t}) torna a missão bem mais fácil, mas o OVNI pode descolar entretanto.',
+    'geo.ev.arrived.night.safe': 'Lá é noite: os alienígenas veem no escuro e os soldados só veem bem perto das luzes. Esperar pelo dia (cerca de {t}) torna a missão bem mais fácil — nestes primeiros meses, um OVNI que aterra de noite fica no chão até amanhecer.',
     'geo.ev.arrived.night.crash': 'Lá é noite: os alienígenas veem no escuro e os soldados só veem bem perto das luzes. Pode esperar pelo dia (cerca de {t}), se os destroços durarem até lá.',
     'geo.ev.arrived.dawn': 'Amanheceu no local',
     'geo.a.waitDay': 'Esperar pelo dia',

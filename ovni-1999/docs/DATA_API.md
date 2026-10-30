@@ -18,11 +18,14 @@ All tables are keyed by id. Every record has `.id` and `nameKey`. Everything is 
 - **Inventory:** `invSlots` R, L, belt, pack, ground.
 - **Item helpers:** `itemSize`, `isTwoHanded`, `weaponModes`, `throwRange(str, wt)`, `invMoveTU(from, to)`, `fitsSlot(item, slot, contents)`, `armourArray(armour, pct)` → `[F, L, R, Rear, U]`, `soldierArmour(id)`.
 - **Units:** `{side, race, rank, sprite, stats{tu,sta,hp,brav,react,fire,thr,str,melee,psiStr,psiSkill}, armour, size, height, kneel, float, move, corpse, weapon, explodeOnDeath, spawnOnDeath, capturable, …}`.
-- **Races and deployments:** `races[r].members[rank]`; `deployments[dep]` = `{kind, ufo, race, terrain, map, civilians, objective, rows[{rank, qty[diff], outside, unit}], totals}`.
+- **Races and deployments:** `races[r].members[rank]`; `deployments[dep]` = `{kind, ufo, race, terrain, map, civilians, objective, rows[{rank, qty[diff], outside, unit}], totals, artefacts?}`.
+  - `artefacts?` = `{itemId: n}` (ours, only `dep_alien_base`: `{alien_food:2, alien_entertainment:2, alien_surgery:1, examination_room:1, alien_reproduction:1}`). On a win, `Battle.debrief` recovers them in proportion to the alien DEVICE tiles still intact (rounded half up). `strategy.validate` rejects unknown item ids.
 - **Unit helpers:**
-  - Deployment: `raceUnit`, `rowUnit(dep, row, race, pick)`, `rowQty(row, diff)`, `deploymentRange(dep, diff)`.
+  - Deployment: `raceUnit`, `rowUnit(dep, row, race, pick)`, `rowQty(row, diff)`, `deploymentRange(dep, diff, month?)` (the month picks the early-months crew table; for a revisited site `OV.Battle.crewRange(mission)` returns the exact garrison size instead).
   - Alien equipment and stats: `rollItemTier(month, rng)`, `alienLoadout(unitId, depId, tier, rng)`, `alienStats(unitId, diff)`, `alienArmour(unitId, diff)`.
-  - Soldiers: `ranks`, `soldierGen`, `pickNationality`, `soldierName`, `rollSoldierStats`, `soldierRank`.
+  - Soldiers: `ranks`, `soldierGen`, `pickNationality`, `soldierName(rng, natId, female, taken?)`, `soldierNamesTaken(soldiers, extra?)`, `rollSoldierStats`, `soldierRank`.
+    - `soldierName`: without `taken` it draws exactly as before (2 numbers). With `taken(name) → bool`, a name already in use is drawn again (up to 8 times, 2 numbers each); if it still collides, it gets the suffix « II», « III», …
+    - `soldierNamesTaken(soldiers, extra?)` → `(name) → bool`: `soldiers` is a `{id: soldier}` map or an array; `extra` is an optional list of more names. Used by `Soldiers.generate`, `Campaign.makeSoldier` and the Quick Battle squad, so a recruit never gets the name of a living soldier.
   - Other tables: `alienItemTiers`, `alienGrowth`.
 
 *Maps (`tiles.js`, `blocks_*.js`)*

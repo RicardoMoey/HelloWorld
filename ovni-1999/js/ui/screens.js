@@ -29,6 +29,8 @@
   const gk = (key, s) => (s && s.female && OV.T.has(key + '.f') ? key + '.f' : key);
   const el = (...a) => OV.Dom.el(...a);
   const D = () => OV.Data;
+  // o que ocupa o compartimento (o carregador dentro da arma não ocupa o cinto — a regra do «Equipar» e do motor)
+  const visIn = (lo, sl) => (OV.InventoryUI && OV.InventoryUI.model && OV.InventoryUI.model.visibleIn ? OV.InventoryUI.model.visibleIn(lo, sl) : lo[sl] || []);
   const tune = (k, d) => (OV.TUNE && OV.TUNE[k] !== undefined ? OV.TUNE[k] : d);
   const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
   const RAD = Math.PI / 180;
@@ -794,13 +796,13 @@
     if (med) lo.pack.push('medikit');
     if (tier >= 1 && k === 0) lo.pack.push('motion_scanner');
     if (night) {
-      const fits = (slot, list) => !D().fitsSlot || D().fitsSlot('electro_flare', slot, list);
-      if (!fits('belt', lo.belt)) {
+      const fits = (slot) => !D().fitsSlot || D().fitsSlot('electro_flare', slot, visIn(lo, slot));
+      if (!fits('belt')) {
         // cinto cheio: o último objeto do cinto passa para a mochila
         const moved = lo.belt.pop();
         if (moved) lo.pack.push(moved);
       }
-      if (fits('belt', lo.belt)) lo.belt.push('electro_flare');
+      if (fits('belt')) lo.belt.push('electro_flare');
       else lo.pack.push('electro_flare');
       lo.pack.push('electro_flare');
     }
@@ -832,7 +834,7 @@
     if (loWeight(lo) + ((D().items[clip] && D().items[clip].weight) | 0) > str) return false;
     for (const sl of ['belt', 'pack']) {
       if (!lo[sl]) lo[sl] = [];
-      if (D().fitsSlot && !D().fitsSlot(clip, sl, lo[sl])) continue;
+      if (D().fitsSlot && !D().fitsSlot(clip, sl, visIn(lo, sl))) continue;
       lo[sl].push(clip);
       return true;
     }
@@ -1446,7 +1448,7 @@
       backdrop: { dim: 0.55, tint: M.kind === 'terror' ? 'rgba(120,20,10,0.10)' : null },
       build(root) {
         const race = D().races[M.race];
-        const range = D().deploymentRange(M.deploymentId, M.difficulty, M.month);
+        const range = OV.Battle.crewRange ? OV.Battle.crewRange(mission) : D().deploymentRange(M.deploymentId, M.difficulty, M.month);
         const time = meta.time || (M.night ? 'night' : 'day');
         const sprite = race && race.members && race.members.soldier ? unitSpriteEl(race.members.soldier, 86) : null;
         const notes = [];
@@ -1814,6 +1816,15 @@
       const M = OV.Battle.normalizeMission(B.mission);
       return el('div', { class: 'scr-objline', role: 'note' }, el('b', { text: T('scr.opt.objective') }), ' ', T('scr.br.obj.' + M.kind + '.1'));
     }
+    // abortar a missão a partir do painel Esc (a mesma confirmação do botão do HUD e da tecla X)
+    const inBattle = () => !!(OV.Scenes.stack.some((x) => x.id === 'battlescape') && OV.BattleUI && OV.BattleUI.scene && OV.BattleUI.abort);
+    function abortNow() { close(); OV.BattleUI.abort(); }
+    function abortBtn() {
+      if (!inBattle()) return null;
+      const b = el('button', { type: 'button', class: 'btn danger scr-opt-abort', text: T('hud.btn.abort'), 'aria-keyshortcuts': 'X', onclick: abortNow });
+      OV.Dom.tooltip(b, () => '<b>' + OV.U.esc(T('hud.btn.abort')) + '</b> <span class="key">X</span><br><span class="muted">' + OV.U.esc(T('hud.tip.abort')) + '</span>');
+      return b;
+    }
     const ACC = 'scr.opt.acc.';
     return makeScreen('options', {
       isScreen: false,
@@ -1855,8 +1866,14 @@
                 optRow(T(ACC + 'motion'), sseg('reduceMotion', ['auto', 'on', 'off'].map((v) => ({ v, label: T(ACC + 'motion.' + v) }))), T(ACC + 'motion.hint')),
                 optRow(T(ACC + 'textScale'), scaleSeg, T(ACC + 'textScale.hint'))))),
           el('footer', { class: 'scr-foot' },
+            abortBtn(),
             playing ? el('button', { type: 'button', class: 'btn danger', text: T('scr.opt.quit'), onclick: quit }) : el('span', { class: 'scr-hint', text: T('scr.version', { v: VERSION }) }),
             el('div', { class: 'scr-foot-btns' }, closeBtn))));
+      },
+      keys(ev) {
+        const m = ev.mods || {};
+        if (ev.key && ev.key.toLowerCase() === 'x' && !m.shift && !m.ctrl && !m.meta && !m.alt && inBattle()) { abortNow(); return true; }
+        return false;
       },
       focus: () => closeBtn,
       back: close,

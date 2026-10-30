@@ -161,6 +161,10 @@
   // o motor recusa disparar armas por investigar: o equipamento automático nunca as escolhe
   const usable = (G, id) => { const it = D().items[id]; return !!it && it.battle !== false && (!it.research || G.researched.indexOf(it.research) >= 0); };
   const weightOf = (id) => (D().items[id] && D().items[id].weight) | 0;
+  // efetivo estimado: a guarnição real num local já visitado (Battle.crewRange), senão a tabela do mês
+  const crewRangeOf = (mission, M) => (OV.Battle.crewRange ? OV.Battle.crewRange(mission) : D().deploymentRange(M.deploymentId, M.difficulty, M.month));
+  // o que ocupa o compartimento (o carregador dentro da arma não ocupa o cinto — a regra do «Equipar» e do motor)
+  const visIn = (lo, sl) => (OV.InventoryUI && OV.InventoryUI.model && OV.InventoryUI.model.visibleIn ? OV.InventoryUI.model.visibleIn(lo, sl) : lo[sl] || []);
   /* Equipa automaticamente quem está a bordo sem arma (ou todos com all:true) com o que há na nave e, no hangar, no
      armazém: a melhor arma utilizável que a Força aguenta com munição, 2 carregadores, 1 granada e um kit médico para a
      equipa. → {equipped, unarmed, ok, reason} (unarmed = a bordo ainda sem arma). */
@@ -186,7 +190,7 @@
       const lo = { R: null, L: null, belt: [], pack: [] };
       const str = Math.max(1, (s.stats && s.stats.str) | 0);
       let w = 0;
-      const fits = (id, slot) => w + weightOf(id) <= str && D().fitsSlot(id, slot, lo[slot]);
+      const fits = (id, slot) => w + weightOf(id) <= str && D().fitsSlot(id, slot, visIn(lo, slot));
       const put = (id, slot) => { if (!fits(id, slot) || !take(id)) return false; lo[slot].push(id); w += weightOf(id); return true; };
       const ammoFor = (g) => { const a = D().items[g].ammo; return Array.isArray(a) && a.length ? a.filter((x) => usable(G, x) && (st[x] | 0) > 0) : null; };
       const guns = PREF_GUNS.concat(Object.keys(st).filter((id) => D().items[id] && D().items[id].kind === 'firearm' && PREF_GUNS.indexOf(id) < 0).sort((a, b) => weightOf(a) - weightOf(b)));
@@ -256,7 +260,7 @@
             if (done) break;
             if (pass === 0 && w + weightOf(x) > str) continue;
             for (const sl of ['belt', 'pack']) {
-              if (!D().fitsSlot(x, sl, lo[sl])) continue;
+              if (!D().fitsSlot(x, sl, visIn(lo, sl))) continue;
               lo[sl].push(x);
               w += weightOf(x);
               st[x]--;
@@ -1023,7 +1027,7 @@
     const seats = craft && D().crafts[craft.type] ? D().crafts[craft.type].seatsUI | 0 : 0;
     // menos soldados do que o efetivo mínimo estimado: aviso forte (não só «lugares vazios»)
     let range = null;
-    try { range = M.deploymentId ? D().deploymentRange(M.deploymentId, M.difficulty, M.month) : null; } catch (e) { range = null; }
+    try { range = M.deploymentId ? crewRangeOf(mission, M) : null; } catch (e) { range = null; }
     if (range && squad.length && squad.length < (range.min | 0)) {
       out.unshift({ cls: 'bad', id: 'short', text: Tn('cp.br.warn.short', squad.length, { crew: OV.Screens && OV.Screens.crewText ? OV.Screens.crewText(range) : range.min + '–' + range.max }) });
     } else if (seats && squad.length < seats) out.push({ cls: 'info', text: Tn('cp.br.warn.seats', seats - squad.length) });
@@ -1113,8 +1117,8 @@
       const time = M.kind === 'alienBase' || M.kind === 'cydonia' ? 'dim' : meta.time || (M.night ? 'night' : 'day');
       const raceId = meta.race;
       const race = raceId ? D().races[raceId] : null;
-      // a tripulação real usa a tabela do mês (crewRules.earlyMonths): o efetivo estimado também
-      const range = D().deploymentRange(M.deploymentId, M.difficulty, M.month);
+      // a tripulação real usa a tabela do mês (crewRules.earlyMonths) ou a guarnição de um local já visitado
+      const range = crewRangeOf(mission, M);
       const sprite = race && race.members && race.members.soldier ? ui.unitSpriteEl(race.members.soldier, 86) : null;
       const where = whereOf(G, siteRef, meta);
       const notes = [];

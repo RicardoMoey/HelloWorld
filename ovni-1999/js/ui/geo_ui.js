@@ -320,13 +320,18 @@
       if (GM().dayPhase(G, tg.lon, tg.lat) !== 'night') return null;
       let h = 1;
       while (h < 24 && GM().dayPhase({ t: G.t + h * 3600 }, tg.lon, tg.lat) !== 'day') h++;
-      return { h, crashed: !!(tg.obj && tg.obj.status === 'crashed') };
+      /* safe: OVNI aterrado nos meses de aprendizagem (Missions.nightLandingS) que ainda fica no chão até amanhecer —
+         esperar pelo dia não o deixa fugir */
+      const o = tg.obj;
+      const safe = !!o && o.status === 'landed' && (G.month | 0) < tune('NIGHT_LANDING_MONTHS', 0) && (o.groundLeftS | 0) >= h * 3600;
+      return { h, crashed: !!(o && o.status === 'crashed'), safe };
     } catch (e) {
       return null;
     }
   }
-  /* «Esperar pelo dia» por omissão: em Recruta ou antes da 1.ª missão noturna (G.ui.geo.nightTried), exceto destroços que
-     expiram antes de amanhecer (o tempo no chão de um OVNI aterrado não se conhece: a pergunta não o revela) */
+  /* «Esperar pelo dia» por omissão: em Recruta, antes da 1.ª missão noturna (G.ui.geo.nightTried) ou quando o OVNI
+     aterrado fica até amanhecer (nt.safe, meses de aprendizagem), exceto destroços que expiram antes de amanhecer ou
+     combustível que não chega (fora dos meses de aprendizagem o tempo no chão não se conhece: a pergunta não o revela) */
   function waitIsDefault(G, ref, nt, craft) {
     if (!nt) return false;
     if (craft && loiterHours(G, craft) < nt.h) return false;
@@ -334,7 +339,7 @@
     const o = tg && tg.obj;
     if (o && o.status === 'crashed' && Number.isFinite(o.crashLeftS) && o.crashLeftS <= nt.h * 3600) return false;
     const tried = !!(G.ui && G.ui.geo && G.ui.geo.nightTried);
-    return (G.difficulty | 0) === 0 || !tried;
+    return (G.difficulty | 0) === 0 || !tried || !!nt.safe;
   }
   /* horas que uma nave no local ainda pode esperar antes de o combustível a mandar para casa (a mesma conta do
      World.burnFuel: o regresso à velocidade máxima mais a margem) — Infinity se não gasta parada */
@@ -408,6 +413,8 @@
     if (!ref || !D().deploymentRange) return null;
     const tg = C().targetOf(G, ref);
     if (!tg) return null;
+    // local já visitado: a guarnição que lá ficou (contrato §11.10)
+    if (tg.obj && tg.obj.garrison && Array.isArray(tg.obj.garrison.crew)) return { min: tg.obj.garrison.crew.length, max: tg.obj.garrison.crew.length };
     let dep = null;
     if (ref.kind === 'ufo') dep = typeKnown(G, tg.obj) && D().ufos[tg.obj.type] ? D().ufos[tg.obj.type].deployment : null;
     else if (ref.kind === 'site') dep = 'dep_terror_site';
@@ -649,7 +656,7 @@
     k.push('geo.ev.team.eta.night.flares.one', 'geo.ev.team.eta.night.flares.other', 'geo.ev.team.eta.night.none');
     k.push('geo.alert.sci.one', 'geo.alert.sci.other', 'geo.alert.sciBtn', 'geo.alert.sciBtn.tip', 'geo.alert.hireBtn.tip', 'geo.alert.squad.one', 'geo.alert.squad.other', 'geo.alert.squad.arriving.one', 'geo.alert.squad.arriving.other', 'geo.alert.hireBtn');
     k.push('geo.fix.short.one', 'geo.fix.short.other', 'geo.fix.short.arriving.one', 'geo.fix.short.arriving.other', 'geo.warn.noAmmo', 'geo.int.noAmmo.title', 'geo.int.noAmmo.body', 'geo.int.noAmmo.confirm', 'geo.int.noAmmo.go', 'geo.a.buyAmmo');
-    k.push('geo.alert.aboard.one', 'geo.alert.aboard.other', 'geo.short.title', 'geo.short.risk', 'geo.short.board', 'geo.short.go', 'geo.ev.arrived.night.ask', 'geo.ev.arrived.night.fuel', 'geo.a.attackNow',
+    k.push('geo.alert.aboard.one', 'geo.alert.aboard.other', 'geo.short.title', 'geo.short.risk', 'geo.short.board', 'geo.short.go', 'geo.ev.arrived.night.ask', 'geo.ev.arrived.night.fuel', 'geo.ev.arrived.night.safe', 'geo.a.attackNow',
       'geo.a.putAboard', 'geo.ev.delivery.gearHint', 'geo.tm.keys', 'geo.tm.keys.mouse', 'geo.tm.keys.touch', 'geo.dfBanner.text.touch',
       'geo.ev.team.eta.night.flares.touch.one', 'geo.ev.team.eta.night.flares.touch.other', 'geo.idle.toast.touch');
     for (const id of STEP_IDS) k.push('geo.steps.' + id);
@@ -2011,7 +2018,7 @@
             // noite no OVNI: os alienígenas veem no escuro — sugerir esperar pelo dia (a interface volta a perguntar)
             const nt = nightAt(G, tref);
             const lines = unarmed ? [Tn('geo.ev.arrived.unarmed', unarmed)] : [];
-            if (nt) lines.unshift(T(nt.crashed ? 'geo.ev.arrived.night.crash' : 'geo.ev.arrived.night', { t: fmtDur(nt.h) }));
+            if (nt) lines.unshift(T(nt.crashed ? 'geo.ev.arrived.night.crash' : nt.safe ? 'geo.ev.arrived.night.safe' : 'geo.ev.arrived.night', { t: fmtDur(nt.h) }));
             // em Recruta, ou até à 1.ª missão noturna, esperar pelo dia é o botão por omissão (Enter) — salvo destroços
             // que não duram até lá; a pergunta curta vem primeiro (o parágrafo do porquê fica por baixo)
             const waitDef = !!nt && waitIsDefault(G, tref, nt, c);

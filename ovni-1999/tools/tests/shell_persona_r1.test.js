@@ -14,6 +14,7 @@ module.exports = function (OV, t) {
   if (!OV.Screens || !OV.Screens.crewText) load('js/ui/screens.js');
   if (!OV.GeoUI) load('js/ui/geo_ui.js');
   if (!OV.CampaignUI || !OV.CampaignUI.autoKit) load('js/ui/campaign_ui.js');
+  if (!OV.InventoryUI) load('js/ui/inventory_ui.js');
   const SC = OV.Screens, CU = OV.CampaignUI, M = OV.GeoUI.model, D = OV.Data, C = OV.Campaign;
   const has = (k) => typeof OV.STR[k] === 'string';
   const lo = (s) => [s.loadout.R, s.loadout.L].concat(s.loadout.belt, s.loadout.pack).filter(Boolean);
@@ -36,7 +37,9 @@ module.exports = function (OV, t) {
         const { lo: l } = SC.loadoutFor(tier, 2, true, heavy);
         t.ok(l.belt.indexOf('electro_flare') >= 0, 'nível ' + tier + (heavy ? ' pesada' : '') + ': sinalizador no cinto');
         t.ok(l.pack.indexOf('electro_flare') >= 0, 'nível ' + tier + ': segundo sinalizador na mochila');
-        t.ok(D.fitsSlot('grenade', 'belt', []) && l.belt.reduce((n, id) => n + (D.items[id].size | 0), 0) <= D.invSlots.belt.capacity, 'cinto dentro da capacidade');
+        // o carregador dentro da arma não ocupa o cinto (ronda 3: a regra do «Equipar» e do motor)
+        const used = OV.InventoryUI.model.visibleIn(l, 'belt');
+        t.ok(D.fitsSlot('grenade', 'belt', []) && used.reduce((n, id) => n + (D.items[id].size | 0), 0) <= D.invSlots.belt.capacity, 'cinto dentro da capacidade');
       }
     }
     // compatibilidade: sem o 4.º argumento as posições 3 e 7 levam a arma pesada

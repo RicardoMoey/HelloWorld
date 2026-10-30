@@ -17,10 +17,12 @@
      dir, anchor) → {x, y, anchor}, logEntry(B, ev, ctx) → entrada|null, blastConfirm(settings, difficulty) → bool,
      handName(type) → texto curto, confirmEarly(pointerType, detail, dtMs) → bool (2.º clique de um duplo clique ou
      depressa demais não confirma um explosivo), reportSummary(rows) → texto, turnReportRows(entradas) → linhas do
-     relatório do turno (turno alienígena + secção «No início do turno X-COM»)}, debug: {tileToScreen(x,y,z), unitScreen(id), selectAndMove(id,x,y,z) → Promise,
+     relatório do turno (turno alienígena + secção «No início do turno X-COM»), ufoHintDue(B, contactTurn) → bool
+     (conselho «estão dentro do OVNI» à noite sem contacto há UFO_HINT_TURNS turnos)}, debug: {tileToScreen(x,y,z), unitScreen(id), selectAndMove(id,x,y,z) → Promise,
      state(), hover(x,y), perf() → {fps, avg, p95, chunks, sprites}|null (só com ?debug=1, que também mostra a leitura
      no topo do ecrã), showAll(on) (só a vista), centre(x,y,z) (câmara), log() → [entrada], kb(x,y,z) (cursor de
-     teclado), noteEvent(ev), report('turn'|'log'), grenades() → n (aviso de granadas alienígenas, Recruta)}} */
+     teclado), noteEvent(ev), report('turn'|'log'), grenades() → n (aviso de granadas alienígenas, Recruta),
+     contact(turn) (último turno com contacto)}} */
 (function (OV) {
   'use strict';
 
@@ -600,6 +602,8 @@
     let label = out ? T('hud.path.out', { tu: wp.tu, have: u.tu | 0 })
       : res ? T('hud.path.reserve', { tu: wp.tu, left, res: res.tu, what: res.what })
         : T('hud.path', { tu: wp.tu, left, energy: Math.max(0, (u.energy | 0) - wp.energy) });
+    // destino ○ (chega, mas já não dispara): dizê-lo por palavras — a forma e a cor não chegam a todos
+    if (!out && !res && wp.marks[wp.marks.length - 1] === 1) label += ' · ' + T('hud.path.noShot');
     if (S.lock === i) label = T(confirmVia() === 'tap' ? 'hud.confirmMove.tap' : confirmVia() === 'key' ? 'hud.confirmMove.key' : 'hud.confirmMove') + ' · ' + label;
     // porta no destino: ⌥ + clique abre-a sem entrar — com o custo só quando o soldado está ao lado dela (sem ⌥ no toque)
     let sub = null;
@@ -1265,7 +1269,31 @@
     // o que aconteceu aos nossos durante o turno alienígena (os avisos passam depressa demais)
     // e as granadas alienígenas ativadas à vista (Recruta): a mesma janela, com «Mostrar» a centrar em cada uma
     const hurt = turnReportRows(S.log.slice(mark)).concat(warnGrenades());
-    if (hurt.length) openReport('turn', hurt);
+    if (hurt.length || visibleAliens().length) S.contactTurn = S.B.turn;
+    // noite num OVNI sem contacto há vários turnos: os alienígenas estão lá dentro (uma vez por batalha)
+    const hint = !S.ufoHinted && ufoHintDue(S.B, S.contactTurn) ? ufoHintRow() : null;
+    if (hint) S.ufoHinted = true;
+    if (hurt.length) openReport('turn', hint ? hurt.concat({ key: 'hud.hint.title', params: null, kind: 'sect', at: -1, from: -1 }, hint) : hurt);
+    else if (hint) openReport('turn', [hint], 'hud.hint.title');
+  }
+  /* Conselho do OVNI às escuras: missão noturna num OVNI caído/aterrado, UFO_HINT_TURNS turnos X-COM sem contacto
+     (contactTurn = último turno com um alienígena à vista ou um ataque aos nossos) e todos os alienígenas vivos dentro
+     do OVNI — o principiante anda às voltas no escuro sem saber que tem de entrar. Pura (testada em Node). */
+  const UFO_HINT_TURNS = 5;
+  function ufoHintDue(B, contactTurn) {
+    if (!B || !B.mission || B.side !== 'xcom' || B.phase === 'over' || !B.ufo) return false;
+    const k = B.mission.kind;
+    if ((k !== 'crash' && k !== 'landed') || !B.mission.night) return false;
+    if ((B.turn | 0) - (contactTurn | 0) < UFO_HINT_TURNS) return false;
+    const r = B.ufo;
+    const live = B.units.filter((u) => u.side === 'alien' && u.onMap && LIVE[u.status]);
+    return live.length > 0 && live.every((u) => u.x >= r.x && u.x < r.x + r.w && u.y >= r.y && u.y < r.y + r.h);
+  }
+  // a linha do conselho; «Mostrar» centra o OVNI quando o sítio dele já foi visto
+  function ufoHintRow() {
+    const r = S.B.ufo;
+    const i = idxOf(r.x + (r.w >> 1), r.y + (r.h >> 1), 0);
+    return { key: 'hud.hint.ufoInside', params: { n: (S.B.turn | 0) - (S.contactTurn | 0) }, kind: 'tip', ic: '?', at: S.B.map.disc[i] & 1 ? i : -1, from: -1 };
   }
   /* Recruta: granadas alienígenas ativadas no chão à vista (rebentam no fim deste turno) ficam com o raio marcado
      e um aviso, para o principiante ter tempo de afastar os soldados */
@@ -1414,7 +1442,7 @@
     n.scrollIntoView({ block: 'nearest' });
   }
   // kind 'turn' (início do turno: só o que aconteceu aos nossos) ou 'log' (registo inteiro, mais recente primeiro)
-  function openReport(kind, list) {
+  function openReport(kind, list, titleKey) {
     if (!S || !S.hud) return;
     if (S.report && S.report.kind === kind && kind === 'log') {
       closeReport();
@@ -1426,7 +1454,7 @@
     const rows = kind === 'log' ? S.log.slice(-80).reverse() : list;
     R.classList.toggle('tips', kind === 'tips');
     const head = el('div', { class: 'bs-report-head' },
-      el('span', { class: 'bs-report-title', text: T(kind === 'log' ? 'hud.log.title' : kind === 'tips' ? 'hud.tips.title' : 'hud.report.title') }),
+      el('span', { class: 'bs-report-title', text: T(titleKey || (kind === 'log' ? 'hud.log.title' : kind === 'tips' ? 'hud.tips.title' : 'hud.report.title')) }),
       kind === 'turn' ? el('span', { class: 'bs-report-sum', text: reportSummary(rows) }) : null);
     const closeLabel = T(kind === 'tips' ? 'hud.tips.ok' : 'hud.report.close');
     const close = el('button', { class: 'btn small', type: 'button' }, closeLabel, el('span', { class: 'key', text: 'Esc' }));
@@ -1449,9 +1477,10 @@
       }
       // atacante não visto que agora está à vista (o clarão do disparo revelou-o): dizê-lo e mostrar onde está
       const rev = kind === 'turn' ? revealed(e) : null;
+      const txt = T(e.key, e.params) + (rev ? T(rev.flash ? 'hud.report.revealed' : 'hud.report.nowSeen') : '');
       const row = el('div', { class: 'bs-report-row ' + e.kind },
         el('span', { class: 'bs-report-ic', 'aria-hidden': 'true', text: e.ic || (e.kind === 'bad' ? '✖' : e.kind === 'good' ? '✔' : '!') }),
-        el('span', { class: 'bs-report-txt', text: T(e.key, e.params) + (rev ? T(rev.flash ? 'hud.report.revealed' : 'hud.report.nowSeen') : '') }));
+        el('span', { class: 'bs-report-txt', text: txt }));
       const from = rev ? rev.i : e.from;
       const where = from >= 0 ? from : e.at;
       if (where >= 0) {
@@ -1469,6 +1498,8 @@
           sfx('ui_click');
         });
         tip(b, T(rev ? 'hud.report.showRevealed.tip' : from >= 0 ? 'hud.report.showFrom.tip' : 'hud.report.show.tip'));
+        // leitor de ecrã: o nome do botão diz de que entrada é («Mostrar: Sectoide abatido…»)
+        b.setAttribute('aria-label', T('hud.report.show.aria', { btn: T(from >= 0 ? 'hud.report.showFrom' : 'hud.report.show'), what: txt }));
         row.appendChild(b);
       }
       listEl.appendChild(row);
@@ -1843,7 +1874,8 @@
 
   function renderCard(u) {
     const H = S.hud;
-    const sig = u ? [u.id, u.tu, u.energy, u.hp, u.stun, u.morale, u.kneel, u.status, u.done, woundsOf(u), u.burn, u.kills, u.armourId, (u.armour || []).join(',')].join('|') : 'none';
+    const load = u ? OV.BUnits.weight(S.B, u) | 0 : 0;
+    const sig = u ? [u.id, u.tu, u.energy, u.hp, u.stun, u.morale, u.kneel, u.status, u.done, woundsOf(u), u.burn, u.kills, u.armourId, (u.armour || []).join(','), load].join('|') : 'none';
     if (S.sig.card === sig) return;
     S.sig.card = sig;
     OV.Dom.clear(H.card);
@@ -1874,6 +1906,12 @@
     if (u.status === 'panic') chip('panic', T('bs.status.panic'));
     if (u.burn > 0) chip('burn', T('bs.status.burning'));
     if (u.done) chip('done', T('hud.done'));
+    // carga acima da Força: o motor corta as UT de cada turno (BUnits.turnTU) — dizê-lo com os números
+    const str = (u.stats && u.stats.str) | 0;
+    if (u.side === 'xcom' && str > 0 && load > str) {
+      const base = (u.stats.tu | 0), cut = Math.floor((base * str) / load);
+      chip('heavy', T('hud.chip.heavy'), T('hud.tip.heavy', { w: load, str, tu: cut, base }));
+    }
     const ar = u.armour || [];
     const armourTip = T('hud.armourValues', { f: ar[0] | 0, s: Math.min(ar[1] | 0, ar[2] | 0), r: ar[3] | 0, u: ar[4] | 0 });
     const sub = el('div', { class: 'bs-sub' }, el('span', { text: [rankName(u), u.armourId ? T('armour.' + u.armourId) : ''].filter(Boolean).join(' · ') }));
@@ -2893,7 +2931,7 @@
         lastFire: null, miniOn: false, mood: null, hudDirty: true, mapDirty: true, force: false, spaceDown: false, spaceDragged: false,
         clickFast: false, perf: OV.Game && OV.Game.debug ? { draw: [], at: [], shown: 0, last: null } : null,
         kcur: { x: 0, y: 0, armed: false, anchor: null, hold: null }, arrowT: {}, alt: false, lastInput: 'ptr', mouse0: null, aimLabel: '',
-        log: [], logCtx: { last: {}, seenAt: {} }, report: null, alienNades: new Set(),
+        log: [], logCtx: { last: {}, seenAt: {} }, report: null, alienNades: new Set(), contactTurn: B.turn | 0, ufoHinted: false,
       };
       S.pctx = {
         view: S.view, anim, side: 'xcom', followId: () => (S ? S.selId : null),
@@ -2904,6 +2942,7 @@
             if (!S) return;
             S.hudDirty = true;
             S.mapDirty = true;
+            if (ev.t === 'spotted' && ev.side === 'xcom') S.contactTurn = S.B.turn;
             if (ev.t === 'spotted' || ev.t === 'death' || ev.t === 'turnStart') updateMusic();
           },
           viewZ: (z) => S && setViewZ(z),
@@ -3042,6 +3081,7 @@
         pathSub: S.view.path ? S.view.path.sub || null : null, hint: S.hud ? S.hud.hint.textContent : '',
         targetLabel: S.view.target && S.view.targetLabel ? Object.assign({}, S.view.targetLabel) : null,
         report: S.report ? { kind: S.report.kind, rows: Array.from(S.hud.report.querySelectorAll('.bs-report-txt')).map((n) => n.textContent) } : null,
+        contactTurn: S.contactTurn, ufoHinted: !!S.ufoHinted,
       };
     },
     // registo de mensagens (entradas com o texto já traduzido)
@@ -3087,6 +3127,10 @@
       if (kind === 'turn') openReport('turn', S.log.filter((e) => e.own));
       else openReport('log');
     },
+    // QA: último turno com contacto (conselho «estão dentro do OVNI» ao fim de UFO_HINT_TURNS turnos sem ele)
+    contact(turn) {
+      if (S) S.contactTurn = turn | 0;
+    },
     // QA: abre os conselhos da primeira missão
     tips() {
       if (S) openTips();
@@ -3109,7 +3153,7 @@
     refresh() { if (S) invalidate(); },
     // abortar a missão (com a confirmação de sempre): botão do HUD, tecla X e o painel Opções (Esc)
     abort() { if (S) abortMission(); },
-    model: { kbStep, logEntry, blastConfirm, handName, confirmEarly, reportSummary, turnReportRows },
+    model: { kbStep, logEntry, blastConfirm, handName, confirmEarly, reportSummary, turnReportRows, ufoHintDue, UFO_HINT_TURNS },
     debug,
   };
 })(globalThis.OV || (globalThis.OV = {}));

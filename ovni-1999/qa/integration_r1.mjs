@@ -270,7 +270,8 @@ try {
   await noMissing('equipa no local de noite');
   await shot('geo_night_arrival');
   // briefing de noite: também lá está o botão
-  await page.locator('.geo-pop .btn', { hasText: /Iniciar/i }).click();
+  // em Recruta (ou com o OVNI seguro até amanhecer) o botão de atacar chama-se «Atacar já» (ronda 3)
+  await page.locator('.geo-pop .btn', { hasText: /Iniciar|Atacar já/i }).first().click();
   await page.waitForFunction(() => OV.Scenes.top() && OV.Scenes.top().id === 'cbriefing', null, { timeout: 15000 });
   await sleep(400);
   const br = await page.locator('.cp-brief').innerText();

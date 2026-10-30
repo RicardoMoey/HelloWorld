@@ -134,3 +134,7 @@
 }
 /* texto e lista em foco com o mesmo contorno ciano dos botões (o «auto 1px» era invisível no fundo escuro) */
 .up-info:focus-visible, .up-nav:focus-visible, .up-art:focus-visible { outline: 2px solid var(--cyan); outline-offset: -2px; }
+
+/* ---- integração da ronda 3 ---------------------------------------------------------------------------------------- */
+/* retrato (iPad 834×1194): o painel usa a altura toda em vez de parar nos 880 px */
+@media (orientation: portrait) and (max-width: 900px) { .up-panel { height: 100%; } }

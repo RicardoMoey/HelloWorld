@@ -413,14 +413,29 @@
     B.units.push(u);
     if (B._ && B._.unitById) B._.unitById.set(u.id, u);
     const lo = loadout || s.loadout || { R: null, L: null, belt: [], pack: [] };
+    /* cada arma na mão parte carregada com o 1.º carregador compatível do cinto e depois da mochila (a escolha de
+       autoLoad), tirado antes das capacidades: o carregador dentro da arma não ocupa o cinto (ecrã «Equipar») */
+    const preload = { R: null, L: null };
+    const skip = { belt: new Set(), pack: new Set() };
+    if (o.autoLoad !== false) {
+      for (const hand of ['R', 'L']) {
+        const def = Data.items[lo[hand]];
+        if (!def || !def.ammo || !def.ammo.length) continue;
+        for (const sl of ['belt', 'pack']) {
+          const k = (lo[sl] || []).findIndex((t, j) => !skip[sl].has(j) && def.ammo.indexOf(t) >= 0);
+          if (k >= 0) { skip[sl].add(k); preload[hand] = lo[sl][k]; break; }
+        }
+      }
+    }
     for (const slot of SLOTS) {
       const list = slot === 'R' || slot === 'L' ? (lo[slot] ? [lo[slot]] : []) : lo[slot] || [];
-      for (const type of list) {
-        if (!Data.items[type]) continue;
-        const it = newItem(B, type);
+      list.forEach((type, j) => {
+        if (!Data.items[type] || (skip[slot] && skip[slot].has(j))) return;
+        const hand = slot === 'R' || slot === 'L';
+        const it = newItem(B, type, hand && preload[slot] ? { ammo: preload[slot] } : undefined);
         // o ecrã «Equipar» garante as capacidades; um carregamento inválido vai para a mochila
         if (!giveItem(B, u, it.id, slot) && !giveItem(B, u, it.id, 'pack')) giveItem(B, u, it.id, 'pack', true);
-      }
+      });
     }
     if (o.autoLoad !== false) autoLoad(B, u);
     u.tuMax = turnTU(B, u);
