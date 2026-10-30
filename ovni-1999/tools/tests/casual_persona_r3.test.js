@@ -171,7 +171,7 @@ module.exports = function (OV, t) {
     const src = read('js/ui/geo_ui.js');
     t.ok(/const ph = nt && nt\.dusk \? 'dusk' : 'night';/.test(src), 'popup escolhe o texto do crepúsculo');
     t.ok(/title: T\(ev\.dawn && !nt \? 'geo\.ev\.arrived\.dawn'/.test(src), '«Amanheceu» só com dia pleno');
-    t.ok(/const wait = nt \? \{ label: T\('geo\.a\.waitDay'\)/.test(src), 'botão «Esperar pelo dia» com noite ou crepúsculo');
+    t.ok(/const wait = nt && !\(nt\.site && !nt\.lasts\) \? \{ label: T\('geo\.a\.waitDay'\)/.test(src), 'botão «Esperar pelo dia» com noite ou crepúsculo (terror só se o ataque durar até ao dia)');
     // o briefing diz o mesmo (visão até 20 casas)
     t.ok(/20 casas/.test(S['scr.br.note.dusk']));
   });

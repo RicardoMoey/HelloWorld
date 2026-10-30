@@ -10,6 +10,7 @@
      reactions(B, mover|moverId) → Generator<Event>          ciclo de fogo de reação (§3.10); devolve n.º de reações
      reserveTU(B, u, opts?) → int                            UT reservadas (só X-COM; Auto→Snap→Aimed; +4 joelho;
                                                               opts {mode, noKneel, standing: conta o joelho mesmo ajoelhado})
+     reserveInfo(B, u, opts?) → {tu, mode|null, asked, kneel} a mesma conta, com o modo que conta de facto
      walkPreview(B, u, toI, opts?) → {steps, tiles, tus, tu, energy, reserve, marks[0|1|2]} | null
      reactionScore(u) ; turnSteps(from, to) ; scannerBlips(B, u) ; reasonKey(reason) ; noteSpotted(B, u) → n.º de novos
      planArc(B, u, toI) → {curve, origin, target, goal}|null ; traceArc(B, u, fromVoxel, toVoxel, curve) → {arc, land, landVoxel}
@@ -228,13 +229,15 @@
     }
     return null;
   }
-  // UT reservadas para a X-COM: modo de B.reserve na arma principal (Auto→Snap→Aimed se faltar) + joelho
-  function reserveTU(B, u, opts) {
+  /* reserva efetiva da X-COM: modo pedido (opts.mode ou B.reserve) na arma principal, Auto→Snap→Aimed quando a arma
+     não tem o modo pedido, + joelho → {tu, mode: modo que conta de facto (null se nenhum tiro conta), asked, kneel} */
+  function reserveInfo(B, u, opts) {
     const o = opts || {};
-    if (!B || !u || u.side !== 'xcom') return 0;
-    let r = 0;
-    const mode = o.mode || B.reserve || 'none';
-    if (mode !== 'none') {
+    const out = { tu: 0, mode: null, asked: 'none', kneel: 0 };
+    if (!B || !u || u.side !== 'xcom') return out;
+    const asked = o.mode || B.reserve || 'none';
+    out.asked = asked;
+    if (asked !== 'none') {
       const w = mainFirearm(B, u);
       if (w) {
         const cost = (m) => {
@@ -242,15 +245,26 @@
           const c = BU().actionTU(B, u, w.it.id, m);
           return c > 0 ? c : 0;
         };
-        let m = mode;
+        let m = asked;
         if (m === 'auto' && !cost('auto')) m = 'snap';
         if (m === 'snap' && !cost('snap')) m = 'aimed';
-        r = cost(m);
+        const c = cost(m);
+        if (c > 0) {
+          out.tu = c;
+          out.mode = m;
+        }
       }
     }
     // standing: a ação levanta a unidade (andar), por isso o joelho conta mesmo que ela esteja ajoelhada agora
-    if (!o.noKneel && B.reserveKneel && (o.standing || !u.kneel) && BU().canKneel(u)) r += tune('TU_KNEEL', 4);
-    return r;
+    if (!o.noKneel && B.reserveKneel && (o.standing || !u.kneel) && BU().canKneel(u)) {
+      out.kneel = tune('TU_KNEEL', 4);
+      out.tu += out.kneel;
+    }
+    return out;
+  }
+  // UT reservadas para a X-COM (a soma de reserveInfo)
+  function reserveTU(B, u, opts) {
+    return reserveInfo(B, u, opts).tu;
   }
   function reserveFor(B, u, a) {
     if (!RESERVE_CHECKED[a.type] || a.desperate || a.panic || a.free) return 0;
@@ -1181,7 +1195,7 @@
   }
 
   OV.Act = {
-    TYPES, REASONS, validate, perform, reactions, reserveTU, walkPreview, reactionScore, turnSteps, scannerBlips, reasonKey,
+    TYPES, REASONS, validate, perform, reactions, reserveTU, reserveInfo, walkPreview, reactionScore, turnSteps, scannerBlips, reasonKey,
     planArc, traceArc, noteSpotted: newSpots,
   };
 })(globalThis.OV || (globalThis.OV = {}));

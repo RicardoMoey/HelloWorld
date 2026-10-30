@@ -249,7 +249,7 @@ try {
       hintSeen++;
       await shot('ufo_hint');
       const title = await page.evaluate(() => (document.querySelector('.bs-report-title') || {}).textContent || '');
-      log(/Sem contacto há 5 turnos: .*procurem a porta/.test(s.report.rows.join(' ')) && /Conselho|turno alienígena/.test(title), 'conselho no relatório do turno («' + title + '»: ' + s.report.rows.join(' | ') + ')');
+      log(/Sem contacto há 5 turnos: .*[Pp]rocurem a porta/.test(s.report.rows.join(' ')) && /Conselho|turno alienígena/.test(title), 'conselho no relatório do turno («' + title + '»: ' + s.report.rows.join(' | ') + ')');
     } else if (due && dueAfter && s.contactTurn < s.turn - 4 && !s.ufoHinted) dueSeen++;
     await page.keyboard.press('Escape');
     await sleep(200);

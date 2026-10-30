@@ -102,7 +102,10 @@ module.exports = function (OV, t) {
     try { pool = C.equipPool(G, c.id); } catch (e) { pool = null; }
     t.ok(pool, 'equipPool');
     const left = CU.leftAtBase(G, c, pool);
-    t.eq(left[0], { id: 'rocket_launcher', n: 11 }, 'as armas primeiro: ' + JSON.stringify(left));
+    // ronda 4 (tardia): o material de captura vem antes das armas; depois as armas, com a munição
+    const capt = left.findIndex((x) => x.id === 'smoke_grenade' || x.id === 'stun_rod');
+    const rl = left.findIndex((x) => x.id === 'rocket_launcher');
+    t.ok(rl >= 0 && left[rl].n === 11 && (capt < 0 || capt < rl), 'captura e depois as armas: ' + JSON.stringify(left));
     t.ok(left.some((x) => x.id === 'small_rocket' && x.n === 4), 'com a munição');
     t.ok(left.length <= 4);
     t.ok(left.every((x) => D.items[x.id].kind !== 'corpse'), 'só material de combate');

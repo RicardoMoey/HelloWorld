@@ -13,7 +13,7 @@
      resolveMelee(B, attacker, itemId, target, rng?, opts?) → events
      applyImpact(B, hit, power, dmgType, attackerId, opts?) → events
      damageUnit(B, u, power, dmgType, side, part, attackerId, opts?) → events
-     killUnit(B, u, killerId, cause, opts?) → events ; knockOut(B, u, attackerId, opts?) → events
+     killUnit(B, u, killerId, cause, opts?{rng, dmgType → u.deathDmg}) → events ; knockOut(B, u, attackerId, opts?) → events
      damageTerrain(B, i, part, power, opts?) → events
      explode(B, centreVoxel, power, dmgType, radius, attackerId, opts?) → events
      resolvePendingExplosions(B, rng?, opts?{keepLast}) → events
@@ -521,7 +521,7 @@
     });
     for (const e of moraleEv) out.push(e);
     if (u.hp <= 0) {
-      for (const e of killUnit(B, u, atk ? atk.id : null, o.cause || 'damage', { rng: r })) out.push(e);
+      for (const e of killUnit(B, u, atk ? atk.id : null, o.cause || 'damage', { rng: r, dmgType })) out.push(e);
     } else if (u.stun >= u.hp && LIVE[u.status]) {
       for (const e of knockOut(B, u, atk ? atk.id : null, { rng: r })) out.push(e);
     }
@@ -572,6 +572,7 @@
     u.kneel = false;
     u.killedBy = killerId === undefined ? null : killerId;
     u.deathCause = cause || 'damage';
+    u.deathDmg = o.dmgType || null; // tipo de dano do golpe fatal (o relatório distingue tiro de explosão)
     u.deathTurn = B.turn | 0;
     u.deathSide = B.side || null; // lado em jogo na morte (≠ 'xcom' = tiro de reação/turno alienígena)
     const dropped = tile >= 0 ? dropAll(B, u, tile, true) : [];
@@ -859,7 +860,7 @@
           const def = D().items[it.type];
           if (!(p > (def.armour | 0))) continue;
           const lu = it.unitId !== null && it.unitId !== undefined ? findUnit(B, it.unitId) : null;
-          if (lu && lu.status === 'out') for (const e of killUnit(B, lu, attackerId, cause, { rng: r })) out.push(e);
+          if (lu && lu.status === 'out') for (const e of killUnit(B, lu, attackerId, cause, { rng: r, dmgType: type })) out.push(e);
           if (BU().findItem(B, it.id)) {
             BU().deleteItem(B, it.id);
             gone.push(it.id);

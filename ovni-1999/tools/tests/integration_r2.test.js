@@ -148,7 +148,7 @@ module.exports = function (OV, t) {
     t.ok(!/Mac/.test(OV.STR['scr.menu.howto.hint.touch']), 'menu no iPad não fala do Mac');
     t.ok(/@media \(hover: none\) \{[^}]*#tooltip[^}]*\}[\s\S]*?\.btn kbd, \.btn \.key, \.modal \.key \{ display: none; \}/.test(read('css/base.css')), 'emblemas de tecla escondidos no toque');
     const scr = read('js/ui/screens.js');
-    for (const k of ["TT(e.key + '.hint')", "TT('scr.opt.speed.hint')", "TT('scr.opt.instantGrenades.hint')", 'TT(key, {']) t.ok(scr.indexOf(k) >= 0, 'screens usa ' + k);
+    for (const k of ["TT(e.key + '.hint')", "TT('scr.opt.speed.hint')", "TT('scr.opt.instantGrenades.hint')", 'TT(keyOf(c.tip), pr)']) t.ok(scr.indexOf(k) >= 0, 'screens usa ' + k);
     const cui = read('js/ui/campaign_ui.js');
     for (const k of ["touchT('cp.br.note.waitDay')", "touchT('cp.eq.hint')", "touchT(nightUfo() ? 'cp.br.hint.night' : 'cp.br.hint')"]) t.ok(cui.indexOf(k) >= 0, 'campaign_ui usa ' + k);
   });

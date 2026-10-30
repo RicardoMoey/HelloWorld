@@ -44,6 +44,14 @@
   const COLS = ['rank', 'name', 'missions', 'kills', 'tu', 'hp', 'fire', 'react', 'brav', 'wound', 'craft'];
   const CAP_KEYS = ['personnel', 'labs', 'workshops', 'storage', 'aliens', 'crafts'];
   const CAP_FAC = { personnel: 'living_quarters', labs: 'laboratory', workshops: 'workshop', storage: 'general_stores', aliens: 'alien_containment', crafts: 'hangar' };
+  // selo do ritmo da investigação, com a explicação na dica e no rótulo acessível («Desconhecido» o quê?)
+  const progChip = (lbl) => {
+    const tipKey = lbl.replace('research.progress.', 'base.research.progTip.');
+    const txt = T('base.research.prog', { p: T(lbl) }), tip = OV.T.has(tipKey) ? T(tipKey) : '';
+    const c = OV.Dom.el('span', { class: 'bsc-chip prog ' + (PROG_CLS[lbl] || ''), text: txt, 'aria-label': tip ? txt + '. ' + tip : txt, title: tip });
+    if (tip) OV.Dom.tooltip(c, () => tipHtml(txt, [esc(tip)]));
+    return c;
+  };
   const PROG_CLS = { 'research.progress.none': 'p-none', 'research.progress.unknown': 'p-unknown', 'research.progress.poor': 'p-poor', 'research.progress.average': 'p-average', 'research.progress.good': 'p-good', 'research.progress.excellent': 'p-excellent' };
   // categorias do armazém e do mercado (ordem de apresentação)
   const CATS = [
@@ -817,7 +825,7 @@
           el('div', { class: 'bsc-card-h' },
             el('div', { class: 'bsc-card-t' }, el('div', { class: 'bsc-row-name', text: topicName(p.topic) }),
               el('div', { class: 'bsc-row-sub', text: T('research.cat.' + ((topic && topic.cat) || 'story')) + (topic && topic.interrogation ? ' · ' + T('base.research.interrogation') : '') })),
-            el('span', { class: 'bsc-chip prog ' + (PROG_CLS[lbl] || ''), text: T(lbl) })),
+            progChip(lbl)),
           el('div', { class: 'bsc-card-row' }, el('span', { class: 'bsc-lbl', text: T('base.research.scientists') }), sciStepper(p)),
           el('div', { class: 'bsc-card-act' },
             art ? btn(T('base.btn.ufopaedia'), { cls: 'small ghost', title: T('base.tip.article'), aria: T('base.tip.articleFor', { name: articleTitle(art) }), on: () => openUfopaedia(art) }) : null,
@@ -933,7 +941,7 @@
             p.stalled ? el('span', { class: 'bsc-chip bad', text: T('base.prod.stalled.' + p.stalled) }) : el('span', { class: 'bsc-chip good', text: T('base.prod.running') })),
           el('div', { class: 'bsc-unit' },
             el('div', { class: 'bsc-prog' + (p.paid ? '' : ' unpaid') }, el('i', { style: { width: Math.min(100, (p.spent / m.hours) * 100).toFixed(1) + '%' } })),
-            el('span', { class: 'mono', text: T('base.prod.unitHours', { spent: p.spent, hours: m.hours }) }),
+            hoursSub(T('base.prod.unitHours', { spent: p.spent, hours: m.hours }), m.hours, p.engineers, 'mono'),
             el('span', { class: p.stalled ? 'bad' : p.engineers > 0 ? 'muted' : 'warn', text: p.stalled ? T('base.prod.stalled.' + p.stalled) : p.engineers > 0 ? Tn('base.prod.eta', eta) : T('base.prod.noEngineers') })),
           el('div', { class: 'bsc-card-row' }, el('span', { class: 'bsc-lbl', text: T('base.prod.materials') }), materialsLine(m, b.stores)),
           el('div', { class: 'bsc-card-row' }, el('span', { class: 'bsc-lbl', text: T('base.prod.engineers') }),
@@ -966,6 +974,15 @@
       const ok = await OV.Dom.modal({ title: T('base.prod.cancel'), body: T('base.prod.cancelConfirm', { name: esc(prodName(p.item)) }), buttons: [{ label: T('common.no'), value: false }, { label: T('base.prod.cancel'), value: true, kind: 'danger' }] });
       if (ok && S.root) act(() => BS().cancelProduction(S.G, base().id, p.id), T('base.toast.prodCancelled', { name: prodName(p.item) }));
     }
+    /* «h de eng.»: horas de trabalho de engenheiro por unidade; a dica faz a conta com os engenheiros que trabalham
+       (ou que ficariam a trabalhar) — «60 horas de engenheiro: com 10 engenheiros, cerca de 6 h por unidade» */
+    function hoursSub(text, hours, eng, cls) {
+      const tip = eng > 0 ? Tn('base.prod.hoursTip', eng, { hours, t: Math.ceil(hours / eng) }) : T('base.prod.hoursTip.none', { hours });
+      const node = el('div', { class: cls || 'bsc-row-sub', text, title: tip, 'aria-label': text + '. ' + tip });
+      if (cls) node.className = cls;
+      OV.Dom.tooltip(node, () => tipHtml(text, [esc(tip)]));
+      return node;
+    }
     function prodPicker() {
       const g = S.G, b = base();
       const avail = C().availableManufacture(g, b.id);
@@ -994,7 +1011,7 @@
           };
           const row = el('div', { class: 'bsc-row bsc-pick', dataset: { item: id } }, itemOrCraftIcon(m, 40),
             el('div', { class: 'bsc-row-main' }, el('div', { class: 'bsc-row-name', text: prodName(id) }),
-              el('div', { class: 'bsc-row-sub', text: T('base.prod.specs', { hours: m.hours, cost: money(m.cost), space: m.space }) }),
+              hoursSub(T('base.prod.specs', { hours: m.hours, cost: money(m.cost), space: m.space }), m.hours, eng),
               materialsLine(m, b.stores),
               warns.length ? el('div', { class: 'bsc-row-why warn', text: warns.join(' · ') }) : null,
               why ? el('div', { class: 'bsc-row-why', text: why }) : null),
@@ -1737,7 +1754,7 @@
           rl.appendChild(el('div', { class: 'bsc-row', dataset: { topic: p.topic } }, alienIcon(t ? t.unit : '', 40),
             el('div', { class: 'bsc-row-main' }, el('div', { class: 'bsc-row-name', text: topicName(p.topic) }),
               el('div', { class: 'bsc-row-sub', text: Tn('base.cont.runningSci', p.scientists) })),
-            el('span', { class: 'bsc-chip prog ' + (PROG_CLS[lbl] || ''), text: T(lbl) })));
+            progChip(lbl)));
         }
         wrap.appendChild(section(T('base.cont.runningTitle'), rl));
       }

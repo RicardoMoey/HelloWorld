@@ -976,7 +976,7 @@
      tip2 = 2.ª dica (feridas com kit médico a bordo) e costly = vitória cara (metade da equipa, ou 3 em Recruta). */
   function lossCauses(B, o) {
     const squad = o && o.mission && Array.isArray(o.mission.squad) ? o.mission.squad : null;
-    const out = { enemy: 0, friendly: 0, wounds: 0, other: 0, total: 0, main: null, tip: null, tip2: null, ff: [], squad: 0, aliens: 0, costly: false, civ: 0 };
+    const out = { enemy: 0, friendly: 0, wounds: 0, other: 0, total: 0, main: null, tip: null, tip2: null, ff: [], squad: 0, aliens: 0, costly: false, civ: 0, melee: 0 };
     if (!B || !Array.isArray(B.units)) return out;
     // civis mortos pelas armas da X-COM (a contagem do motor, a mesma da linha de pontos do relatório)
     out.civ = (B.stats && B.stats.civKilledByXcom) | 0;
@@ -992,8 +992,11 @@
         out.friendly++;
         const how = k === u ? 'self' : friendlyHow(B, u, k, squad);
         out.ff.push({ victim: u.name || '', killer: k.name || '', how, reaction: how === 'shot' && !!u.deathSide && u.deathSide !== 'xcom' });
-      } else if (k && k.origSide === 'alien') out.enemy++;
-      else if (u.deathCause === 'wounds' || u.deathCause === 'burn') out.wounds++;
+      } else if (k && k.origSide === 'alien') {
+        out.enemy++;
+        // corpo a corpo (Crisálida, Zombie, Homem-Serpente com garras…) ou transformado em zombie
+        if (u.deathCause === 'melee' || u.spawnOnDeath) out.melee++;
+      } else if (u.deathCause === 'wounds' || u.deathCause === 'burn') out.wounds++;
       else out.other++;
     }
     const order = ['friendly', 'enemy', 'wounds'];
@@ -1007,11 +1010,24 @@
     // o problema é a tecnologia, não o ajoelhar
     out.weak = weakWeapons(B);
     if (best === 'enemy' && out.weak) { out.tip = 'scr.db.tip.weapons'; out.race = out.weak; }
+    /* metade ou mais das mortes pelo inimigo foram corpo a corpo / zombificação: ajoelhar não ajuda — o conselho é a
+       distância e o fogo de reação (as armas fracas, se for o caso, passam para segunda dica) */
+    if (best === 'enemy' && out.melee * 2 >= out.enemy) {
+      if (out.tip === 'scr.db.tip.weapons') out.tip2 = 'scr.db.tip.weapons';
+      out.tip = 'scr.db.tip.melee';
+    }
     // equipa pequena contra mais alienígenas (com lugares por ocupar): a 1.ª dica é levar mais soldados
     if (out.total && out.squad < out.aliens && out.squad < 6) out.tip = 'scr.db.tip.outnumbered';
     // mortes a sangrar com um kit médico a bordo: a dica das feridas também aparece
     const kit = B.brought ? (B.brought.medikit | 0) > 0 : (B.items || []).some((it) => it.type === 'medikit');
     if (out.wounds && kit && out.tip !== 'scr.db.tip.wounds') out.tip2 = 'scr.db.tip.wounds';
+    // pânico em cadeia (2+ episódios X-COM): explicar a moral — oficial na equipa, não avançar todos de uma vez
+    out.panics = (B.stats && B.stats.xcomPanics) | 0;
+    if (out.panics >= 2) {
+      if (!out.tip) out.tip = 'scr.db.tip.panic';
+      else if (!out.tip2) out.tip2 = 'scr.db.tip.panic';
+      else out.tip3 = 'scr.db.tip.panic';
+    }
     const diff = (B.mission && B.mission.difficulty) | 0;
     out.costly = out.total > 0 && (out.total * 2 >= out.squad || (diff === 0 && out.total >= 3));
     return out;
@@ -1097,6 +1113,8 @@
   function lossNotes(B, result, o) {
     const c = lossCauses(B, o);
     const out = [];
+    // vitória pelo objetivo (centro de controlo da base destruído) com alienígenas ainda de pé: porque acabou
+    if (result === 'win' && o && (o.objective || (o.debrief && o.debrief.objective))) out.push(el('p', { class: 'scr-cause good', text: T('scr.db.objective') }));
     if (c.friendly) {
       const who = c.ff.slice(0, FF_SHOW).map((f) => T('scr.db.ff.' + f.how + (f.reaction ? '.r' : ''), { victim: f.victim, killer: f.killer }));
       if (c.ff.length > FF_SHOW) who.push(T('scr.db.ff.more', { n: c.ff.length - FF_SHOW }));
@@ -1109,9 +1127,11 @@
     const tips = [];
     if ((!win || c.costly) && c.tip) {
       const race = c.race && D().races[c.race];
-      const key = c.tip === 'scr.db.tip.weapons' && o && o.campaign ? 'scr.db.tip.weapons.cp' : c.tip;
-      tips.push(TT(key, { race: race ? T(race.pluralKey || race.nameKey) : '', n: c.squad, aliens: c.aliens }));
-      if (c.tip2) tips.push(TT(c.tip2));
+      const keyOf = (k) => (k === 'scr.db.tip.weapons' && o && o.campaign ? 'scr.db.tip.weapons.cp' : k);
+      const pr = { race: race ? T(race.pluralKey || race.nameKey) : '', n: c.squad, aliens: c.aliens };
+      tips.push(TT(keyOf(c.tip), pr));
+      if (c.tip2) tips.push(TT(keyOf(c.tip2), pr));
+      if (c.tip3) tips.push(TT(keyOf(c.tip3), pr));
     }
     if (c.civ) tips.push(TT('scr.db.tip.civ', { pts: OV.U.fmtInt(Math.round(civPts / c.civ)) }));
     if (tips.length) {

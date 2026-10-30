@@ -1356,3 +1356,16 @@ Scope (25k lines) vs one session; iso art legibility of procedural sprites; LOS/
 - **The balance tool's monthly kit follows the campaign** (`Battle.quickLoadout`): month 0 rifles, months 1–2 Laser Rifle
   and Personal Armour, months 3–5 Heavy Plasma, 6+ also Power Suits. It used rifles until month 2, which showed a false
   difficulty wall in month 2 (terror 13 %, alien base 13 %).
+
+**Persona round 4 integration (ours; UI over the sim changes above)**:
+- **«Esperar pelo dia» survives an unrelated alert**: an alert (UFO detected…) drops the clock to 5 s as in the original;
+  while a craft is still waiting for dawn, closing the alert puts the clock back at the wait speed with a toast (only if
+  the player did not pause or change the speed meanwhile).
+- **Debriefing**: 2+ X-COM panic episodes add the officer / don't-advance-together tip; an objective win (control centre
+  destroyed with aliens standing) says so; surrendered aliens get their own containment line. The fatal damage type is
+  kept on the unit (`u.deathDmg`), so a friend's rocket reads as an explosion.
+- **Balance check (campaign bot, 240 days)**: Recruta 12/12 victories (seeds 1–12, no council defeat); Veterano 11/24
+  (46 %; seeds 1–12 5/12, 13–24 6/12) against 12/24 in round 3, no council defeat, all 29 base attacks repelled, alien
+  bases 78 % won. The gap to the ≥ 55 % target is the bot's Cydonia battle (9/24 campaigns end there) and 4 timeouts
+  where the bot never gathers the armour it waits for (alloys short, stores full), not this round's rules, so no tuning
+  knob was changed.

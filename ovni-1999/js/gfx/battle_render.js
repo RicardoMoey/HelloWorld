@@ -4,7 +4,8 @@
              cursor:'move'|'target'|'throw'|'none', path:{steps:[{i, tu, state:'ok'|'reserve'|'out'}], label}|null,
              reach:{cost:Int16Array, budgetOk, budgetReserve}|null,
              target:{fromId, toI, hitPct, blocked, line:[voxel], route?, label?, sub?, subCol?, blockI?, blast?}|null,
-             throwArc:[voxel]|null, throwInfo:{toI, ok, label, sub?, blast?:{x,y,z,r,smoke,risk}}|null, throwRange:{x,y,z,r}|null, blips:[{x,y,z,size,t0}]|null,
+             throwArc:[voxel]|null, throwInfo:{toI, ok, label, sub?, blast?:{x,y,z,r,smoke,risk}}|null, throwRange:{x,y,z,r}|null,
+             arcTiles:{z, tiles:Uint8Array(w·h)}|null (casas com arco de arremesso, losangos tracejados), blips:[{x,y,z,size,t0}]|null,
              anim:{units:{[id]:{fx,fy,fz,dir,pose,frame,flash?,show?}}, hidden:Set|[id], hideItems:Set}, showAll, nodes}
      anim.units[id].show = desenhar mesmo fora de vista (animação em curso); target.sub = segunda etiqueta (aviso);
      path.lock = destino bloqueado à espera de confirmação (pulsa); path.noLine = só o destino (inalcançável);
@@ -587,6 +588,32 @@
     ctx.setLineDash([]);
   }
 
+  /* casas com arco de arremesso no nível z (view.arcTiles = {z, tiles: Uint8Array(w·h)}): losango interior tracejado
+     com um ponto ao centro — forma, não só cor */
+  function drawArcTiles(ctx, B, F, z) {
+    const A = F.view.arcTiles;
+    if (!A || A.z !== z || !A.tiles) return;
+    const m = B.map, S = F.S, d = F.dpr;
+    ctx.save();
+    ctx.setLineDash([4 * d, 3 * d]);
+    for (let y = 0; y < m.h; y++) {
+      for (let x = 0; x < m.w; x++) {
+        if (!A.tiles[y * m.w + x]) continue;
+        const X = (x - y) * 32 * S + F.ox, Y = ((x + y) * 16 - z * 48) * S + F.oy;
+        if (X < -40 * S || X > F.W + 40 * S || Y < -40 * S || Y > F.H + 40 * S) continue;
+        diamond(ctx, X, Y, S, 6);
+        ctx.fillStyle = css(PAL.throw, 0.14);
+        ctx.fill();
+        ctx.lineWidth = Math.max(1, 1.4 * d);
+        ctx.strokeStyle = css(PAL.throw, 0.8);
+        ctx.stroke();
+        ctx.fillStyle = css(PAL.throw, 0.9);
+        ctx.fillRect(X - 1.5 * S, Y + 14.5 * S, 3 * S, 3 * S);
+      }
+    }
+    ctx.restore();
+  }
+
   // ---- desenho principal --------------------------------------------------------------------------------------------
   function frameInfo(ctx, B, view) {
     const T = ctx.getTransform ? ctx.getTransform() : { a: 1, d: 1, e: 0, f: 0 };
@@ -728,6 +755,7 @@
         ctx.restore();
       }
       drawReach(ctx, B, F, z);
+      drawArcTiles(ctx, B, F, z);
       if (hover && hover.z === z) {
         cursorBack(ctx, F, (hover.x - hover.y) * 32 * S + F.ox, ((hover.x + hover.y) * 16 - z * 48) * S + F.oy, mode);
       }

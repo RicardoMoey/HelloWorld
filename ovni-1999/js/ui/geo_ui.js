@@ -120,7 +120,7 @@
     const tg = C().targetOf(G, ref);
     if (!tg) return T('geo.tk.gone');
     if (ref.kind === 'ufo') return ufoName(tg.obj);
-    if (ref.kind === 'site') return T('geo.site.terror', { city: cityName(tg.obj.cityId) });
+    if (ref.kind === 'site') return T('geo.site.terror', { city: tg.obj.cityId ? cityName(tg.obj.cityId) : placeName(tg.obj.lon, tg.obj.lat) });
     if (ref.kind === 'alienBase') return alienBaseName(G, tg.obj);
     if (ref.kind === 'base') return baseName(tg.obj);
     if (ref.kind === 'craft') return craftName(G, tg.obj);
@@ -384,8 +384,11 @@
   /* noite ou crepúsculo num OVNI (aterrado ou despenhado) → {h: horas até ser dia pleno, crashed, safe, dusk} | null.
      O crepúsculo também pergunta (o mapa é mais escuro e o briefing diz «Crepúsculo»), mas com a verdade: a luz
      ambiente (SHADE_DUSK) não passa de DARK_SHADE, por isso os soldados veem tão longe como de dia */
+  /* Ataque terrorista (ref.kind 'site'): a mesma noite, com site = true e lasts = o ataque ainda dura até ao dia
+     (com SITE_WAIT_MARGIN_H horas de margem) — só então se pode esperar */
+  const SITE_WAIT_MARGIN_H = 1;
   function nightAt(G, ref) {
-    if (!ref || ref.kind !== 'ufo') return null;
+    if (!ref || (ref.kind !== 'ufo' && ref.kind !== 'site')) return null;
     const tg = C().targetOf(G, ref);
     if (!tg) return null;
     try {
@@ -393,6 +396,10 @@
       if (ph !== 'night' && ph !== 'dusk') return null;
       let h = 1;
       while (h < 24 && GM().dayPhase({ t: G.t + h * 3600 }, tg.lon, tg.lat) !== 'day') h++;
+      if (ref.kind === 'site') {
+        const left = tg.obj ? Math.max(0, tg.obj.leftS | 0) : 0;
+        return { h, crashed: false, safe: false, dusk: ph === 'dusk', site: true, lasts: left >= (h + SITE_WAIT_MARGIN_H) * 3600, leftH: left / 3600 };
+      }
       /* safe: OVNI aterrado nos meses de aprendizagem (Missions.nightLandingS) que ainda fica no chão até amanhecer —
          esperar pelo dia não o deixa fugir */
       const o = tg.obj;
@@ -407,6 +414,8 @@
      combustível que não chega (fora dos meses de aprendizagem o tempo no chão não se conhece: a pergunta não o revela) */
   function waitIsDefault(G, ref, nt, craft) {
     if (!nt) return false;
+    // ataque terrorista que acaba antes do dia: não há espera possível
+    if (nt.site && !nt.lasts) return false;
     // crepúsculo: esperar só muda a luz do mapa (a visão é a do dia) — atacar continua a ser a escolha por omissão
     if (nt.dusk && tune('SHADE_DUSK', 6) <= tune('DARK_SHADE', 9)) return false;
     if (craft && loiterHours(G, craft) < nt.h) return false;
@@ -495,6 +504,22 @@
     }
     return out;
   }
+
+  /* bases com o armazém acima da capacidade (BaseSim.capacities: storage.usedTenths > cap·10) → [{baseId, used, cap}]:
+     com o armazém cheio não se compra nada, nem munição para os intercetores */
+  function storesOver(G) {
+    const out = [];
+    const BS = OV.BaseSim;
+    if (!BS || !BS.capacities) return out;
+    for (const b of G.bases) {
+      let caps = null;
+      try { caps = BS.capacities(G, b.id); } catch (e) { caps = null; }
+      if (caps && caps.storage && caps.storage.usedTenths > caps.storage.cap * 10) out.push({ baseId: b.id, used: caps.storage.used, cap: caps.storage.cap });
+    }
+    return out;
+  }
+  // décima em pt-PT («57,9»; «50» sem «,0») — a dos medidores da base
+  const dec1s = (v) => { const r = Math.round((+v || 0) * 10) / 10; return Number.isInteger(r) ? String(r) : r.toFixed(1).replace('.', ','); };
 
   // ---- efetivo estimado de um alvo em terra (o mesmo do briefing; OVNI só quando o tipo é conhecido) --------------
   function crewEstimate(G, ref) {
@@ -752,15 +777,17 @@
     k.push('geo.ev.team.eta.night.flares.one', 'geo.ev.team.eta.night.flares.other', 'geo.ev.team.eta.night.none');
     k.push('geo.alert.sci.one', 'geo.alert.sci.other', 'geo.alert.sciBtn', 'geo.alert.sciBtn.tip', 'geo.alert.hireBtn.tip', 'geo.alert.squad.one', 'geo.alert.squad.other', 'geo.alert.squad.arriving.one', 'geo.alert.squad.arriving.other', 'geo.alert.hireBtn');
     k.push('geo.fix.short.one', 'geo.fix.short.other', 'geo.fix.short.arriving.one', 'geo.fix.short.arriving.other', 'geo.warn.noAmmo', 'geo.int.noAmmo.title', 'geo.int.noAmmo.body', 'geo.int.noAmmo.confirm', 'geo.int.noAmmo.go', 'geo.a.buyAmmo');
-    k.push('geo.alert.aboard.one', 'geo.alert.aboard.other', 'geo.short.title', 'geo.short.risk', 'geo.short.board', 'geo.short.go', 'geo.ev.arrived.night.ask', 'geo.ev.arrived.night.fuel', 'geo.ev.arrived.night.safe', 'geo.a.attackNow',
+    k.push('geo.alert.aboard.one', 'geo.alert.aboard.other', 'geo.short.title', 'geo.short.risk', 'geo.short.board', 'geo.short.go', 'geo.ev.arrived.night.ask', 'geo.ev.arrived.night.fuel', 'geo.ev.arrived.night.safe', 'geo.a.attackNow', 'geo.ev.upgrade.one', 'geo.ev.upgrade.other', 'geo.a.upgrade',
+      'geo.ev.arrived.night.site', 'geo.ev.arrived.night.site.asked', 'geo.ev.arrived.night.site.ends', 'geo.ev.arrived.dusk.site', 'geo.ev.arrived.dusk.site.asked', 'geo.ev.arrived.dusk.site.ends',
       'geo.a.putAboard', 'geo.ev.delivery.gearHint', 'geo.tm.keys', 'geo.tm.keys.mouse', 'geo.tm.keys.touch', 'geo.dfBanner.text.touch',
       'geo.ev.team.eta.night.flares.touch.one', 'geo.ev.team.eta.night.flares.touch.other', 'geo.idle.toast.touch');
     // ronda de personas 4: bases alienígenas com raça/número, alerta «outra base», noite sem a pergunta repetida, espera acelerada
-    k.push('geo.alienBase.nameRace', 'geo.alienBase.nameNum', 'geo.alienBase.shortNum', 'geo.toast.waitDay.fast');
+    k.push('geo.alienBase.nameRace', 'geo.alienBase.nameNum', 'geo.alienBase.shortNum', 'geo.toast.waitDay.fast', 'geo.toast.waitDay.resume');
     for (const r of ['patrol', 'agents', 'supply']) k.push('geo.ev.alienBaseFound.' + r + '.another');
     for (const p of ['night', 'dusk']) for (const v of ['', '.crash', '.safe']) k.push('geo.ev.arrived.' + p + v + '.short');
     for (const id of STEP_IDS) k.push('geo.steps.' + id);
     for (const r of ['sci', 'eng']) k.push('geo.idle.' + r + '.one', 'geo.idle.' + r + '.other');
+    k.push('geo.idle.stores', 'geo.alert.stores', 'geo.alert.storesBtn', 'geo.alert.storesBtn.tip');
     // ronda 3 (jogadora casual): nave já a caminho de outra missão, crepúsculo à chegada, caixas de munição, plurais
     for (const p of ['night', 'dusk']) for (const v of ['', '.crash', '.safe']) k.push('geo.ev.arrived.' + p + v);
     for (const r of ['site', 'alienBase', 'ufo']) k.push('geo.int.heading.' + r);
@@ -779,7 +806,7 @@
     targetName, craftStatusKey, ufoRows, craftRows, baseRows, siteRows, alienBaseRows, cityRows, weaponsText, etaHours,
     launchState, craftsFor, targetsFor, reasonText, warnText, fundingRows, runClock, REACT, MERGE, classify, toastFor,
     prodName, itemName, researchName, textKeys, ufoVisible, WORLD_REASONS, WORLD_WARNS, MISSION_REASONS,
-    groundTarget, teamEta, teamEtaLine, busyLine, nightAt, dayAt, idleStaff, nextSteps, suggestSpeed, dropBaseLosses, logTerror,
+    groundTarget, teamEta, teamEtaLine, busyLine, nightAt, dayAt, idleStaff, storesOver, nextSteps, suggestSpeed, dropBaseLosses, logTerror,
     crewEstimate, arrivingSoldiers, squadShort, noAmmo, waitIsDefault, loiterHours, homeTransport, GEAR_KINDS,
     busyDest, headingText, ammoSuggest, alienBaseName, alienBaseTwin, alienBaseOther, waitSpeed, nightLineKey,
   };
@@ -851,7 +878,7 @@
       root: null, side: null, els: {}, popup: null, dlg: null, queue: [], waiting: false, toasts: new Map(), toastT: 0,
       hl: new Map(), dirty: true, lastDraw: -1e9, lastRefresh: -1e9, sigs: {}, drag: null, pinchT: 0, hidden: false,
       sideW: 0, target: null, lastHoverRef: null, hintGone: false, endShown: false, autosave: false, mood: null,
-      blockedBattle: false, fallbackDf: null, introShown: false,
+      blockedBattle: false, fallbackDf: null, introShown: false, waitResume: 0,
     };
 
     // ---------------------------------------------------------------------------------------------------------------
@@ -969,6 +996,16 @@
         speeds.push(b);
         speedBox.appendChild(b);
       }
+      // radiogroup com tabindex móvel: uma só paragem de Tab; ← → ↑ ↓ mudam a velocidade (como nas Opções)
+      speedBox.addEventListener('keydown', (e) => {
+        const d = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 0;
+        if (!d || e.metaKey || e.ctrlKey || e.altKey) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const n = Math.max(0, Math.min(SPEED_N - 1, clk.speed + d));
+        setSpeed(n);
+        speeds[n].focus();
+      });
       const basesB = btn(T('geo.btn.bases'), { icon: 'base', key: 'B', tip: () => basesTip(), onClick: () => openBases() });
       const basesBadge = el('span', { class: 'geo-badge hidden', 'aria-hidden': 'true', text: '!' });
       basesB.appendChild(basesBadge);
@@ -1064,6 +1101,7 @@
           b.classList.toggle('on', i === clk.speed);
           b.classList.toggle('dim', i === clk.speed && clk.paused);
           b.setAttribute('aria-checked', i === clk.speed ? 'true' : 'false');
+          b.tabIndex = i === clk.speed ? 0 : -1;
         });
         E.pauseB.classList.toggle('on', clk.paused);
         E.pauseB.querySelector('.geo-bl').textContent = T(clk.paused ? 'geo.resume' : 'geo.pause');
@@ -1121,6 +1159,7 @@
       const lines = [];
       if (idle.sci) lines.push(Tn('geo.idle.sci', idle.sci));
       if (idle.eng) lines.push(Tn('geo.idle.eng', idle.eng));
+      for (const o of S.over || []) lines.push(T('geo.idle.stores', { base: baseName(C().findBase(G, o.baseId)), used: dec1s(o.used), cap: dec1s(o.cap) }));
       return tip(T('geo.btn.bases.tip'), 'B') + (lines.length ? '<br><span class="warn">' + OV.U.esc(lines.join(' · ')) + '</span>' : '');
     }
     function refreshAux(force) {
@@ -1129,7 +1168,8 @@
         S.sigs.auxHour = hour;
         S.idle = idleStaff(G);
         S.short = squadShort(G);
-        const on = S.idle.sci > 0 || S.idle.eng > 0 || !!S.short;
+        S.over = storesOver(G);
+        const on = S.idle.sci > 0 || S.idle.eng > 0 || !!S.short || S.over.length > 0;
         S.els.basesBadge.classList.toggle('hidden', !on);
         S.els.basesB.classList.toggle('geo-warnb', on);
         renderAlerts();
@@ -1159,11 +1199,18 @@
       const stepAsks = ns.show && ns.steps.some((x) => x.id === 'research' && !x.done);
       const idle = stepAsks ? { sci: 0 } : S.idle || { sci: 0 };
       const sh = S.short;
-      const sig = (idle.sci || 0) + '|' + (sh ? sh.fit + '/' + sh.seats + '/' + (sh.craftId || '') + ':' + (sh.idle | 0) + '/' + (sh.arriving ? sh.arriving.n + ':' + sh.arriving.h : '') : '');
+      const over = S.over || [];
+      const sig = over.map((o) => o.baseId + ':' + dec1s(o.used)).join(',') + '|' + (idle.sci || 0) + '|' + (sh ? sh.fit + '/' + sh.seats + '/' + (sh.craftId || '') + ':' + (sh.idle | 0) + '/' + (sh.arriving ? sh.arriving.n + ':' + sh.arriving.h : '') : '');
       if (sig === S.sigs.alerts) return;
       S.sigs.alerts = sig;
       OV.Dom.clear(box);
       const rows = [];
+      // armazém cheio: bloqueia todas as compras (munição dos intercetores incluída) — vender ou construir armazéns
+      for (const o of over) {
+        const bs = C().findBase(G, o.baseId);
+        rows.push(el('div', { class: 'geo-alert', dataset: { alert: 'stores' } }, el('span', { text: T('geo.alert.stores', { base: baseName(bs), used: dec1s(o.used), cap: dec1s(o.cap) }) }),
+          btn(T('geo.alert.storesBtn'), { cls: 'small', tip: tip(T('geo.alert.storesBtn.tip')), onClick: () => { if (isTop() && C().findBase(G, o.baseId)) openBase(o.baseId, 'market'); } })));
+      }
       if (idle.sci > 0) {
         rows.push(el('div', { class: 'geo-alert', dataset: { alert: 'sci' } }, el('span', { text: Tn('geo.alert.sci', idle.sci) }),
           btn(T('geo.alert.sciBtn'), { cls: 'small', tip: tip(T('geo.alert.sciBtn.tip')), onClick: () => { if (isTop()) openBase(idle.baseId || G.bases[0].id, 'research', { pick: true }); } })));
@@ -2168,13 +2215,15 @@
             // em Recruta, ou até à 1.ª missão noturna, esperar pelo dia é o botão por omissão (Enter) — salvo destroços
             // que não duram até lá; a pergunta curta vem primeiro e o parágrafo do porquê, por baixo, não a repete (.short)
             const waitDef = !!nt && waitIsDefault(G, tref, nt, c);
-            const nk = nt ? nightLineKey(ph, nt, waitDef) : null, np = nt ? { t: fmtDur(nt.h), d: tune('VIEW_DIST', 20) } : null;
-            if (nt) lines.unshift(nk ? T(nk, np) : T('geo.ev.arrived.' + ph + (nt.crashed ? '.crash' : nt.safe ? '.safe' : ''), np));
+            const nk = nt ? nightLineKey(ph, nt, waitDef) : null, np = nt ? { t: fmtDur(nt.h), d: tune('VIEW_DIST', 20), left: fmtDur(nt.leftH || 0) } : null;
+            // ataque terrorista: o porquê é o mesmo, mais quanto tempo dura o ataque (ou que acaba antes de amanhecer)
+            if (nt && nt.site) lines.unshift(T('geo.ev.arrived.' + ph + '.site' + (!nt.lasts ? '.ends' : waitDef ? '.asked' : ''), np));
+            else if (nt) lines.unshift(nk ? T(nk, np) : T('geo.ev.arrived.' + ph + (nt.crashed ? '.crash' : nt.safe ? '.safe' : ''), np));
             if (waitDef) lines.unshift(T('geo.ev.arrived.night.ask', { t: fmtDur(nt.h) }));
             // sem combustível para esperar: dizê-lo (esperar seria regressar à base sem missão)
             const lh = nt ? loiterHours(G, c) : Infinity;
             if (nt && lh < nt.h) lines.push(T('geo.ev.arrived.night.fuel', { craft: craftName(G, c), t: fmtDur(Math.max(0, Math.floor(lh))) }));
-            const wait = nt ? { label: T('geo.a.waitDay'), key: waitDef ? 'Enter' : 'W', cls: waitDef ? 'primary' : '', def: waitDef, esc: true, act: () => waitForDay(c.id, tref, nt) } : { label: T('geo.a.wait'), key: 'W', esc: true, act: () => {} };
+            const wait = nt && !(nt.site && !nt.lasts) ? { label: T('geo.a.waitDay'), key: waitDef ? 'Enter' : 'W', cls: waitDef ? 'primary' : '', def: waitDef, esc: true, act: () => waitForDay(c.id, tref, nt) } : { label: T('geo.a.wait'), key: 'W', esc: true, act: () => {} };
             const go = { label: T(waitDef ? 'geo.a.attackNow' : 'geo.a.startMission'), key: waitDef ? 'I' : 'Enter', cls: waitDef ? '' : 'primary', def: !waitDef, act: () => { if (nt && !nt.dusk) markNight(); launchMission(tref, c.id); } };
             return {
               // «Amanheceu» só com dia pleno: no limite anunciado ainda ao crepúsculo, o título é o da chegada
@@ -2274,13 +2323,18 @@
               idleSci && !final ? Object.assign({}, ok, { key: 'Esc', def: false }) : ok].filter(Boolean),
           };
         }
-        case 'productionDone':
+        case 'productionDone': {
+          // armas novas: os veteranos continuam com as velhas se ninguém lhes disser — «Trocar armas na Skyranger»
+          const up = upgradeOffer(evs.filter((e) => D().items[e.item] && D().items[e.item].kind === 'firearm').map((e) => e.baseId));
+          const lines = evs.length > 1 ? evs.map((e) => T('geo.ev.productionDone.line', { qty: e.qty | 0, item: prodName(e.item), base: b(e) })) : [];
+          if (up) lines.push(up.line);
           return {
             tone: 'good', icon: 'gear', title: T('geo.ev.productionDone'), sound: 'production_done',
             text: evs.length > 1 ? T('geo.ev.productionDone.many') : T('geo.ev.productionDone.body', { qty: ev.qty | 0, item: prodName(ev.item), base: b(ev) }),
-            lines: evs.length > 1 ? evs.map((e) => T('geo.ev.productionDone.line', { qty: e.qty | 0, item: prodName(e.item), base: b(e) })) : [],
-            buttons: [baseBtn(ev.baseId, 'production'), ok],
+            lines,
+            buttons: [up ? up.btn : null, baseBtn(ev.baseId, 'production'), ok].filter(Boolean),
           };
+        }
         case 'productionStalled':
           return {
             tone: 'warn', icon: 'gear', title: T('geo.ev.productionStalled'), sound: 'ui_deny',
@@ -2311,11 +2365,14 @@
           // abre já o equipamento do transporte no hangar
           const gear = all.filter((e) => e.kind === 'item' && D().items[e.itemId] && GEAR_KINDS[D().items[e.itemId].kind]);
           const tc = gear.length ? homeTransport(G, gear[0].baseId) : null;
-          const eqBtn = tc && !unarmed ? { label: T('geo.a.putAboard', { craft: craftName(G, tc) }), key: 'E', cls: 'primary', act: () => openBase(tc.baseId, 'crafts', { equip: tc.id }) } : null;
+          // armas melhores para quem já vai armado: a troca faz-se já, sem abrir o «Equipar»
+          const up = !unarmed ? upgradeOffer(gear.filter((e) => D().items[e.itemId].kind === 'firearm').map((e) => e.baseId)) : null;
+          const eqBtn = tc && !unarmed ? { label: T('geo.a.putAboard', { craft: craftName(G, tc) }), key: 'E', cls: up ? '' : 'primary', act: () => openBase(tc.baseId, 'crafts', { equip: tc.id }) } : null;
           if (eqBtn) lines.push(T('geo.ev.delivery.gearHint', { craft: craftName(G, tc) }));
+          if (up) lines.push(up.line);
           return {
             tone: unarmed ? 'warn' : 'good', icon: 'box', title: T('geo.ev.deliveryArrived'), sound: 'production_done',
-            text: line(first), lines, buttons: [kitBtn, eqBtn, baseBtn(first.baseId, unarmed ? 'market' : tab), ok].filter(Boolean),
+            text: line(first), lines, buttons: [kitBtn, up ? up.btn : null, eqBtn, baseBtn(first.baseId, unarmed ? 'market' : tab), ok].filter(Boolean),
           };
         }
         case 'terrorSite': {
@@ -2407,12 +2464,40 @@
       }
     }
     // a equipa chega a tempo? (transporte mais rápido que pode partir agora vs. tempo que resta ao ataque)
+    /* troca de armas oferecida quando chegam armas a uma base com o transporte no hangar e soldados armados que
+       ganham com elas (CampaignUI.gunUpgrades) → {line, btn} | null */
+    function upgradeOffer(baseIds) {
+      const cu = CU();
+      if (!cu || !cu.gunUpgrades) return null;
+      for (const baseId of [...new Set(baseIds)]) {
+        const tc = homeTransport(G, baseId);
+        const up = tc ? cu.gunUpgrades(G, tc.id) : [];
+        if (!up.length) continue;
+        const craft = craftName(G, tc);
+        return {
+          line: Tn('geo.ev.upgrade', up.length, { craft, list: cu.upgradeText(up) }),
+          btn: {
+            label: T('geo.a.upgrade', { craft }), key: 'U', cls: 'primary', act: () => {
+              const r = cu.upgradeKit(G, tc.id);
+              const n = r.ok ? r.upgraded.length : 0;
+              OV.Dom.toast(n ? Tn('cp.up.done', n, { list: cu.upgradeText(r.upgraded) }) : T('cp.up.none'), null, n ? 'good' : 'warn');
+              dirty();
+            },
+          },
+        };
+      }
+      return null;
+    }
     function terrorEtaLine(ref, site) {
       const rows = craftsFor(G, null, ref).filter((r) => r.ok && D().crafts[G.crafts[r.craftId].type].transport && r.eta);
       if (!rows.length) return T('geo.ev.terrorSite.noTeam');
       const r = rows[0];
       const left = Math.max(0, site.leftS) / 3600;
-      const line = T(r.eta.h <= left ? 'geo.ev.terrorSite.eta' : 'geo.ev.terrorSite.late', { craft: craftName(G, G.crafts[r.craftId]), t: fmtDur(r.eta.h) });
+      // a tempo e de noite lá: o mesmo aviso do OVNI abatido (sinalizadores a bordo) — o briefing já não surpreende
+      let phase = null;
+      try { phase = GM().dayPhase({ t: G.t + Math.round(r.eta.h * 3600) }, site.lon, site.lat); } catch (e) { phase = null; }
+      const line = r.eta.h <= left && (phase === 'night' || phase === 'dusk') ? teamEtaText(G, { craftId: r.craftId, h: r.eta.h, phase }, site.leftS)
+        : T(r.eta.h <= left ? 'geo.ev.terrorSite.eta' : 'geo.ev.terrorSite.late', { craft: craftName(G, G.crafts[r.craftId]), t: fmtDur(r.eta.h) });
       const busy = busyLine(G, r.craftId, ref);
       return busy ? line + ' ' + busy : line;
     }
@@ -2645,6 +2730,22 @@
       const sp = Math.max(clk.speed, waitSpeed(nt.h));
       setSpeed(sp);
       OV.Dom.toast(T('geo.toast.waitDay.fast', { t: fmtDur(nt.h), s: T('geo.speed.' + sp) }), null, 'info');
+    }
+    // há uma nave à espera do amanhecer (a caminho ou no local, com o mesmo destino)?
+    function waitPending() {
+      const L = G.ui && G.ui.waitDay;
+      return Array.isArray(L) && L.some((w) => {
+        const c = G.crafts[w.craftId];
+        return !!(c && c.status === 'patrol' && !c.patrol && c.dest && c.dest.kind === w.kind && c.dest.id === w.id);
+      });
+    }
+    // depois de um alerta: só se o jogador não mexeu no tempo entretanto (continua a 5 seg, sem pausa)
+    function resumeWait() {
+      const sp = S.waitResume;
+      S.waitResume = 0;
+      if (clk.paused || clk.speed !== 0 || !waitPending()) return;
+      setSpeed(sp);
+      OV.Dom.toast(T('geo.toast.waitDay.resume', { s: T('geo.speed.' + sp) }), null, 'info');
     }
     function checkWaitDay() {
       const L = G.ui.waitDay;
@@ -2946,8 +3047,13 @@
       if (S.fallbackDf) thinkFallbackDf(dt);
       if (S.autosave && !G.dogfights.length && !S.fallbackDf) doAutosave();
       if (!blocked()) {
+        if (S.waitResume) resumeWait();
+        const sp0 = clk.speed;
         const r = runClock(G, clk, dt, handle, { halt: checkWaitDay });
         if (r.ticks) S.timeDirty = true;
+        // um alerta alheio (OVNI detetado…) baixa o tempo para 5 seg; com uma espera pelo dia pendente, a velocidade
+        // da espera volta quando o jogador fecha as janelas (resumeWait)
+        if (r.stopped && r.reason === 'event' && sp0 > 0 && waitPending()) S.waitResume = sp0;
         if (r.stopped) onStopped(r.reason);
         if (r.stopped || r.ticks) ui.speed = clk.speed;
       } else clk.acc = 0;

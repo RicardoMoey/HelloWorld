@@ -177,7 +177,7 @@ module.exports = function (OV, t) {
     t.ok(/b\.setAttribute\('aria-label', T\('hud\.report\.show\.aria'/.test(src));
   });
 
-  t.test('r3 integração: conselho «estão dentro do OVNI» só à noite, sem contacto há 5 turnos e com todos lá dentro', () => {
+  t.test('r3 integração: conselho «estão dentro do OVNI» sem contacto há N turnos e com todos lá dentro (de dia também, r4)', () => {
     const due = OV.BattleUI.model.ufoHintDue;
     const N = OV.BattleUI.model.UFO_HINT_TURNS;
     t.eq(N, 5);
@@ -187,14 +187,15 @@ module.exports = function (OV, t) {
     };
     t.eq(due(B, 1), true, 'turno 6, último contacto no 1');
     t.eq(due(B, 2), false, 'só 4 turnos');
-    t.eq(due(Object.assign({}, B, { mission: { kind: 'crash', night: false } }), 1), false, 'de dia não');
+    t.eq(due(Object.assign({}, B, { mission: { kind: 'crash', night: false } }), 1), true, 'de dia também (ronda 4: Batedor Grande com todos lá dentro)');
+    t.eq(due(Object.assign({}, B, { turn: 4, mission: { kind: 'landed', night: false, difficulty: 2 } }), 1), false, 'Super-humano de dia: 5 turnos');
     t.eq(due(Object.assign({}, B, { mission: { kind: 'terror', night: true } }), 1), false, 'só OVNIs');
     t.eq(due(Object.assign({}, B, { mission: { kind: 'landed', night: true } }), 1), true, 'aterrado');
     t.eq(due(Object.assign({}, B, { side: 'alien' }), 1), false, 'no turno X-COM');
     t.eq(due(Object.assign({}, B, { units: B.units.concat({ side: 'alien', onMap: true, status: 'ok', x: 3, y: 3 }) }), 1), false, 'um alienígena cá fora: não se diz que estão lá dentro');
     t.eq(due(Object.assign({}, B, { units: B.units.filter((u) => u.side !== 'alien' || u.status !== 'ok') }), 1), false, 'sem alienígenas vivos');
     const txt = OV.T('hud.hint.ufoInside', { n: 5 });
-    t.ok(/dentro do OVNI/.test(txt) && /procurem a porta/.test(txt) && /5 turnos/.test(txt), txt);
+    t.ok(/dentro do OVNI/.test(txt) && /Procurem a porta/.test(txt) && /5 turnos/.test(txt), txt);
     t.ok(!/clique|toque|tecla|Enter/i.test(txt), 'neutro para toque e teclado');
     const src = read('js/ui/battle_ui.js');
     t.ok(/if \(hint\) S\.ufoHinted = true;/.test(src), 'uma vez por batalha');

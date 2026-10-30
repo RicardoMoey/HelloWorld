@@ -18,7 +18,9 @@
      handName(type) → texto curto, confirmEarly(pointerType, detail, dtMs) → bool (2.º clique de um duplo clique ou
      depressa demais não confirma um explosivo), reportSummary(rows) → texto, turnReportRows(entradas) → linhas do
      relatório do turno (turno alienígena + secção «No início do turno X-COM»), ufoHintDue(B, contactTurn) → bool
-     (conselho «estão dentro do OVNI» à noite sem contacto há UFO_HINT_TURNS turnos)}, debug: {tileToScreen(x,y,z), unitScreen(id), selectAndMove(id,x,y,z) → Promise,
+     (conselho «estão dentro do OVNI», de noite ou de dia, sem contacto há ufoHintTurns(B) turnos), ufoEntry(B) → tile
+     da porta/brecha do OVNI mais perto da equipa | −1, reserveWhat(reserveInfo) → texto do que a reserva guarda (modo
+     efetivo), arcTiles(B, u, z, range) → Uint8Array (casas com arco de arremesso)}, debug: {tileToScreen(x,y,z), unitScreen(id), selectAndMove(id,x,y,z) → Promise,
      state(), hover(x,y), perf() → {fps, avg, p95, chunks, sprites}|null (só com ?debug=1, que também mostra a leitura
      no topo do ecrã), showAll(on) (só a vista), centre(x,y,z) (câmara), log() → [entrada], kb(x,y,z) (cursor de
      teclado), noteEvent(ev), report('turn'|'log'), grenades() → n (aviso de granadas alienígenas, Recruta),
@@ -653,12 +655,18 @@
   }
   // reserva de UT que um passeio de `tu` UT comeria (a mesma conta do motor: OV.Act.validate → 'reserved') ou null
   function walkReserve(u, tu) {
-    const r = OV.Act.reserveTU(S.B, u, { standing: true }) | 0;
+    const info = OV.Act.reserveInfo(S.B, u, { standing: true });
+    const r = info.tu | 0;
     if (!(r > 0 && r <= (u.tu | 0)) || (u.tu | 0) - tu >= r) return null;
+    return { tu: r, what: reserveWhat(info) };
+  }
+  /* o que a reserva guarda, com o modo que conta de facto (Auto→Snap→Aimed): uma arma sem tiro rápido reserva o
+     apontado e di-lo — «Tiro apontado (a arma não tem tiro rápido) + ajoelhar». Pura (testada em Node). */
+  function reserveWhat(info) {
     const parts = [];
-    if (S.B.reserve && S.B.reserve !== 'none') parts.push(T('mode.' + S.B.reserve));
-    if (S.B.reserveKneel) parts.push(T('hud.path.reserve.kneel'));
-    return { tu: r, what: parts.join(' + ') || T('hud.reserve') };
+    if (info.mode) parts.push(T('mode.' + info.mode) + (info.mode !== info.asked ? ' (' + T('hud.reserve.lack.' + info.asked) + ')' : ''));
+    if (info.kneel) parts.push(T('hud.path.reserve.kneel'));
+    return parts.join(' + ') || T('hud.reserve');
   }
 
   // probabilidade de acerto em cache (RNG próprio da interface: nunca as streams da simulação)
@@ -769,7 +777,7 @@
         if (T0.blast && !T0.blast.smoke && !T0.sub) T0.sub = T('hud.target.guided.blast', { r: T0.blast.r });
       }
       if (T0.blast && T0.blast.risk && (!T0.sub || route)) {
-        T0.sub = Tn('hud.throw.risk', T0.blast.risk, { n: T0.blast.risk });
+        T0.sub = blastRiskText('hud.throw.risk', T0.blast);
         T0.subCol = 'out';
       }
     }
@@ -791,7 +799,7 @@
       const diff = S.B.mission && S.B.mission.difficulty;
       const risk = T0.blast && T0.blast.risk && blastConfirm(settings(), diff) ? T0.blast.risk : 0;
       const line = !risk && T0.risk && T0.risk.length && lineRiskConfirm(u, tgtUnit, toI) > 0 ? T0.risk : null;
-      T0.sub = risk ? Tn('hud.confirmBlast.' + confirmVia(), risk, { n: risk })
+      T0.sub = risk ? blastRiskText('hud.confirmBlast.' + confirmVia(), T0.blast)
         : line ? Tn('hud.confirmLine.' + confirmVia(), line.length, { n: line.length, name: uname(unitOf(line[0])) }) : T(confirmKey('hud.confirmFire'));
       T0.subCol = risk || line ? 'out' : null;
       T0.lock = true;
@@ -817,6 +825,7 @@
     const it = itemOf(S.throwPlan.itemId);
     if (!it) return;
     const i = idxOf(p.x, p.y, p.z);
+    if (S.view.arcTiles && S.view.arcTiles.z !== p.z) S.view.arcTiles = null;
     const range = OV.Data.throwRange(u.stats.str | 0, itemWeight(it));
     const dx = p.x - u.x, dy = p.y - u.y, dz = OV.U.idiv((p.z - u.z) * 3, 2);
     const dist = OV.U.isqrt(dx * dx + dy * dy + dz * dz);
@@ -824,7 +833,13 @@
     const tu = throwPlanTU(u, S.throwPlan, i);
     let label, ok = false;
     if (dist > range) label = T('hud.throw.far', { r: range });
-    else if (!plan) label = T(underRoof(u) ? 'hud.throw.roof' : underRoof(p) ? 'hud.throw.targetRoof' : 'hud.throw.noArc');
+    else if (!plan) {
+      /* sem arco: o motivo verdadeiro é o caminho (paredes, teto, casco), não o teto do alvo — outras casas debaixo do
+         mesmo teto podem ter arco. Realçam-se as que têm, e o texto aponta para elas */
+      const av = arcView(u, it, p.z);
+      S.view.arcTiles = av.n ? { z: p.z, tiles: av.tiles } : null;
+      label = T(av.n ? 'hud.throw.noArc.marked' : underRoof(u) ? 'hud.throw.roof' : 'hud.throw.noArc.why');
+    }
     else if (tu > (u.tu | 0)) label = T('hud.throw.noTU', { tu, have: u.tu | 0 });
     else {
       ok = true;
@@ -833,13 +848,44 @@
     if (plan) S.view.throwArc = OV.Act.traceArc(S.B, u, plan.origin, plan.target, plan.curve).arc;
     const toI = plan ? plan.goal : i;
     const blast = blastPreview(u, it, toI);
-    let sub = blast && blast.risk ? Tn('hud.throw.risk', blast.risk, { n: blast.risk }) : null;
+    let sub = blast && blast.risk ? blastRiskText('hud.throw.risk', blast) : null;
     if (ok && S.tapLock === i) {
       const risk = blast && blast.risk && blastConfirm(settings(), S.B.mission && S.B.mission.difficulty) ? blast.risk : 0;
-      if (risk) sub = Tn('hud.confirmBlast.' + confirmVia(), risk, { n: risk });
+      if (risk) sub = blastRiskText('hud.confirmBlast.' + confirmVia(), blast);
       else label = T(confirmKey('hud.confirmThrow')) + ' · ' + label;
     }
     S.view.throwInfo = { toI, ok, label, range, from: { x: u.x, y: u.y, z: u.z }, blast, sub, lock: ok && S.tapLock === i };
+  }
+  /* casas do nível z, já descobertas e ao alcance, onde um arremesso de u cai (OV.Act.planArc, a mesma regra do
+     motor) → Uint8Array(w·h) com 1 nessas casas. Dentro de um OVNI ou de um edifício só as casas em linha com a porta
+     ou a janela têm arco: realçá-las diz onde se pode lançar. Pura (testada em Node). */
+  function arcTiles(B, u, z, range) {
+    const m = B.map, plane = m.w * m.h;
+    const out = new Uint8Array(plane);
+    const r = range | 0, dz = OV.U.idiv((z - u.z) * 3, 2);
+    for (let y = Math.max(0, u.y - r); y <= Math.min(m.h - 1, u.y + r); y++) {
+      for (let x = Math.max(0, u.x - r); x <= Math.min(m.w - 1, u.x + r); x++) {
+        const dx = x - u.x, dy = y - u.y;
+        if (OV.U.isqrt(dx * dx + dy * dy + dz * dz) > r) continue;
+        const i = z * plane + y * m.w + x;
+        if (!(m.disc[i] & 1) || !OV.BMap.hasFloor(m, i)) continue;
+        const pl = OV.Act.planArc(B, u, i);
+        if (pl && pl.goal === i) out[y * m.w + x] = 1;
+      }
+    }
+    return out;
+  }
+  // realce das casas com arco (calculado uma vez por posição, item e nível; o motor decide na mesma)
+  function arcView(u, it, z) {
+    const key = [u.id, u.x, u.y, u.z, it.id, z, S.ver].join(':');
+    if (!S.arcCache || S.arcCache.key !== key) {
+      const range = OV.Data.throwRange(u.stats.str | 0, itemWeight(it));
+      const tiles = arcTiles(S.B, u, z, range);
+      let n = 0;
+      for (let k = 0; k < tiles.length; k++) n += tiles[k];
+      S.arcCache = { key, z, tiles, n };
+    }
+    return S.arcCache;
   }
   // há chão no nível de cima (teto da nave, de um OVNI, de um edifício): nenhum arco sai daqui nem lá entra
   function underRoof(u) {
@@ -858,15 +904,30 @@
     const pw = d.dmg === 'IN' ? (d.power | 0) >> 1 : d.power | 0;
     const r = smoke ? d.radius | 0 : Math.max(1, Math.min(d.radius | 0, Math.floor((pw - 1) / tune('HE_FALLOFF', 10))));
     const [x, y, z] = xyzOf(toI);
-    let risk = 0;
+    let risk = 0, civ = 0;
     if (!smoke) {
       for (const f of S.B.units) {
         if (f.side === 'alien' || !f.onMap || !LIVE[f.status] || f.z !== z || !seen(f)) continue;
         const dx = f.x - x, dy = f.y - y;
-        if (dx * dx + dy * dy <= r * r) risk++;
+        if (dx * dx + dy * dy <= r * r) {
+          risk++;
+          if (f.origSide === 'civ' || f.side === 'civ') civ++;
+        }
       }
     }
-    return { x, y, z, r, smoke, risk };
+    return { x, y, z, r, smoke, risk, civ };
+  }
+  /* texto do risco no raio: só aliados → «N aliados» (chave plural de sempre); com civis → «N aliados e M civis»
+     (o principiante distingue os seus soldados dos civis que vai salvar) */
+  function blastWho(b) {
+    const civ = b.civ | 0, s = (b.risk | 0) - civ;
+    const parts = [];
+    if (s > 0) parts.push(Tn('hud.blast.ally', s));
+    if (civ > 0) parts.push(Tn('hud.blast.civ', civ));
+    return parts.length > 1 ? T('hud.blast.and', { a: parts[0], b: parts[1] }) : parts[0] || '';
+  }
+  function blastRiskText(base, b) {
+    return b.civ ? T(base + '.who', { who: blastWho(b) }) : Tn(base, b.risk | 0, { n: b.risk | 0 });
   }
 
   // ---- modos ------------------------------------------------------------------------------------------------
@@ -900,6 +961,7 @@
     S.pin = null;
     S.view.cursor = 'move';
     S.view.throwRange = null;
+    S.view.arcTiles = null;
     if (isTouch()) S.mouse = null;
     if (S.kcur.armed && S.kcur.auto) {
       S.kcur.armed = false;
@@ -936,6 +998,7 @@
     S.tapLock = -1;
     S.view.cursor = 'target';
     S.view.throwRange = null;
+    S.view.arcTiles = null;
     const label = mode === 'psi' ? T(psiKind === 'control' ? 'hud.menu.psiControl' : 'hud.menu.psiPanic') : T('mode.' + mode);
     S.aimLabel = label;
     kbAutoAim();
@@ -957,6 +1020,12 @@
     S.view.cursor = 'throw';
     const it = itemOf(plan.itemId);
     S.view.throwRange = { x: u.x, y: u.y, z: u.z, r: OV.Data.throwRange(u.stats.str | 0, itemWeight(it)) };
+    // debaixo de um teto (dentro do OVNI, de um edifício) os arcos são poucos: mostrar logo onde se pode lançar
+    S.view.arcTiles = null;
+    if (underRoof(u)) {
+      const av = arcView(u, it, u.z);
+      if (av.n) S.view.arcTiles = { z: u.z, tiles: av.tiles };
+    }
     kbAutoAim();
     setHint(modeHint());
     S.hoverKey = '';
@@ -1263,6 +1332,12 @@
     // preferência do jogador (não decide resultados por si: só limita as próprias ações)
     S.B.reserve = mode;
     sfx('ui_click');
+    // a arma do soldado escolhido não tem o modo pedido: dizer já o que fica de facto reservado
+    const u = sel();
+    if (u && mode !== 'none') {
+      const info = OV.Act.reserveInfo(S.B, u, { mode, noKneel: true });
+      if (info.mode && info.mode !== mode) toast('hud.reserve.fallback', { name: uname(u), lack: T('hud.reserve.lack.' + mode), mode: T('hud.reserve.eff.' + info.mode), tu: info.tu }, 'info');
+    }
     invalidate();
   }
   function toggleReserveKneel() {
@@ -1370,7 +1445,7 @@
     // e as granadas alienígenas ativadas à vista (Recruta): a mesma janela, com «Mostrar» a centrar em cada uma
     const hurt = turnReportRows(S.log.filter((e) => e.seq > mark), endNo).concat(warnGrenades());
     if (hurt.length || visibleAliens().length) S.contactTurn = S.B.turn;
-    // noite num OVNI sem contacto há vários turnos: os alienígenas estão lá dentro (uma vez por batalha)
+    // OVNI sem contacto há vários turnos (de noite ou de dia): os alienígenas estão lá dentro (uma vez por batalha)
     const hint = !S.ufoHinted && ufoHintDue(S.B, S.contactTurn) ? ufoHintRow() : null;
     if (hint) S.ufoHinted = true;
     // granadas que rebentaram depois de «Fim do turno» (antes dos alienígenas jogarem): o título deixa de ser só
@@ -1379,24 +1454,61 @@
     if (hurt.length) openReport('turn', hint ? hurt.concat({ key: 'hud.hint.title', params: null, kind: 'sect', at: -1, from: -1 }, hint) : hurt, title);
     else if (hint) openReport('turn', [hint], 'hud.hint.title');
   }
-  /* Conselho do OVNI às escuras: missão noturna num OVNI caído/aterrado, UFO_HINT_TURNS turnos X-COM sem contacto
-     (contactTurn = último turno com um alienígena à vista ou um ataque aos nossos) e todos os alienígenas vivos dentro
-     do OVNI — o principiante anda às voltas no escuro sem saber que tem de entrar. Pura (testada em Node). */
+  /* Conselho do OVNI: OVNI caído/aterrado, ufoHintTurns(B) turnos X-COM sem contacto (contactTurn = último turno com
+     um alienígena à vista ou um ataque aos nossos) e todos os alienígenas vivos dentro do OVNI — o principiante anda
+     à volta do casco sem saber que tem de entrar. De dia também (um Batedor Grande com a tripulação toda lá dentro
+     não se vê de fora); só é dito quando é verdade. Pura (testada em Node). */
   const UFO_HINT_TURNS = 5;
+  // turnos sem contacto até ao conselho: de noite [Recruta, Veterano, Super-humano] = 4/5/5; de dia 3/4/5
+  const UFO_HINT_NIGHT = [4, 5, 5], UFO_HINT_DAY = [3, 4, 5];
+  function ufoHintTurns(B) {
+    const d = Math.max(0, Math.min(2, B && B.mission && B.mission.difficulty !== undefined ? B.mission.difficulty | 0 : 1));
+    return (B && B.mission && B.mission.night ? UFO_HINT_NIGHT : UFO_HINT_DAY)[d];
+  }
   function ufoHintDue(B, contactTurn) {
     if (!B || !B.mission || B.side !== 'xcom' || B.phase === 'over' || !B.ufo) return false;
     const k = B.mission.kind;
-    if ((k !== 'crash' && k !== 'landed') || !B.mission.night) return false;
-    if ((B.turn | 0) - (contactTurn | 0) < UFO_HINT_TURNS) return false;
+    if (k !== 'crash' && k !== 'landed') return false;
+    if ((B.turn | 0) - (contactTurn | 0) < ufoHintTurns(B)) return false;
     const r = B.ufo;
     const live = B.units.filter((u) => u.side === 'alien' && u.onMap && LIVE[u.status]);
     return live.length > 0 && live.every((u) => u.x >= r.x && u.x < r.x + r.w && u.y >= r.y && u.y < r.y + r.h);
   }
-  // a linha do conselho; «Mostrar» centra o OVNI quando o sítio dele já foi visto
+  /* entrada do OVNI mais perto da equipa: porta de OVNI (objeto door 'ufo') ou brecha do casco (B.breaches), no
+     rés-do-chão do retângulo do OVNI → tile | −1. Pura (testada em Node). */
+  function ufoEntry(B) {
+    const r = B && B.ufo, m = B && B.map;
+    if (!r || !m) return -1;
+    const cand = [];
+    for (let y = r.y; y < r.y + r.h; y++) {
+      for (let x = r.x; x < r.x + r.w; x++) {
+        const i = (y * m.w) + x;
+        const v = m.parts[i * 4 + 3], d = v ? OV.Data.tileDefs[v] : null;
+        if (d && d.door === 'ufo') cand.push(i);
+      }
+    }
+    for (const i of B.breaches || []) if (i < m.w * m.h) cand.push(i);
+    if (!cand.length) return -1;
+    const sq = B.units.filter((u) => u.side === 'xcom' && u.onMap && LIVE[u.status]);
+    let cx = r.x + (r.w >> 1), cy = r.y + (r.h >> 1);
+    if (sq.length) {
+      cx = Math.round(sq.reduce((t, u) => t + u.x, 0) / sq.length);
+      cy = Math.round(sq.reduce((t, u) => t + u.y, 0) / sq.length);
+    }
+    let best = -1, bd = Infinity;
+    for (const i of cand) {
+      const x = i % m.w, y = (i / m.w) | 0, dd = (x - cx) * (x - cx) + (y - cy) * (y - cy);
+      if (dd < bd || (dd === bd && i < best)) { bd = dd; best = i; }
+    }
+    return best;
+  }
+  // a linha do conselho; «Mostrar» centra a entrada do OVNI (porta ou brecha) ou, sem ela, o centro do OVNI já visto
   function ufoHintRow() {
     const r = S.B.ufo;
-    const i = idxOf(r.x + (r.w >> 1), r.y + (r.h >> 1), 0);
-    return { key: 'hud.hint.ufoInside', params: { n: (S.B.turn | 0) - (S.contactTurn | 0) }, kind: 'tip', ic: '?', at: S.B.map.disc[i] & 1 ? i : -1, from: -1 };
+    const door = ufoEntry(S.B);
+    const mid = idxOf(r.x + (r.w >> 1), r.y + (r.h >> 1), 0);
+    const at = door >= 0 ? door : S.B.map.disc[mid] & 1 ? mid : -1;
+    return { key: door >= 0 ? 'hud.hint.ufoInside.door' : 'hud.hint.ufoInside', params: { n: (S.B.turn | 0) - (S.contactTurn | 0) }, kind: 'tip', ic: '?', at, from: -1 };
   }
   /* Recruta: granadas alienígenas ativadas no chão à vista (rebentam no fim deste turno) ficam com o raio marcado
      e um aviso, para o principiante ter tempo de afastar os soldados */
@@ -1803,12 +1915,14 @@
     const row = (label, ctrl) => el('div', { class: 'bs-opt-row' }, el('span', { text: label }), ctrl);
     const crow = (label, ctrl) => el('label', { class: 'bs-opt-row check' }, ctrl, el('span', { text: label }));
     const speeds = [[1, '×1'], [2, '×2'], [4, '×4']];
+    // ecrã tátil sem rato: a roda e o deslizar pelas margens não existem — não se mostram (como nas Opções gerais)
+    const mouseLess = typeof matchMedia === 'function' && matchMedia('(hover: none) and (pointer: coarse)').matches;
     const body = el('div', { class: 'bs-opts' },
       row(T('hud.opt.speedXcom'), seg('speedXcom', speeds)),
       row(T('hud.opt.speedAlien'), seg('speedAlien', speeds)),
       row(T('hud.opt.confirmMove'), seg('confirmMove', [['auto', T('hud.opt.confirm.auto')], ['always', T('hud.opt.confirm.on')], ['never', T('hud.opt.confirm.off')]])),
-      row(T('hud.opt.wheel'), seg('wheel', [['level', T('hud.opt.wheel.level')], ['zoom', T('hud.opt.wheel.zoom')]])),
-      crow(T('hud.opt.edgeScroll'), check('edgeScroll', false)),
+      mouseLess ? null : row(T('hud.opt.wheel'), seg('wheel', [['level', T('hud.opt.wheel.level')], ['zoom', T('hud.opt.wheel.zoom')]])),
+      mouseLess ? null : crow(T('hud.opt.edgeScroll'), check('edgeScroll', false)),
       crow(T('hud.opt.confirmEndTurn'), check('confirmEndTurn', true)),
       crow(T('hud.opt.hitPreview'), check('hitPreview', true)),
       crow(T('hud.opt.sound'), check('sound', true)),
@@ -3105,7 +3219,7 @@
         B, onExit: typeof p.onExit === 'function' ? p.onExit : null, onPlayerTurn: typeof p.onPlayerTurn === 'function' ? p.onPlayerTurn : null, scene: sc,
         view: {
           cam: { x: 0, y: 0, zoom: 1 }, w: OV.View.w, h: OV.View.h, viewZ: 0, time: 0, selectedId: null, hover: null, cursor: 'move',
-          path: null, reach: null, target: null, throwArc: null, throwInfo: null, throwRange: null, anim, showAll: false, blips: null,
+          path: null, reach: null, target: null, throwArc: null, throwInfo: null, throwRange: null, arcTiles: null, anim, showAll: false, blips: null,
         },
         anim, selId: null, mode: 'move', aim: null, throwPlan: null, lock: -1, tapLock: -1, playing: false, ended: false, menu: null,
         mouse: null, pick: null, hoverKey: '', reachKey: '', ver: 0, hitCache: new Map(), uiRng: OV.RNG.create(0x51ed7a11),
@@ -3265,6 +3379,7 @@
         targetLabel: S.view.target && S.view.targetLabel ? Object.assign({}, S.view.targetLabel) : null,
         report: S.report ? { kind: S.report.kind, rows: Array.from(S.hud.report.querySelectorAll('.bs-report-txt')).map((n) => n.textContent) } : null,
         contactTurn: S.contactTurn, ufoHinted: !!S.ufoHinted,
+        arcTiles: S.view.arcTiles ? S.view.arcTiles.tiles.reduce((n, v) => n + v, 0) : 0,
       };
     },
     // registo de mensagens (entradas com o texto já traduzido)
@@ -3336,7 +3451,7 @@
     refresh() { if (S) invalidate(); },
     // abortar a missão (com a confirmação de sempre): botão do HUD, tecla X e o painel Opções (Esc)
     abort() { if (S) abortMission(); },
-    model: { kbStep, logEntry, blastConfirm, lineRisk, lineConfirm, handName, confirmEarly, reportSummary, turnReportRows, ufoHintDue, UFO_HINT_TURNS },
+    model: { kbStep, logEntry, blastConfirm, lineRisk, lineConfirm, handName, confirmEarly, reportSummary, turnReportRows, ufoHintDue, ufoHintTurns, UFO_HINT_TURNS, reserveWhat, arcTiles, ufoEntry },
     debug,
   };
 })(globalThis.OV || (globalThis.OV = {}));

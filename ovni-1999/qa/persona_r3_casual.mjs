@@ -238,8 +238,10 @@ try {
     if (!TOUCH(view)) await page.keyboard.press('w');
     else await page.locator('.geo-pop .btn', { hasText: 'Esperar pelo dia' }).tap();
     await sleep(500);
-    const w = await page.evaluate(() => ({ wait: (window.__G.ui.waitDay || []).length, top: OV.Scenes.top().id }));
-    check(w.wait === 1 && w.top === 'geoscape', view + ': esperar pelo dia fica registado ' + JSON.stringify(w));
+    // ao crepúsculo o dia pleno chega em ~1 h e a espera corre a «30 min» (ronda 4): em meio segundo real pode já ter
+    // amanhecido — então a espera já saiu da lista e a janela «Equipa no local» voltou (título «Amanheceu»)
+    const w = await page.evaluate(() => ({ wait: (window.__G.ui.waitDay || []).length, top: OV.Scenes.top().id, pop: ((document.querySelector('.geo-pop') || {}).innerText || '').replace(/\s+/g, ' ').slice(0, 80) }));
+    check(w.top === 'geoscape' && (w.wait === 1 || /amanheceu/i.test(w.pop)), view + ': esperar pelo dia fica registado (ou já amanheceu) ' + JSON.stringify(w));
     await noMissing(page, 'C ' + view);
     await ctx.close();
   }
