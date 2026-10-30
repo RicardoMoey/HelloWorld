@@ -1,0 +1,58 @@
+[
+ {
+  "file": "ovni-1999/js/ui/screens.js",
+  "area": "data",
+  "severity": "major",
+  "claim": "Ainda presente (ronda 2), noutra forma: na Batalha Rápida do mês 4, o equipamento inicial (Plasma Pesado, 2 carregadores, 2 sinalizadores e explosivo na mochila) ignora a Força. 5 dos 10 soldados começam com excesso de peso e menos UT, apesar de o botão «Auto-equipar» do mesmo ecrã já respeitar a Força.",
+  "evidence": "OVNI Aterrado, Raptor, Noite, Super-humano, mês 4. Estado inicial no ecrã Equipar: Carlos Ramos 37/34, Leonor Rodrigues 26/20, Jean Richard 26/23, John Smith 26/20 e Matteo Costa 26/20, todos a vermelho com «Excesso de peso: começa a missão com menos UT» (/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r3/veterano/shots/057_leonor.png, 058_carlos.png). No turno 1 tinham John 39 UT, Matteo 41 e Jean 44. «AUTO-EQUIPAR» na Leonor passa a 20/20, «Dentro da Força» (059_leonor_auto.png).",
+  "fix": "Em loadoutFor, aplicar a todos os soldados a mesma regra do Auto-equipar: depois de montar o kit, retirar por ordem os extras (explosivo, 2.º sinalizador, carregador extra) até o peso ≤ Força e deixá-los no armazém da nave. Ou gerar o kit inicial chamando o próprio autoLoadout de cada soldado.",
+  "verdict": "CONFIRMED",
+  "persona": "Rui"
+ },
+ {
+  "file": "ovni-1999/js/ui/screens.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "Ainda presente (ronda 2), em parte: na Batalha Rápida, depois de clicar em «ALEATÓRIA» (semente), Enter volta a sortear a semente em vez de começar, apesar de o rodapé dizer «Enter começa». O deslizador e os botões de opção já foram corrigidos.",
+  "evidence": "Clique em ALEATÓRIA e depois Enter: activeElement=<button class=\"btn small ghost\">Aleatória</button>, a semente passa de 10 para 57550 (a raça também mudou de Flutuantes para Homens-Serpente) e a cena continua «quickbattle» (/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r3/veterano/shots/055_enter_on_random.png). Clicar em «Noite» e depois Enter já abre o briefing.",
+  "fix": "Em keys() da Batalha Rápida, tratar Enter também quando o foco está no botão Aleatória (ou em qualquer botão que não seja VOLTAR) como «começar», ou tirar o foco desse botão (blur) depois do clique.",
+  "verdict": "CONFIRMED",
+  "persona": "Rui"
+ },
+ {
+  "file": "ovni-1999/js/ui/screens.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "A dica do relatório para fogo amigo fala sempre de explosivos («granadas, foguetes, Blaster… raio»), mesmo quando o colega morreu com um tiro de espingarda, em parte de reação no turno alienígena. A dica também ignora a causa real (só 2 soldados) e não diz quem atingiu quem.",
+  "evidence": "Missão c6, registo de mensagens: «2a: Meera Nair ficou ferida mortalmente: −20 de saúde — tiro de Matthew Nguyen» (no turno alienígena, ou seja, reação) e «3x: Meera Nair foi morta em combate — tiro de Matthew Nguyen». Não se usou nenhum explosivo. O relatório diz «1 soldado morto por fogo amigo (incluindo os próprios explosivos)» e «Dica: Os explosivos (granadas, foguetes, Blaster) apanham tudo no raio…» (/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r3/crianca/shots/179_c6_deb.png). Houve mais 2 mortes por fogo amigo de espingarda nas missões c1 e c3, também sem explosivos (/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r3/crianca/shots/095_c3_deb.png).",
+  "fix": "Em lossCauses, guardar a arma e se foi reação (killedBy + item ou um flag reaction). Escolher scr.db.tip.friendly.blast ou um novo scr.db.tip.friendly.shot: «Os teus soldados também disparam sozinhos quando um alienígena se mexe — não os ponhas em fila nem à frente uns dos outros.» Na linha do fogo amigo, nomear o caso: «Meera Nair ← tiro de Matthew Nguyen (reação)». Quando a equipa era menor do que o efetivo estimado, dar prioridade à dica «Levaste só 2 soldados contra 3–4 alienígenas».",
+  "persona": "Tiago, 11 an"
+ },
+ {
+  "file": "ovni-1999/js/ui/screens.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "Numa VITÓRIA com metade ou mais da equipa morta, o relatório não mostra nenhuma dica. lossNotes só mostra a dica quando result !== 'win'. O Tiago viu três vezes «VITÓRIA» com 5 em 9, 5 em 7 e 5 em 6 soldados mortos, e nenhum conselho sobre ajoelhar, cobertura ou kit médico.",
+  "evidence": "screens.js lossNotes: `if (result !== 'win' && c.tip)`. Missão c2: VITÓRIA, Soldados X-COM mortos ×5 (de 9). Missão cx: VITÓRIA, ×5 (de 7) (/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r3/crianca/shots/159_cx_deb.png). Missão c7: VITÓRIA, ×5 (de 6), avaliação FRACO e sem dica (/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r3/crianca/shots/197_c7_deb.png). Nessa missão o Matthew morreu a sangrar («A SANGRAR ×2») sem que o kit médico fosse usado.",
+  "fix": "Mostrar a dica (lossCauses.tip) também em vitória quando mortos ≥ 50 % da equipa, ou ≥ 3 em Recruta. Usar um título suave: «Vitória cara — dica para a próxima:». Incluir a dica das feridas quando houve mortes por sangramento com um kit médico a bordo.",
+  "persona": "Tiago, 11 an"
+ },
+ {
+  "file": "ovni-1999/js/i18n/pt-PT.screens.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "«Como Jogar» explains the path preview only by colour («verde… amarelo… vermelho»). The shapes now drawn (●, ○ and ✕) are not described anywhere. With «Sem reserva» active, hollow steps still appear because the preview falls back to the quick-shot reserve, while the label shows the normal cost, so a colour-blind player cannot tell what ○ means.",
+  "evidence": "scr.howto.tu.body: «O caminho aparece a verde… a amarelo… a vermelho». Mission 1, turn 2, reserve 'none': cursor at (14,11) gave pathStates ok×10, reserve×4, out×2 with the label «Custa 64 UT — só tem 56». At turn 1, destinations ending in 'reserve' read only «Custa 50 UT · ficam 5». battle_ui reserveMode() returns 'snap' when B.reserve is 'none'. Screenshot: /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r3/acessivel/shots/059-path-out.png",
+  "fix": "Rewrite the help as: «● cheio: ainda sobra para um tiro rápido · ○ vazio: depois daqui já não dá para disparar · ✕: não chega» (and mention the colours as secondary). When the destination is ○ and there is no reserve, append «· sem UT para disparar» to the label.",
+  "persona": "Pedro: plays"
+ },
+ {
+  "file": "ovni-1999/js/ui/screens.js",
+  "area": "data",
+  "severity": "minor",
+  "claim": "In a night Quick Battle, the default kit adds two Sinalizadores (belt + pack) to every non-heavy soldier without checking Força. A soldier with low Força starts overweight and loses TU, and the battle HUD shows 46/46, hiding the penalty.",
+  "evidence": "Quick Battle: Local de Terror, Noite, Recruta, 8 soldiers (seed 91277). Equipar shows «Anita Reddy Peso 23/21 — Excesso de peso: começa a missão com menos UT» (shots/115_qb_equip.png). In combat, B.units gives «Anita Reddy tu46/51» and the HUD shows UT 46/46 (shots/116_qb_start.png). Code: loadoutFor() lines 795–805 always does lo.pack.push('electro_flare') after the belt flare. Only medkits use medPicks/Força slack. Screenshots in /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r3/ipad/shots/.",
+  "fix": "In buildQuickMission (or loadoutFor with the soldier), add the 2nd flare only if loWeight(lo)+flare.weight ≤ Força. Otherwise put it in mission.craftItems, as is already done with a medkit that does not fit. Optional: in the HUD show «UT 46/51» or a ⚖ icon when the soldier started overweight.",
+  "persona": "Marta: iPad "
+ }
+]

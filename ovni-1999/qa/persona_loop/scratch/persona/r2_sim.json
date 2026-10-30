@@ -1,0 +1,56 @@
+[
+ {
+  "file": "ovni-1999/js/ui/screens.js",
+  "area": "data",
+  "severity": "minor",
+  "claim": "Na Batalha Rápida (mês ≥ 2) o kit médico continua a ser atribuído pela posição na equipa (k = 1 e 5), sem olhar à Força. O soldado n.º 2 pode começar sobrecarregado: Alejandro, com Força 24, fica com «25/24 Excesso de peso: começa a missão com menos UT».",
+  "evidence": "Batalha Rápida, Raptor, mês 3: Alejandro aparece a vermelho com 25/24 (/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r2/veterano/shots/009_alejandro.png). O código em loadoutFor diz `if (tier >= 2 && (k === 1 || k === 5)) lo.pack.push('medikit')`. A arma pesada já usa heavyPicks por Força; o kit médico não.",
+  "fix": "Escolher os portadores do kit médico como na arma pesada: os 2 soldados com mais folga (Força − peso) depois do equipamento base. Se ninguém o aguentar, deixar o kit no armazém da nave.",
+  "persona": "Rui"
+ },
+ {
+  "file": "ovni-1999/js/i18n/pt-PT.screens.js",
+  "area": "data",
+  "severity": "minor",
+  "claim": "O registo de tratamento é inconsistente. As dicas do relatório usam «tu» («Avança… ajoelha… quando te mexes», «afasta a equipa… nunca dispares», «usa o kit médico… puderes»). O resto do jogo usa «você»: «Espalhe a equipa», «Ajoelhe-se», «Clique», «Comece a investigação».",
+  "evidence": "Relatório da derrota no terror: «Dica: Avança de abrigo em abrigo e ajoelha (K)… quando te mexes à vista deles» (aparece no texto do cdebrief). Chaves scr.db.tip.enemy, scr.db.tip.friendly e scr.db.tip.wounds (pt-PT.screens.js l.298–300). Os conselhos da 1.ª missão usam «Espalhe… Ajoelhe-se… Não gaste» (shots/026-battle_start.png).",
+  "fix": "Passar as três dicas para «você»: «Avance de abrigo em abrigo e ajoelhe-se (K) no fim do movimento: os alienígenas disparam quando se mexe à vista deles», «afaste a equipa… nunca dispare através de um colega», «use o kit médico (Curar) logo que puder».",
+  "persona": "Sofia"
+ },
+ {
+  "file": "ovni-1999/js/sim/geo/missions.js",
+  "area": "sim",
+  "severity": "major",
+  "claim": "«Resposta simbólica» ao terror: mandar o Skyranger, carregar em «Iniciar missão» e abortar no turno 1 sem sair da nave custa só −(civis × 30), cerca de −240 pontos. Ignorar o terror custa −500 nos meses 0–1 e −1 000 a partir do mês 2. Não há nenhum risco: não chega a haver turno alienígena, a nave e os soldados ficam a salvo e o local desaparece, por isso a penalização de expiração nunca é aplicada.",
+  "evidence": "Script headless /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r2/minmaxer/token.js (1 soldado, Battle.abort logo após beginBattle, 8 sementes por mês): «mês 0: abortar no turno 1 média −240 (civis 7–9, nave perdida? false) · ignorar −500»; meses 2/4/6: −240 contra −1000.\n\nNo browser (Novosibirsk, 15 jan): o relatório do abort mostra «Civis mortos por alienígenas ×6 −180» e mais nada de alienígena. Depois de «Continuar», G.sites fica [] (nenhuma expiração posterior). Capturas /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r2/minmaxer/shots/131_terror_debrief.png e 132_after_terror.png.\n\nO código confirma: missions.js onSiteCleared remove o local de terror «depois de qualquer batalha»; battle.js debrief só conta civValue × civis vivos quando o resultado não é vitória.\n\nEm Super-humano, o terror do mês 0 dá ao bot 50 % de vitórias com 5,8 baixas (node tools/sim.js battle --kind terror --month 0 --diff 2 --seeds 16). O abort simbólico torna-se a jogada dominante.",
+  "fix": "Quando uma batalha de terror acaba em 'abort' (ou 'loss'), aplicar também a penalização de terror ignorado: Missions.expiredPoints(G) para os alienígenas na região, ou pelo menos max(civis × valor, expiredPoints). Alternativa: manter o local ativo até expirar se o X-COM abortar antes de, por exemplo, 3 turnos ou sem nenhum abate. Acrescentar um teste em tools/tests: abort no turno 1 de um terror ⇒ pontuação ≤ −expiredPoints.",
+  "persona": "Inês"
+ },
+ {
+  "file": "ovni-1999/js/data/base.js",
+  "area": "data",
+  "severity": "major",
+  "claim": "Os kits médicos do equipamento inicial não se podem usar: são 3 no armazém, um vai para o Skyranger e outro na mochila do «médico». O motor recusa-os com notResearched até se investigar «Kit Médico». O briefing ainda avisa «Ninguém leva um kit médico: os feridos podem sangrar até morrer», o que leva o jogador a confiar num objeto que não funciona. Para a otimizadora, os kits são só 139 500 $ para vender no dia 1.",
+  "evidence": "data/base.js:75 stores {… medikit: 3 …}. campaign.js:264 põe um medikit na mochila do médico e campaign.js:348 põe 1 no Skyranger. actions.js:965 faz `if (!researched(B, u, it.type)) return fail('notResearched')`, e items.medikit.research === 'medikit' com G.researched = [] no início.\n\nScript /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r2/minmaxer/medi.js (missão com researched [] e medikit na mão): heal → {ok:false, reason:'notResearched'}, stim → idem.\n\nNo browser, o ecrã Equipar da base listava «Kit Médico ×2 POR INVESTIGAR» (texto da página ao abrir /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r2/minmaxer/shots/047_base_equip.png). No Mercado → Vender aparecia «Kit Médico $46 500 cada · em armazém: 3». Duas soldadas sangraram até morrer em missões de janeiro.",
+  "fix": "Escolher uma de duas: (a) tornar o kit médico utilizável sem investigação, ficando a investigação «Kit Médico» só a desbloquear o fabrico (exceção em actions.js researched() para itens de D.items com usableUnresearched ou para itens do equipamento inicial); ou (b) tirar os medikits do equipamento inicial e do Skyranger. Com (a), o aviso do briefing passa a fazer sentido. Com (b), o aviso deve sugerir investigar «Kit Médico».",
+  "persona": "Inês"
+ },
+ {
+  "file": "ovni-1999/js/sim/campaign.js",
+  "area": "sim",
+  "severity": "minor",
+  "claim": "Capturar um alienígena sem Contenção Alienígena continua a dar os pontos de captura (2 × valor) e ainda deixa o cadáver no armazém (20 000 $). O próprio relatório diz que o alienígena «não sobreviveu». Atordoar passa a valer o dobro de matar sem construir contenção.",
+  "evidence": "Relatório do Batedor Médio de 5 jan (base sem contenção): «Alienígenas capturados vivos ×1 +20» e logo abaixo «Sectoide Soldado ×1: sem espaço na contenção — não sobreviveu». Foram entregues ×4 cadáveres para ×3 contados nos pontos. Captura /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r2/minmaxer/shots/062_debrief2.png.\n\nNo código, battle.js:850–855 soma capPts para todos os capturados. Em campaign.js:694–708 o score (deb.score) é somado antes de verificar a contenção e o capturado sem espaço vira cadáver (capturedLost) sem corrigir os pontos. O OpenXcom (recoverAlien) só dá «live alien recovered» quando há contenção.",
+  "fix": "Em Campaign.afterBattle, para cada capturedLost: retirar os pontos de captura e dar só o valor de abate (u.value), ou passar a containmentRoom ao Battle.debrief para que a linha «capturados vivos» conte só os que cabem. Mostrar os restantes como abatidos.",
+  "persona": "Inês"
+ },
+ {
+  "file": "ovni-1999/js/ui/campaign_ui.js",
+  "area": "sim",
+  "severity": "minor",
+  "claim": "A gravação automática «Antes da missão» e a semente de mapa determinística dão uma repetição com informação perfeita. Recarregar e voltar a entrar gera exatamente o mesmo mapa com cada alienígena no mesmo sítio. Depois de um primeiro reconhecimento, a otimizadora sabe onde está o navegador que mata no turno 1. O exploit de «recarregar» passa a ser de conhecimento e já não de dados.",
+  "evidence": "OVNI-8 (Batedor Médio aterrado, Alemanha, 22 jan). Primeira entrada: seed 3238896161, alienígenas 58 (2,14), 62 (0,9), 66 (6,15), 70 (2,13) e navegador 74 (10,24). Depois de «Sair para o menu» → Carregar → «Antes da missão» → Iniciar missão: seed 3238896161 e as mesmas 5 posições. Capturas /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r2/minmaxer/shots/168_load_dlg.png e 145_b5_start.png.",
+  "fix": "Em Super-humano, oferecer um modo «Homem de Ferro», sem as ranhuras preMission e autoTurn e com uma única gravação automática. Em alternativa, aceitando o compromisso de permitir sortear mapas, misturar na stream 'map' um sal por carregamento quando se carrega a ranhura preMission.",
+  "persona": "Inês"
+ }
+]

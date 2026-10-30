@@ -1,0 +1,70 @@
+{
+  "summary": "OVNI persona round 5 fixer: menus, Quick Battle kit, briefing, debrief and Como Jogar (screens.js)",
+  "agentCount": 1,
+  "logs": [],
+  "result": {
+    "fix": {
+      "files_written": [
+        "/home/user/HelloWorld/ovni-1999/js/ui/screens.js",
+        "/home/user/HelloWorld/ovni-1999/js/i18n/pt-PT.screens.js",
+        "/home/user/HelloWorld/ovni-1999/tools/tests/screens_persona_r5.test.js",
+        "/home/user/HelloWorld/ovni-1999/qa/persona_r5_screens.mjs"
+      ],
+      "tests": {
+        "passed": 798,
+        "failed": 0
+      },
+      "api": "OV.Screens: one new export, everything else unchanged.\n- showKbCursor(touchOnly: bool, keyboardSeen: bool) -> bool. This is the rule for the Options row «Cursor de teclado no combate». On a mouse or trackpad device it always returns true. On a touch-only device, i.e. matchMedia('(hover: none) and (pointer: coarse)'), it returns true only after a physical key has been pressed in the session.\n- Internal: a keydown listener on window in the capture phase sets a module flag kbSeen. Keys typed in INPUT, TEXTAREA or contentEditable fields do not count, so the on-screen keyboard does not set it. Because the listener runs in the capture phase, the Esc that opens Options already counts.\n- Options scene: the hint under «Reduzir movimento» now goes through TT(), which uses the .touch variant on touch devices.\n\ni18n:\n- Reworded: scr.opt.acc.motion.hint now reads «Sistema» segue a preferência do sistema operativo…, so the word «computador» is gone.\n- New: scr.opt.acc.motion.hint.touch reads «Sistema» segue a definição do iPad (Acessibilidade › Movimento); «Sim» tira animações, tremores e rotações automáticas.",
+      "summary": "The only round-5 screens finding is FIXED: «Ainda presente» from Marta on the iPad, where Options showed «Cursor de teclado no combate» and a «Reduzir movimento» hint that talked about the «computador». I re-checked it in the source first: screens.js always built the kbCursor row, and the motion hint had no touch variant.\n\n**Root cause and fix**\n- **Keyboard cursor row:** the round-4 fix hid only the mouse rows (edge scroll and mouse wheel) when there is no mouse. It never looked at whether the device has a keyboard.\n  - screens.js now remembers whether a physical key was pressed in the session.\n  - On a touch-only device the row is hidden until that happens, so an iPad with an external keyboard still gets it.\n  - The rule is the new exported function `showKbCursor`.\n- **«Reduzir movimento» hint:** it now has a `.touch` variant that names the iPad setting (Acessibilidade › Movimento). The desktop text says «sistema operativo» instead of «computador».\n- Options is a single scene, so the fix covers both the menu and the in-battle Options.\n\n**Regression checks**\n- **Node test** `tools/tests/screens_persona_r5.test.js` (2 tests) checks:\n  - the `showKbCursor` truth table;\n  - that the Options row uses it and the keydown listener is in the capture phase;\n  - that neither motion hint contains «computador», and that the touch one mentions iPad/Movimento and is shown through `TT`.\n- **QA** `qa/persona_r5_screens.mjs` (33/33 checks) runs in a real Chromium:\n  - Menu Options at 1440×900, 1024×576 and iPad 834×1194 / 1194×834 with touch:\n    - iPad: no kbCursor row, iPad wording, no «computador»;\n    - desktop: the row and the «sistema operativo» text are there.\n  - iPad with a physical key pressed (Esc): Options shows the row again.\n  - In battle, opening Options by tapping the real HUD «Opções» button on iPad landscape and portrait (desktop clicks it): the same rule holds, and «Abortar missão» is still there.\n  - No ⟦missing⟧ keys and no console errors.\n- **Earlier QA:** `qa/persona_r4_screens.mjs` still passes 108/108.\n- **Screenshots:** I looked at the menu Options at 1440×900, 1024×576 and iPad portrait, and the in-battle Options on iPad landscape. The new hint wraps to 2 lines on iPad portrait and the section fits.\n\n**Test suite**\n- `node tools/test.js --strict --i18n` was green with my changes: 798 passed, 0 failed.\n- Two later reruns show 7–8 failures, all outside my files:\n  - files: integration_r3/r4, late_persona_r4, shell_persona_r3, sim_persona_r1/r4, ui_persona_r4;\n  - code they exercise: blastPreview, Path.flyRoute, geo «Esperar pelo dia», the battle log, base-alien win.\n- They match files the other fixers were editing at that moment: js/ui/battle_ui.js and js/sim/battle/{actions,combat,path}.js were all modified at 12:43, just before the rerun.\n- All my screens tests pass: `node tools/test.js screens` gives 18/18.\n- I did not run `qa/full_campaign.mjs`; I touched no shared flow.\n\nScreenshots: /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/ui4/persona_r5_screens/",
+      "screenshots": [
+        "/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/ui4/persona_r5_screens/opt-desk.png",
+        "/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/ui4/persona_r5_screens/opt-zoom.png",
+        "/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/ui4/persona_r5_screens/opt-padP.png",
+        "/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/ui4/persona_r5_screens/opt-padL.png",
+        "/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/ui4/persona_r5_screens/opt-padP-kb.png",
+        "/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/ui4/persona_r5_screens/opt-padL-kb.png",
+        "/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/ui4/persona_r5_screens/bopt-padL.png",
+        "/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/ui4/persona_r5_screens/bopt-padP.png",
+        "/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/ui4/persona_r5_screens/bopt-desk.png"
+      ],
+      "deviations": [
+        "I did not hide the row with a pure CSS (hover:none) rule. Instead it is decided when Options is built, from a session flag («has a physical key been pressed?»), as the finding suggests, so an iPad with an external keyboard keeps the option. If the first physical key is pressed while Options is already open, the row appears the next time Options is opened.",
+        "The touch motion hint names the iPad, matching the existing «Toque (iPad)» wording in «Como Jogar». On a non-Apple touch device it would still say iPad."
+      ],
+      "open_issues": [
+        "The full suite was 798/0 with my changes. Two later reruns showed 7–8 transient failures in other fixers' areas: integration_r3, integration_r4 (blastPreview civ), late_persona_r4 (stores warning), shell_persona_r3 (geo «Esperar pelo dia»), sim_persona_r1 (Path.flyRoute), sim_persona_r4 (alien-base control-centre win) and ui_persona_r4 (shot log). They coincide with concurrent edits to js/ui/battle_ui.js and js/sim/battle/*.js. None of them touch js/ui/screens.js or js/i18n/pt-PT.screens.js."
+      ]
+    }
+  },
+  "workflowProgress": [
+    {
+      "type": "workflow_phase",
+      "index": 1,
+      "title": "Correção"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 1,
+      "label": "screens",
+      "phaseIndex": 1,
+      "phaseTitle": "Correção",
+      "agentId": "a35320e5ee24e7041",
+      "model": "claude-opus-5-5",
+      "state": "done",
+      "startedAt": 1793363597297,
+      "queuedAt": 1793363597275,
+      "attempt": 1,
+      "lastToolName": "StructuredOutput",
+      "lastToolSummary": "OV.Screens: one new export, everything else unchanged. - sh…",
+      "promptPreview": "You are a senior engineer on \"OVNI: Inimigo Desconhecido\" (repo /home/user/HelloWorld/ovni-1999), a faithful browser reverse-engineering of UFO: Enemy Unknown (1994) — vanilla JS classic-script IIFEs on global OV, Canvas 2D + DOM overlay, zero deps, no build, pt-PT European UI, Mac-first (trackpad + keyboard; also mouse and iPad touch). User brief: «capricha na jogabilidade» — gameplay feel and po…",
+      "promptFramed": true,
+      "lastProgressAt": 1793364272569,
+      "tokens": 125375,
+      "toolCalls": 42,
+      "durationMs": 670204,
+      "resultPreview": "{\"files_written\":[\"/home/user/HelloWorld/ovni-1999/js/ui/screens.js\",\"/home/user/HelloWorld/ovni-1999/js/i18n/pt-PT.screens.js\",\"/home/user/HelloWorld/ovni-1999/tools/tests/screens_persona_r5.test.js\",\"/home/user/HelloWorld/ovni-1999/qa/persona_r5_screens.mjs\"],\"tests\":{\"passed\":798,\"failed\":0},\"api\":\"OV.Screens: one new export, everything else unchanged.\\n- showKbCursor(touchOnly: bool, keyboardS…"
+    }
+  ],
+  "totalTokens": 125375,
+  "totalToolCalls": 42
+}

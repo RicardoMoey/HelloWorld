@@ -1,0 +1,281 @@
+[
+ {
+  "file": "ovni-1999/js/ui/inventory_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "No ecrã «Equipar» da campanha, o botão «AUTO-EQUIPAR» é cortado e fica colado ao «ESVAZIAR», aparecendo como «AUTO-EQUIPAI ESVAZIAR».",
+  "evidence": "Campanha, briefing → «Equipar» a 1440×900: os quatro botões COPIAR/COLAR/AUTO-EQUIPAR/ESVAZIAR estão numa grelha estreita e o texto do terceiro transborda para o quarto. Captura: /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r1/veterano/shots/075_equip.png",
+  "fix": "Dar min-width ou white-space:nowrap com padding menor aos botões da barra de ações do equipamento, ou passar a grelha a 2×2 de largura total. Em alternativa, usar «AUTO» e «LIMPAR» com dica de ferramenta.",
+  "persona": "Rui"
+ },
+ {
+  "file": "ovni-1999/js/ui/inventory_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "No painel do kit médico, o texto «Não há ferida…» da linha «Curar» transborda para fora da caixa à direita.",
+  "evidence": "Batalha da Ceifeira, Hu Hao abre o kit médico (Q → Usar…) sobre si próprio, sem feridas: na linha «Curar», o texto «10 cargas Não há ferida» passa da borda direita do cartão. Captura: /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r1/veterano/shots/019_med_use.png",
+  "fix": "Na linha da ação desativada, mostrar o motivo por baixo do título (como o subtítulo) em vez de à direita, ou aplicar text-overflow: ellipsis com max-width à coluna da direita.",
+  "persona": "Rui"
+ },
+ {
+  "file": "ovni-1999/js/ui/battle_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "Com Option premido sobre uma porta do OVNI, a pré-visualização continua a mostrar o custo de entrar («UT 16/58»). Nada indica que Option+clique abre a porta sem entrar, nem quanto custa, e por isso a tática clássica «abrir e recuar» não é descobrível.",
+  "evidence": "Ceifeira, turno 9: Kirsty ao lado da porta (26,33). Ao passar o rato sobre a porta, com e sem Alt, o rótulo é igual: «UT 16/58 · En 46». O Option+clique abriu a porta e gastou 5 UT sem a mover. Capturas: /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r1/veterano/shots/045_door_alt_hover.png e 046_door_opened.png",
+  "fix": "Quando Alt está premido e o tile sob o cursor é uma porta adjacente, trocar o rótulo para «Abrir porta · N UT» e esconder o caminho. Sem Alt, sobre uma porta, acrescentar a dica «⌥ + clique: abrir sem entrar».",
+  "persona": "Rui"
+ },
+ {
+  "file": "ovni-1999/js/ui/presenter.js",
+  "area": "ui",
+  "severity": "major",
+  "claim": "Quando há baixas durante o turno alienígena, a jogadora não fica a saber o que aconteceu. Os avisos desaparecem e, no início do turno seguinte, não há nenhum resumo nem histórico de mensagens.",
+  "evidence": "Campanha 2, turno 3: no turno alienígena (16 s) morreram 7 soldados. No início do turno 4 vê-se uma cratera, 7 corpos e nenhum alienígena visível (shots/109_turn4_start.png); o único aviso que ainda restava era «Omar Saleh ficou paralisado de medo». Na campanha 1, turno 6, morreram 3 soldados também sem nenhum alienígena à vista (shots/042_turn7_start.png). A causa e o atacante não aparecem em lado nenhum. Para a Sofia, «morreram sem razão».",
+  "fix": "No início do turno do jogador, mostrar um painel «Durante o turno alienígena», do género «Granada lançada de (x,y): 7 mortos — Amr, Vikram…» ou «Sectoide disparou da escuridão sobre Ian (ferido)», com um botão «Mostrar» que centra a câmara. Ter também um histórico de mensagens acessível por um botão ou tecla.",
+  "persona": "Sofia"
+ },
+ {
+  "file": "ovni-1999/js/i18n/pt-PT.hud.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "A etiqueta do caminho mistura duas coisas diferentes: «UT 16/56» é o custo do movimento, mas «En 46» é a energia que fica depois. A Sofia leu «UT 16/56» como «ficam 16».",
+  "evidence": "hud.path = 'UT {tu}/{max} · En {energy}'. O soldado com UT 56 e En 54 mostrou «Confirmar movimento · UT 16/56 · En 46» (shots/026_after_click1.png); depois de andar ficou com UT 40 e En 46.",
+  "fix": "Usar a mesma semântica nas duas partes, por exemplo «Custa 16 UT · ficam 40/56 UT · En 46», ou mostrar os dois valores como restantes depois do movimento.",
+  "persona": "Sofia"
+ },
+ {
+  "file": "ovni-1999/js/ui/inventory_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "No ecrã «Equipar» aberto a partir do briefing, o texto «AUTO-EQUIPAR» sai do botão e fica cortado. O cabeçalho diz «EQUIPAR · BASE LUSITÂNIA» quando a nave está no local da missão e só há o material de bordo.",
+  "evidence": "shots/086_equip_screen.png e shots/087_autoequip_empty.png: o botão mostra «AUTO-EQUIPAI», com o texto a ultrapassar a margem esquerda. No ecrã de equipar da base, o mesmo botão cabe (shots/092_base_equip_done.png).",
+  "fix": "Dar ao botão uma largura mínima ou usar a fonte mais pequena da versão da base. Mudar o cabeçalho para «Equipar a bordo · Skyranger-2 (Itália)» quando o equipamento vem só da nave.",
+  "persona": "Sofia"
+ },
+ {
+  "file": "ovni-1999/js/ui/inventory_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "O «Auto-equipar» deixa um recruta acima da sua Força (peso a vermelho) ao dar-lhe o Canhão Automático.",
+  "evidence": "Base → Naves → Skyranger-2 → Equipar → Auto-equipar em cada soldado: Daniel Ryan ficou com 29/28 a vermelho (shots/092_base_equip_done.png).",
+  "fix": "No auto-equipar, escolher a arma mais pesada disponível que caiba na Força do soldado e dar as armas pesadas aos soldados mais fortes.",
+  "persona": "Sofia"
+ },
+ {
+  "file": "ovni-1999/js/ui/battle_ui.js",
+  "area": "ui",
+  "severity": "major",
+  "claim": "Disparar um explosivo com aliados (ou o próprio atirador) dentro do raio da explosão acontece com um único clique, sem qualquer confirmação. A única proteção é uma linha pequena «Risco: N aliados no raio da explosão», que um jogador que não lê ignora.",
+  "evidence": "Repetido duas vezes. (1) Em jogo, turno 11 do Terror: Paolo Greco disparou a bomba do Blaster contra um Muton a ~5 casas; 5 soldados, incluindo o atirador, morreram de uma vez (shots/066_t11_moves.png), o que levou à derrota (shots/067_terror_debrief.png). (2) Reprodução direta: nova Batalha Rápida de Terror no mês 4, turno 1. David Wilson, mão E, «1», Ctrl+clique num tile a 5 casas da equipa. O alvo mostrava «Tiro forçado · 40 UT / Risco: 8 aliados no raio da explosão» com o círculo vermelho (shots/068_blaster_risk_hover.png). Um só clique disparou logo: xcom ok 8 → 3 ok, 4 mortos, 1 inconsciente (shots/069_blaster_risk_after_click.png). Não apareceu nenhum diálogo.",
+  "fix": "Quando blastPreview().risk > 0 ou o atirador está dentro do raio, exigir um 2.º clique no mesmo tile (reutilizar a lógica tapLock já usada no toque) com o rótulo «Clique outra vez para disparar — vai atingir N dos teus», ou mostrar um diálogo curto «Vais atingir N soldados teus. Disparar?». Ligado por omissão (pelo menos em Recruta), com opção para desligar.",
+  "persona": "Tiago"
+ },
+ {
+  "file": "ovni-1999/js/ui/battle_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "Num tiro forçado com arma explosiva, o rótulo mostra «Acerto ≈ 0 %» mesmo quando a explosão vai matar o alvo. Com o «Prec. 27 %» do menu e o «Acerto ≈ 60 %» do cursor no mesmo tiro, a criança vê três números diferentes e não sabe em qual confiar.",
+  "evidence": "OVNI despenhado, turno 2: Lança-Foguetes, «Tiro rápido», Ctrl+passar sobre o sectoide atrás de uma rocha: «Acerto ≈ 0 % · 27 UT» com blastR 3. O disparo matou o sectoide (shots/031_rocket_after.png). No mesmo turno, o menu da espingarda dizia «Tiro rápido 13 UT Prec. 27 %» (shots/011b_menu_crop.png), mas sobre o alvo aparecia «Acerto ≈ 60 % · 16 UT (inclui rodar)» (shots/012_targeting.png).",
+  "fix": "Para munição com raio > 0, substituir a percentagem por «Explosão: raio N · apanha o alvo» quando o alvo está dentro do raio previsto. No menu de ação, mudar «Prec.» para «Pontaria base» (ou esconder a coluna e mostrar só o «Acerto ≈» real ao apontar).",
+  "persona": "Tiago"
+ },
+ {
+  "file": "ovni-1999/js/ui/battle_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "O nome da arma na ranhura da mão aparece cortado («Lança-Fog…», «Lançador Bl…», «Plasma Pes…»), e o HUD usa letra de 10–12 px. Uma criança que lê devagar não sabe que tem um Blaster nem um foguete.",
+  "evidence": "shots/014_turn2_fight.png («Lança-Fog…»), shots/044_blaster_hover.png («Lançador Bl…»), shots/039_terror_start.png («Plasma Pes…»). Medição de fontes no HUD: «RESERVA DE UT» 10 px; barra de topo e postos 11 px; nomes e «Espingarda» 12 px.",
+  "fix": "Usar nomes curtos próprios para a ranhura (por exemplo «Foguetes», «Blaster», «Plasma P.») em duas linhas, com font-size ≥ 13 px. Subir os rótulos do HUD para ≥ 12–13 px.",
+  "persona": "Tiago"
+ },
+ {
+  "file": "ovni-1999/js/ui/inventory_ui.js",
+  "area": "ui",
+  "severity": "major",
+  "claim": "O «Auto-equipar» escolhe armas inúteis: uma Pistola de Plasma por investigar (o motor recusa disparar com notResearched), um Lança-Foguetes sem foguetes e um Canhão Pesado acima da Força.",
+  "evidence": "Linha ~1593 de autoFor(): pick([... 'plasma_pistol']) não verifica G.researched. A munição só é tentada no cinto, que não aceita os foguetes de tamanho 3, e não há verificação de peso. No browser: Francesco Greco ficou com a pistola de plasma; carregando 1 e Ctrl+clique aparece «Equipamento ainda por investigar», mas o menu Q/E mostra «Tiro rápido 15 UT Prec. 37 %» como se a arma servisse (shots/079_plasma_unresearched_menu.png, shots/082_plasma_fire_attempt.png). Johan du Plessis ficou com o lança-foguetes vazio apesar de haver 4 foguetes no armazém (OV.Act.validate devolve noAmmo; shots/080_rocket_noammo_menu.png). Fiona Brown ficou com 30/22 de peso (shots/072_equip_partial.png).",
+  "fix": "Em autoFor: só aceitar armas cujo D.items[t].research esteja investigado. Pôr a munição no cinto ou, se não couber, na mochila, ou carregá-la na arma. Saltar armas cujo peso com 1 carregador passe a Força. No HUD, desativar os modos de uma arma por investigar, com a dica bs.notResearched. No ecrã de equipar, assinalar os objetos por investigar.",
+  "persona": "Inês"
+ },
+ {
+  "file": "ovni-1999/js/ui/battle_ui.js",
+  "area": "ui",
+  "severity": "major",
+  "claim": "Abortar com 0 soldados na nave perde o Skyranger (−200 pontos e o transporte) sem nenhum aviso de que a nave se perde.",
+  "evidence": "O diálogo só diz «Abortar a missão? Quem não estiver na nave fica desaparecido em combate. 0 soldados estão na nave.» (shots/059_abort_dialog.png). No relatório aparece «Nave X-COM perdida ×1 −200» e «A nave perdeu-se» (shots/060_abort_debrief.png), e no Geoscape o alerta NAVE PERDIDA (shots/061_after_abort_geo.png).",
+  "fix": "Quando não há soldados conscientes a bordo, acrescentar em vermelho «Ninguém está na nave: o Skyranger perde-se (−200 pontos)» e mudar o botão para «Abortar e perder a nave».",
+  "persona": "Inês"
+ },
+ {
+  "file": "ovni-1999/js/ui/battle_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "O briefing diz «Crepúsculo: as sombras reduzem a visibilidade», mas o HUD mostra «DIA» e mecanicamente não há redução nenhuma.",
+  "evidence": "Missão de 9 jan: briefing com HORA Crepúsculo; HUD com «OVNI ATERRADO | TURNO 1 | DIA» (shots/045_battle2.png); B.mission.shade = 6, que não passa de DARK_SHADE = 9, logo visão total de 20. O HUD só usa B.mission.night (battle_ui.js:1323).",
+  "fix": "Ou dar ao crepúsculo um efeito real (por exemplo, uma visão intermédia), ou mudar a nota scr.br.note.dusk para «Crepúsculo: visibilidade normal» e mostrar «CREPÚSCULO» no HUD quando o shade estiver entre 1 e 9.",
+  "persona": "Inês"
+ },
+ {
+  "file": "ovni-1999/js/ui/battle_ui.js",
+  "area": "ui",
+  "severity": "critical",
+  "claim": "In the Battlescape the keyboard cannot pick a tile or a target. Moving, firing (Q/E→1–3), the quick grenade (G) and the flare (L) all need the pointer, so a keyboard-only player cannot play a single turn.",
+  "evidence": "onKey (≈l.1850–1915) only pans with the arrow keys/WASD (isPanKey). refreshHover (l.296) returns early without S.mouse, and the target/throw modes only accept a click. Test: E → 1 enters mode 'target' with the prompt «Escolha o alvo · Tiro rápido · clique secundário para cancelar». After that ArrowUp/ArrowRight/Space do not pick anything and the mode goes back to 'move'. G and L enter mode 'throw' with throwInfo null and no way to choose a tile. «Como Jogar» lists no movement or aiming key. Screenshots: /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r1/acessivel/shots/041-battle-targeting.png and 050-flare-L.png",
+  "fix": "Add a keyboard tile cursor (S.kcur) that feeds the same path as S.mouse, i.e. pickAt/previewMove/previewTarget. Arrows/WASD move the cursor one tile; Shift+arrows (or Ctrl) pan the camera; Enter/Space confirm the move or shot (with «Confirmar movimento», two Enters). In target/throw mode, Tab/1–0 jump the cursor to visible aliens. Show the cursor with a high-contrast outline and document the keys in «Como Jogar».",
+  "persona": "Pedro"
+ },
+ {
+  "file": "ovni-1999/js/ui/inventory_ui.js",
+  "area": "ui",
+  "severity": "major",
+  "claim": "The Equipar screen (base → Naves → E, and E in the briefing) cannot be used from the keyboard. Items and slots cannot be focused or moved, so only Auto-equipar/Copiar/Esvaziar work.",
+  "evidence": "equipScreen (l.1511) has no key handler, and base_ui onKey (l.1769) returns false for everything except Escape while S.equip is set. The .inv-it items have tabIndex=-1. Pressing ArrowDown/ArrowRight/Enter/Space left loadout s1 unchanged (same JSON). The footer says «Arraste ou clique num objeto e depois no destino · Tab ou 1–9 muda de soldado». By contrast, the battle inventory (keyInv) already has arrow navigation, Enter to pick up/drop and «−4 UT». Screenshots: /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r1/acessivel/shots/025-equip-keys-nothing.png and 038-brief-equip-arrows.png",
+  "fix": "Reuse keyInv's model (navTargets/navMove + picker.activate + .kfocus) in equipScreen, and route the screen's keys to it from base_ui onKey/briefing while S.equip is set. Include the store list (↑/↓ through items, Enter picks up, arrows to the destination slot, Enter drops).",
+  "persona": "Pedro"
+ },
+ {
+  "file": "ovni-1999/js/gfx/battle_render.js",
+  "area": "gfx",
+  "severity": "major",
+  "claim": "With deuteranopia the path-preview states (green = keeps reserve, yellow = eats reserve, red = unreachable) and the green/yellow reach outline look like one olive/yellow colour, so you cannot tell where the reserve or the TU run out.",
+  "evidence": "pathStates 'ok,…,ok,reserve,reserve' (UT 56/58): in normal vision steps 4–44 are green and 50 is yellow, while under the emulation every step and the outline is the same yellow. With 'UT 38/9 — insuficiente' every step is olive too. Only the overall label carries text. Screenshots: /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r1/acessivel/shots/051-reserve-steps-normal.png vs 052-reserve-steps-deutan.png, and 064-after-shot.png",
+  "fix": "Encode state in shape as well as colour: filled dots for 'ok', hollow dots or a dashed segment for 'reserve', ✕ or a cut-off line for unreachable, plus a bar/marker at the step where the reserve runs out. Add a colour-blind palette option (blue/orange/magenta) in Opções › Jogo.",
+  "persona": "Pedro"
+ },
+ {
+  "file": "ovni-1999/js/gfx/battle_render.js",
+  "area": "gfx",
+  "severity": "major",
+  "claim": "Enemy vs own unit is shown mostly by colour. The alien's red ring/brackets and the red numbered button turn olive/yellow under deuteranopia and look like the selected soldier's yellow ring and the gold UI.",
+  "evidence": "Normal vision: red ring and brackets under the Sectoid and a red «1» button at the top right. Deuteranopia: both are yellow-olive, the same tone as the selected-soldier ring and the gold buttons. The same applies on the Geoscape, where the red UFO dot and «Pequeno» label become dark olive on khaki land. Screenshots: /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r1/acessivel/shots/064-aim-hover-normal.png vs 063-aim-hover.png, and 104b-ufo-selected-normal.png vs 104-ufo-selected.png",
+  "fix": "Use a different shape for hostiles: a diamond/triangle ring or an alien icon under the unit, an alien icon on the numbered buttons (not just red), and a hatched or blinking outline. Use a light outline on the UFO marker. Give these a colour-blind palette option.",
+  "persona": "Pedro"
+ },
+ {
+  "file": "ovni-1999/js/ui/inventory_ui.js",
+  "area": "ui",
+  "severity": "major",
+  "claim": "At 1024 CSS px the Copiar / Auto-equipar / Esvaziar buttons on the base Equipar screen collapse to about 20 px wide and overlap the weight text, so they cannot be read.",
+  "evidence": "Tab order lists BUTTON COPIAR rect 698,88,20,28, AUTO-EQUIPAR 698,120,20,28 and ESVAZIAR 718,120,20,28. On screen it reads «Peso 25/32COPIAR» / «AUTO-ESVAZ». The briefing version is wider and fine. Screenshot: /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r1/acessivel/shots/024-equip.png",
+  "fix": "In .bsc-equip at narrow widths, move the toolbar onto its own line under the weight bar (flex-wrap) and give the buttons min-width:max-content.",
+  "persona": "Pedro"
+ },
+ {
+  "file": "ovni-1999/css/battle.css",
+  "area": "gfx",
+  "severity": "minor",
+  "claim": "prefers-reduced-motion is not respected in the Battlescape: CSS animations (menu, inventory, infinite pulses) still run and explosions still shake the screen.",
+  "evidence": "With emulateMedia({reducedMotion:'reduce'}), .bs-menu animationName is 'bsMenuIn 0.12s'. A grenade produced OV.FX.offset() up to 2.7 px over 4 frames. battle.css has 13 animations and no @media (prefers-reduced-motion) (geo/screens/dogfight do have one). fx.js shake() ignores it.",
+  "fix": "Add @media (prefers-reduced-motion: reduce){ .bs-*, .inv-*, .medk-* {animation:none} } to battle.css and base.css (toast/modal), and make FX.shake a no-op when matchMedia matches.",
+  "persona": "Pedro"
+ },
+ {
+  "file": "ovni-1999/css/battle.css",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "Text is clipped or truncated at 125 % zoom, and in the store two items become indistinguishable.",
+  "evidence": "Store (briefing Equipar): two «Canhão Pesado: …» entries, explosive vs piercing, differ only in icon colour (yellow vs grey), which is hard to tell with deuteranopia. The «Prec. 40 %» column spills out of the fire menu (062). The selected-facility card shows «L… Espa par…» (013). The OVNI title is cut off at the top of the main menu (001). Screenshots in /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r1/acessivel/shots/ 038-brief-equip-arrows.png, 062-fire-menu.png, 013-after-build.png, 001-menu.png",
+  "fix": "Allow two lines (line-clamp:2) for item names or show the distinguishing suffix first («Explosiva»/«Perfurante»). Give the fire menu min-width:max-content. Make the menu title use clamp() on vh.",
+  "persona": "Pedro"
+ },
+ {
+  "file": "ovni-1999/css/battle.css",
+  "area": "ui",
+  "severity": "major",
+  "claim": "No ecrã Equipar do briefing da campanha em retrato, o painel Armazém sobrepõe-se à «Mão direita». Tocar no centro da mão direita acerta no armazém, por isso não se consegue largar uma arma na mão direita. O nome do soldado também fica «K...» por baixo dos botões Copiar/Colar.",
+  "evidence": "Reprodução: Briefing → Equipar e rodar para retrato. Screenshot /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r1/ipad/shots/029_cp_equip_portrait.png. slot:R está em x 517–641, slot:stores começa em x 561, e elementFromPoint(579,507) devolve .eq-stores-list (data-drop slot:stores).",
+  "fix": "Em larguras ≤ 900 px, passar o .cp-eq .inv-body para uma coluna (armazém por baixo do boneco, com altura limitada e scroll), ou esconder a lista de soldados atrás de um seletor. Garantir min-width:0 e não deixar colunas de largura fixa (196 px + 248 px) somadas ao boneco passarem a largura do ecrã.",
+  "persona": "Marta"
+ },
+ {
+  "file": "ovni-1999/css/battle.css",
+  "area": "ui",
+  "severity": "major",
+  "claim": "Em retrato, os 5 botões «Reserva de UT» do HUD de combate ficam tapados pelo botão «Fim do turno». Não dá para escolher reserva, e um toque ali termina o turno (abre a confirmação).",
+  "evidence": "Batalha em 834×1194. Screenshots /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r1/ipad/shots/072_battle_portrait.png e /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r1/ipad/shots/080_alien_turn.png (com o HUD esbatido vê-se «RESERVA DE UT» por baixo de «FIM DO TURNO»). elementFromPoint no centro de cada .bs-res devolve «bs-end» nos botões Sem reserva, Rápido, Apontado e Rajada, e «key» no Reservar ajoelhar. .bs-end está em 736,1068 (88×116) e as reservas em 720–830 × 1100–1172.",
+  "fix": "Abaixo de cerca de 900 px de largura, passar o bloco de reservas para uma segunda linha acima da barra de ações, ou metê-lo num botão «Reserva ▾» que abre um popover. Em alternativa, reduzir o .bs-end para um botão quadrado de 64 px e deixar a barra quebrar linha (flex-wrap) em vez de sobrepor.",
+  "persona": "Marta"
+ },
+ {
+  "file": "ovni-1999/js/ui/input.js",
+  "area": "ui",
+  "severity": "major",
+  "claim": "Com o zoom no limite (2× na batalha, 5× no Geoscape), deslocar com dois dedos tira zoom sozinho (2 → 1,5 na batalha e 5 → 4,57 no globo), um gesto sim, outro não.",
+  "evidence": "Em 6 repetições pinça até 2× e depois pan com dois dedos: «2→2, 2→1.5, 2→2, 2→1.5, 2→2, 2→1.5» (batalha). No Geoscape: zoom 5.00 → 4.57 depois de um pan. A medio zoom não acontece (0.75 → 0.75). Causa: em pointermove por dedo, a distância muda de forma transitória (só um dedo já se mexeu) e emite-se zoom incremental d/pinch.d. Perto do ZMAX, o fator > 1 é cortado pelo clamp mas o seguinte (< 1) não, e scheduleSnap leva ao valor de snap abaixo. O Safari também envia um pointermove por dedo.",
+  "fix": "Calcular o zoom absoluto da gesto (z = z0 · d/d0, com z0 e d0 guardados no início da pinça) em vez de multiplicar incrementos; ou tratar a pinça uma vez por frame (rAF) só depois de atualizar os dois toques; ou ignorar variações de distância < 4–6 % quando o centro se move (pan).",
+  "persona": "Marta"
+ },
+ {
+  "file": "ovni-1999/js/ui/battle_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "No toque fica uma pré-visualização de caminho «fantasma» na posição do último toque: no início de cada turno e depois de mudar de soldado aparecem um caminho e uma etiqueta («UT 36/57 · En 24», «Caminho bloqueado») que a jogadora não pediu.",
+  "evidence": "Screenshots: /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r1/ipad/shots/041_t3_start.png (caminho e «UT 36/57» no início do turno 3), /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r1/ipad/shots/043_t4_start.png, /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r1/ipad/shots/052_daniel_shot.png e /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r1/ipad/shots/055_center_alien.png («Caminho bloqueado» sem toque). Nesse estado state(): lock -1, hover {27,14,0}, pathLabel definido. battle_ui.js:1743 guarda S.mouse do toque e refreshHover volta a calcular a pré-visualização.",
+  "fix": "Quando lastPointerType === 'touch', limpar S.mouse e S.view.path/hover depois de um movimento ou disparo completo, ao selecionar outro soldado e no início do turno. No toque, a pré-visualização só deve existir entre o 1.º e o 2.º toque (lock).",
+  "persona": "Marta"
+ },
+ {
+  "file": "ovni-1999/js/gfx/battle_render.js",
+  "area": "gfx",
+  "severity": "minor",
+  "claim": "Um alienígena visível (botão vermelho «1» ativo, centrado com esse botão) dentro do OVNI fica totalmente escondido atrás das paredes exteriores. A jogadora sabe que ele existe mas não o vê nem sabe onde tocar.",
+  "evidence": "Batedor Médio, Sectoide em (26,5), visível para a equipa. Recorte 300×300 em unitScreen(60): /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r1/ipad/shots/056_alien_crop.png (só paredes e um cadáver; nenhum sprite do alienígena). Vista geral: /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r1/ipad/shots/055_center_alien.png.",
+  "fix": "Depois da passagem de paredes, desenhar uma silhueta ou contorno (vermelho para alienígenas visíveis, azul para os soldados) das unidades tapadas por objetos de primeiro plano, como no OpenXcom/XCOM; ou tornar semitransparentes as paredes entre a câmara e as unidades visíveis.",
+  "persona": "Marta"
+ },
+ {
+  "file": "ovni-1999/js/ui/battle_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "Há alvos de toque abaixo dos 32 px: os botões de nível de vista ↑/↓ do HUD (46×30 em paisagem, 40×30 em retrato) e a etiqueta «Não voltar a perguntar» da confirmação de fim de turno (418×19).",
+  "evidence": "Medições getBoundingClientRect na batalha: «Subir nível de vista (.) 46x30» e «Descer nível de vista (,) 46x30»; em retrato 40x30. A label da checkbox no modal «Terminar turno» tem 19 px de altura (/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r1/ipad/shots/037_end_confirm.png).",
+  "fix": "Com (hover:none), dar min-height:34px (ou 44px) aos .bs-lv e um padding vertical de 8 px com display:flex; min-height:36px à label da checkbox, como no resto do jogo.",
+  "persona": "Marta"
+ },
+ {
+  "file": "ovni-1999/css/battle.css",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "No Equipar da base em paisagem (1194 px), o texto «Auto-equipar» sai do botão e sobrepõe-se a «Esvaziar», lendo-se «AUTO-EQUIPÆSVAZIAR».",
+  "evidence": "Screenshot /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r1/ipad/shots/016_equip.png. Botão «Auto-equipar»: 58×36 com scrollWidth 73 > clientWidth 56. Os quatro .eq-btns .btn.small têm 58 px fixos.",
+  "fix": "Na grelha .eq-btns, usar grid-template-columns: repeat(2, minmax(max-content,1fr)), ou permitir white-space:normal com letter-spacing menor; ou usar o rótulo «Auto» e pôr o texto completo como aria-label.",
+  "persona": "Marta"
+ },
+ {
+  "file": "ovni-1999/js/ui/battle_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "Os turnos alienígenas de noite demoram 12–25 s de tempo real com só «Movimento oculto…» no ecrã. No toque, nada diz que um toque acelera a animação (só a Opção «Durante a animação, Espaço ou clique acelera ×8» o refere).",
+  "evidence": "log.txt: «end turn → turn 2 in 11.779s», «turn 7 in 21.934s», «turn 11 in 25.306s», «turn 13 in 22.186s» (batalha noturna do Batedor Grande). Screenshot do turno alienígena: /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r1/ipad/shots/080_alien_turn.png. O código já trata o toque como pressa (battle_ui.js:1727–1731, Presenter.hurry).",
+  "fix": "Durante a reprodução do turno alienígena, mostrar no banner «Toque para acelerar» (no rato: «Espaço/clique para acelerar»). Considerar encurtar os passos de movimento oculto sem nada visível para o jogador.",
+  "persona": "Marta"
+ },
+ {
+  "file": "ovni-1999/js/i18n/pt-PT.battle.js",
+  "area": "data",
+  "severity": "minor",
+  "claim": "Os textos de pt-PT não concordam em género com as soldadas, apesar de cada soldado ter o campo «female».",
+  "evidence": "Avisos vistos: «Teresa Carvalho ficou paralisado de medo.», «Anjali Menon ficou paralisado de medo.», «Amaka Balogun ficou ferido mortalmente». No relatório: «Teresa Carvalho — Morto em combate», «Anjali Menon — Desaparecido em combate» (shots/062_debrief.png). As chaves bs.morale.freeze, bs.ev.wounded, bs.ev.kia, scr.db.kia/mia, base.mem.cause.* e cp.cause.* não têm variante feminina.",
+  "fix": "Criar variantes .f (paralisada, ferida, morta, desaparecida) e escolhê-las com u.female / s.female em presenter.js, battle_ui.js, screens.js e no memorial.",
+  "persona": "Sofia"
+ },
+ {
+  "file": "ovni-1999/css/basescape.css",
+  "area": "ui",
+  "severity": "major",
+  "claim": "Em retrato (834×1194), o ecrã «Equipar» da base (Naves → Equipar) só mostra o Armazém. A lista de soldados (.eq-squad) e o boneco (.inv-doll: mãos, cinto, mochila) ficam com altura 0, por isso não se consegue equipar ninguém.",
+  "evidence": "Reprodução: Base → Naves → Equipar e rodar o iPad para retrato. Screenshot /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r1/ipad/shots/020_equip_portrait.png. Medido: .eq-squad 776×0 (scrollHeight 476) e .inv-doll 776×0 (scrollHeight 504), enquanto .eq-stores ocupa 645 px. Causa: @media (max-width:880px) põe .inv-equip numa só coluna, mas .bsc-equip-body > .inv-equip continua com grid-template-rows: minmax(0,1fr) (basescape.css:324), e .inv-body em minmax(0,1fr) espreme as outras linhas.",
+  "fix": "No @media (max-width:880px) dentro de .bsc-equip: usar grid-template-rows: auto minmax(0,1fr) em .inv-equip; pôr a .eq-squad em faixa horizontal com scroll (flex-direction:row; overflow-x:auto; max-height:64px); dar a .inv-body linhas auto/minmax(240px,1fr) com overflow-y:auto no painel, em vez de altura fixa.",
+  "persona": "Marta"
+ },
+ {
+  "file": "ovni-1999/js/ui/dom.js",
+  "area": "ui",
+  "severity": "major",
+  "claim": "Os 12 botões só com ícone do HUD de combate (ajoelhar, inventário, recarregar, granada, sinalizador, mapa, anterior/seguinte, feito, centrar, opções, abortar) e os 5 de reserva só explicam a função por tooltip em mouseenter. Com (hover:none) o tooltip está desativado, por isso no iPad não há forma de descobrir o que cada ícone faz.",
+  "evidence": "dom.js:89–106: tooltip() só ouve mouseenter e devolve logo quando noHover(). base.css: @media (hover:none) { #tooltip { display:none } }. Toque longo de 900 ms em «Lançar sinalizador»: nenhum tooltip visível (screenshot /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r1/ipad/shots/032_longpress_hud_icon.png). Os ícones só têm aria-label.",
+  "fix": "No toque, um toque longo (≥ 450 ms) num botão do HUD mostra o tooltip ancorado e cancela o clique; ou mostrar etiquetas curtas por baixo dos ícones com (hover:none) e (min-width:1000px). Juntar uma secção de ícones ao «Como Jogar → Toque (iPad)».",
+  "persona": "Marta"
+ }
+]

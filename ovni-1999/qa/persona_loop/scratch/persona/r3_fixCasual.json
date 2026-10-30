@@ -1,0 +1,47 @@
+[
+ {
+  "file": "ovni-1999/js/ui/battle_ui.js",
+  "area": "ui",
+  "severity": "major",
+  "claim": "Os soldados mortos ou feridos por explosões no fim do turno X-COM nunca aparecem no painel «Durante o turno alienígena». São sobretudo as granadas alienígenas com espoleta, que em Recruta rebentam no fim do nosso turno. A causa é o filtro `e.side !== 'xcom'` na linha 1242. No início do turno seguinte a Sofia vê só nomes riscados, sem explicação, e o registo arquiva-os em «TURNO N — FORÇAS X-COM».",
+  "evidence": "Campanha, missão 2 (Batedor Grande, polar, 9 jan): no fim do T9, Liu Yan, Hendrik Mthembu e Pieter Molefe morreram juntos, ao lado de uma cratera. O T10 abriu sem qualquer painel (run2/shots/030-noreport_T10.png), e o debrief só lista os mortos. Reproduzido em Batalha Rápida (Recruta): uma Granada Alienígena ativada com espoleta 0 junto de 2 soldados afastados do grupo, seguida de «Fim do turno» pela interface. Os dois morreram, o T2 abriu com report=null (run2/shots/R2-grenade_endturn_noreport.png), e o registo (📄) mostra-os só como «TURNO 1 — FORÇAS X-COM: … foi morto em combate — explosão (atacante não visto)». Causa no código: endTurn() calcula `hurt = S.log.slice(mark).filter((e) => e.side !== 'xcom' && e.own)`. Os eventos de sideEnd(B,'xcom') em Battle.endPlayerTurn ficam com e.side = 'xcom' (noteEvent, linha 1369).",
+  "fix": "Em endTurn(), incluir no relatório todas as entradas `own` desde `mark`, sem filtrar o lado: tudo o que acontece depois de carregar em «Fim do turno» é novidade para a jogadora. Em alternativa, marcar as entradas registadas durante o playGen(endPlayerTurn) com um campo `afterEnd` e filtrar por ele. Juntar ao texto a causa clara: «granada alienígena rebentou».",
+  "persona": "Sofia (casual, testou o instantâneo f107bf9)"
+ },
+ {
+  "file": "ovni-1999/js/ui/geo_ui.js",
+  "area": "ui",
+  "severity": "major",
+  "claim": "O diálogo «Enviar equipa» e o pop-up «OVNI aterrou» oferecem o Skyranger que já vai a caminho de um ataque terrorista, sem dizer para onde vai nem avisar que o terror fica sem resposta. A Sofia carregou em «Enviar equipa» para o OVNI e Budapeste expirou: «Ninguém respondeu… Os alienígenas ganharam 500 pontos». Foi a maior perda do mês, numa campanha em que ela tinha respondido ao ataque.",
+  "evidence": "15 jan 04:16, ATAQUE TERRORISTA em Budapeste (≈11 h): a Sofia envia o Skyranger-1. Às 05:22 surge o pop-up «OVNI ATERROU», que diz só «Skyranger-1 chega em 54 min, ainda de dia» (run2/shots/046-pop_ufoLanded.png; o painel lateral mostra «Skyranger-1 · Em voo · Ataque em Budapeste»). O diálogo seguinte lista «Skyranger-1 · Em voo · Combustível 97 % · Casco 100 % · 9/10 soldados · 54 min», sem destino nem aviso (log run2/log.txt, 05:55:04). Às 15:00 vem «ATAQUE SEM RESPOSTA… −500» (run2/shots/053-pop_terrorSiteExpired.png), e o relatório de janeiro mostra «Ataque terrorista sem resposta −500» (run2/shots/079-stop_other.png). No código, as linhas de nave em renderIntercept (~l.1265) usam só craftStatusKey e não mostram c.dest. commitOrder redireciona com um simples toast «redirected».",
+  "fix": "Nas linhas de nave do diálogo (e no texto de ETA do pop-up), quando c.dest não é a base, acrescentar «· a caminho de {targetName}». Se o destino atual for um local de terror ou um OVNI com equipa, pedir confirmação antes de redirecionar: «Skyranger-1 vai para o ataque em Budapeste (−500 se ninguém responder). Desviar mesmo assim?». Em alternativa, pôr essa nave no fim da lista com uma nota a vermelho.",
+  "persona": "Sofia (casual, testou o instantâneo f107bf9)"
+ },
+ {
+  "file": "ovni-1999/js/ui/geo_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "Quando a equipa chega a um OVNI ao crepúsculo, o pop-up «EQUIPA NO LOCAL» não traz aviso nenhum nem o botão «Esperar pelo dia», porque nightAt() só considera 'night'. O briefing a seguir diz «HORA Crepúsculo» e o combate é escuro. A Sofia já tinha esperado pelo dia nessa mesma missão e perdeu a equipa toda e o Skyranger.",
+  "evidence": "28 jan, OVNI-10 (Batedor Grande aterrado, polar). Às 00:42 «Lá é noite… Esperar pelo dia (cerca de 5 h)», e a Sofia espera. Às 06:29 «OVNI ATERROU… Skyranger-1 chega em 1 min, ao crepúsculo». Às 06:30 o pop-up «EQUIPA NO LOCAL» sai com tom «good», sem linhas de aviso e só com «Esperar» (log run2/log.txt). O briefing mostra HORA Crepúsculo (run2/shots/066-brief_auto.png), e o resultado foi DERROTA, −378, nave perdida (run2/shots/075-now4.png). No código, nightAt(): `if (GM().dayPhase(...) !== 'night') return null;`.",
+  "fix": "Em nightAt(), tratar também 'dusk' (sem dia pleno) e devolver {h, dusk:true}. O pop-up de chegada passa a mostrar «Lá é crepúsculo: mais escuro longe das luzes; o dia pleno chega dentro de ~N h» e oferece «Esperar pelo dia», como já faz para a noite.",
+  "persona": "Sofia (casual, testou o instantâneo f107bf9)"
+ },
+ {
+  "file": "ovni-1999/js/i18n/pt-PT.screens.js",
+  "area": "data",
+  "severity": "minor",
+  "claim": "Ainda presente (ronda 1), em parte: alguns textos continuam sem concordância de género. No debrief, as soldadas são «PROMOVIDO A SARGENTO» e «PROMOVIDO A SOLDADO». O fabrico diz «10 × Pistola Laser prontos», e o separador Pessoal mostra «1 aptos».",
+  "evidence": "Debrief da missão 1: «SARG. Liu Yan … PROMOVIDO A SARGENTO», com G.soldiers a dar Liu Yan:F. Debrief da missão 2: «SOLD. Zhao Xiu … PROMOVIDO A SOLDADO», com Zhao Xiu:F. Pop-up de 11 jan 21:00: «FABRICO CONCLUÍDO ¦ 10 × Pistola Laser prontos (Base Lusitânia)» (run2/shots/044-pop_productionDone.png). Pessoal depois da derrota: «1 aptos · 1 feridos». Chaves: 'scr.db.promoted': 'Promovido a {rank}' (pt-PT.screens.js:151), usada sem gk() em campaign_ui.js:1484 e screens.js:1632; 'geo.ev.productionDone.body': '{qty} × {item} prontos ({base}).' (pt-PT.geoui.js:290).",
+  "fix": "Criar 'scr.db.promoted.f' («Promovida a {rank}») e chamar T(gk('scr.db.promoted', s), …) nos dois sítios. Reformular o fabrico de forma neutra: «Fabrico concluído: {qty} × {item} ({base}).». Usar Tn() no plural de «aptos/feridos».",
+  "persona": "Sofia (casual, testou o instantâneo f107bf9)"
+ },
+ {
+  "file": "ovni-1999/js/ui/geo_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "O botão «Comprar munição» do aviso «INTERCETOR SEM MUNIÇÃO» abre o Mercado com quantidade 1. Cada rearme gasta uma caixa inteira de «Munição de Canhão (×50)», mesmo que faltem só 6 balas. Por isso o mesmo aviso volta depois de cada combate aéreo, e a Sofia acha que comprou mal ou que o jogo tem um erro.",
+  "evidence": "9 jan 10:01, primeiro aviso (Canhão 194/200): a Sofia segue o botão e compra 1 caixa (run2/shots/037-pop_craftRearmShort.png, 039-buy_ammo.png). A caixa chega a 11 jan 11:00 e é logo gasta a rearmar 6 balas. Depois do combate seguinte (176/200), às 11 jan 18:08, o mesmo aviso volta (run2/shots/042-stop_popup_craftRearmShort.png). Antes, as provisões tinham cannon_rounds 0. O código de base.js rearm() gasta carregadores inteiros (fiel ao original), mas nada o explica.",
+  "fix": "Abrir o Mercado com uma quantidade sugerida (por exemplo 5 caixas, ou as necessárias para encher todas as naves 2 vezes). Acrescentar ao pop-up uma linha: «Cada rearme gasta uma caixa inteira de 50 balas; compre várias para não ficar sem.» Em alternativa, mostrar «na base: N caixas» no próprio aviso.",
+  "persona": "Sofia (casual, testou o instantâneo f107bf9)"
+ }
+]

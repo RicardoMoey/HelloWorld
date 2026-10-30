@@ -1,0 +1,344 @@
+[
+ {
+  "file": "ovni-1999/js/ui/battle_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "Com a reserva «Tiro rápido» ligada, um soldado com o Lançador Blaster (só tem tiro apontado) vê «o soldado para antes, para guardar 38 UT (Tiro rápido + ajoelhar)». O motor (OV.Act.reserveTU) passa corretamente para o tiro apontado: 34 + 4 = 38. O rótulo é que não muda e diz que se reserva um tiro que a arma não tem.",
+  "evidence": "Batalha Rápida: Nave de Abastecimento, Dia, Super-humano, mês 4. Rui Almeida tem o Lançador Blaster, cujo menu é só «Tiro apontado · 34 UT». Com ⇧2 e J ligados, o caminho até (24,34) mostra «Custa 20 UT · ficam 32 — o soldado para antes, para guardar 38 UT (Tiro rápido + ajoelhar)» (/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/veterano/shots/113_reserve_label_launcher.png). Na primeira batalha, a Tatiana (também com o Blaster) recebeu «para guardar 41 UT (Tiro rápido + ajoelhar)». walkReserve() escreve T('mode.' + S.B.reserve) e não o modo efetivo que reserveTU usa (auto→snap→aimed).",
+  "fix": "OV.Act.reserveTU (ou uma função irmã) deve devolver também o modo efetivo ({tu, mode}). walkReserve e os avisos de reserva passam a usar T('mode.' + mode), por exemplo «Tiro apontado + ajoelhar (a arma não tem tiro rápido)».",
+  "persona": "Rui, 49 anos, veterano do X-COM de 1994 (Veterano/Super-humano, Batalhas Rápidas mês 3–4, táticas clássicas, muito teclado)"
+ },
+ {
+  "file": "ovni-1999/js/ui/battle_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "Ao lançar uma granada para dentro de um OVNI pela porta aberta, as casas sem arco possível mostram «O alvo está debaixo de um teto». Isto leva a crer que não se pode lançar para sítios cobertos. Na mesma divisão, casas em linha com a porta aceitam o lançamento: OV.Act.planArc dá arco para (4,5) e (3,5), que também têm teto. O texto vem só de underRoof(p) quando planArc falha e não diz o verdadeiro motivo.",
+  "evidence": "Campanha Veterano, Batedor Médio, turno 6. A Natalia está em (9,5), com as duas portas do OVNI abertas. G e o cursor em (3,4), onde estava o Navegador, dão «O alvo está debaixo de um teto» (/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/veterano/shots/063_grenade_aim.png). Com planArc a partir da mesma posição: (3,5) tem arco (curva 0), (4,5) tem arco (curva 1) e (3,4) e (4,4) não têm. As quatro casas têm teto no nível 1. Ao apontar para (3,5) já aparece o custo normal, «Precisa de 47 UT (tem 38)».",
+  "fix": "Quando planArc falha e o alvo tem teto, mostrar «Sem trajetória até esta casa (paredes ou teto no caminho) — tente uma casa em linha com a porta». Reservar «Há um teto por cima» para quando é o próprio lançador que está debaixo de um teto. Ainda melhor: ao lançar, realçar as casas com arco válido.",
+  "persona": "Rui, 49 anos, veterano do X-COM de 1994 (Veterano/Super-humano, Batalhas Rápidas mês 3–4, táticas clássicas, muito teclado)"
+ },
+ {
+  "file": "ovni-1999/js/ui/campaign_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "No Equipar do briefing, longe da base, o aviso «Ficaram em Base…» mostra no máximo 4 entradas, com as armas primeiro, e não indica que há mais. Os 2 Bastões Atordoadores e as 10 Granadas de Fumo comprados para capturar alienígenas ficaram na base sem nenhuma menção. Só se descobre no terreno que não há bastões a bordo.",
+  "evidence": "Campanha Veterano, 2 jan. Comprei 2 Bastões Atordoadores, 5 Granadas de Fumo e 10 Sinalizadores no Mercado e mandei a Skyranger para o OVNI-2. No briefing, Equipar mostra «Ficaram em Base Lusitânia: 1 × Canhão Automático, 1 × Lança-Foguetes, 6 × Canhão Automático: munição perfurante, 4 × Foguete Pequeno», e o armazém a bordo só tem munição do Canhão Pesado (/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/veterano/shots/051_cequip.png). Nesse momento base.stores tinha stun_rod 2 e smoke_grenade 10, e nenhum ia a bordo. leftAtBase() faz .slice(0, 4) sem contar o resto.",
+  "fix": "Acrescentar «e mais N tipos (…)» quando há mais de 4. Ou dar prioridade aos objetos comprados desde a última vez que a nave foi equipada, e ao material de captura (melee, granadas de fumo), antes das armas pesadas. Opcional: um aviso no Mercado, «Compras novas ficam no armazém: equipe a nave (Base › Naves › Equipar) antes de partir».",
+  "persona": "Rui, 49 anos, veterano do X-COM de 1994 (Veterano/Super-humano, Batalhas Rápidas mês 3–4, táticas clássicas, muito teclado)"
+ },
+ {
+  "file": "ovni-1999/js/ui/geo_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "O pop-up «EQUIPA NO LOCAL» à noite diz duas vezes a mesma coisa. Primeiro «É noite: os alienígenas veem no escuro e os soldados não. Esperar pelo dia (cerca de 5 h)?» e logo a seguir «Lá é noite: os alienígenas veem no escuro e os soldados só veem bem perto das luzes. Pode esperar pelo dia (cerca de 5 h), se os destroços durarem até lá.»",
+  "evidence": "Campanha Veterano, 9 fev 1999 01:06, Skyranger-1 no OVNI-14 despenhado: os dois parágrafos aparecem seguidos (/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/veterano/shots/098_arr_night.png). No craftArrived, quando waitDef é verdadeiro, lines.unshift(geo.ev.arrived.night.ask) junta-se a geo.ev.arrived.night(.crash), e os dois textos repetem a explicação e as horas.",
+  "fix": "Com waitDef, mostrar só a pergunta curta e uma linha de porquê sem repetir as horas, por exemplo «Os alienígenas veem 20 casas no escuro; os soldados 9.». Ou usar uma variante de arrived.night sem «Pode esperar pelo dia (cerca de N h)» quando a pergunta já está em cima.",
+  "persona": "Rui, 49 anos, veterano do X-COM de 1994 (Veterano/Super-humano, Batalhas Rápidas mês 3–4, táticas clássicas, muito teclado)"
+ },
+ {
+  "file": "ovni-1999/js/ui/screens.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "A dica do relatório não distingue mortes corpo a corpo e zombificação. Num Local de Terror perdido para Crisálidas (todos ajoelhados, mortos por «ataque de Crisálida» e transformados em zombies), a dica é «Avance de abrigo em abrigo e ajoelhe-se (K)… os alienígenas disparam quando se mexe à vista deles». É o conselho errado: contra Crisálidas o que importa é manter distância e ter fogo de reação, não ajoelhar.",
+  "evidence": "Batalha Rápida: Local de Terror, Noite, Veterano, mês 3, Homens-Serpente com 3 Crisálidas. Derrota com 10 mortos, a maioria com «foi morto em combate — ataque de Crisálida» e «transformou-se num zombie!» no painel do turno alienígena (109_turn.png). O relatório mostra a dica genérica scr.db.tip.enemy (/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/veterano/shots/112_terror_debrief.png). Em scr.db.tip.* não há nenhuma chave para corpo a corpo ou terror.",
+  "fix": "Em lossCauses, contar as mortes corpo a corpo (pela arma ou pelo tipo do atacante) e acrescentar scr.db.tip.melee: «Crisálidas e outros atacantes corpo a corpo: não os deixe chegar perto — mantenha UT para fogo de reação, cubra as esquinas e mate os zombies à distância (de cada um nasce uma Crisálida).»",
+  "persona": "Rui, 49 anos, veterano do X-COM de 1994 (Veterano/Super-humano, Batalhas Rápidas mês 3–4, táticas clássicas, muito teclado)"
+ },
+ {
+  "file": "ovni-1999/js/ui/battle_ui.js",
+  "area": "ui",
+  "severity": "major",
+  "claim": "O conselho «os alienígenas estão dentro do OVNI» só aparece em missões noturnas. Num OVNI aterrado, de dia, a Sofia passou 10 turnos colada ao casco de um Batedor Grande sem nunca ver um alienígena e sem qualquer pista de que tinha de procurar a porta. Quando finalmente entrou, a equipa inteira morreu e perdeu o Skyranger.",
+  "evidence": "Campanha Recruta, missão 4: OVNI Aterrado, Batedor Grande, Quinta, HORA Dia, 15 jan 08:13. Do T1 ao T10 nenhum alienígena à vista (va=[]). Os 4 alienígenas vivos estavam todos dentro do retângulo do OVNI, em (31,31), (31,29), (35,30) e (35,31), com o B.ufo em x20–40/y20–40. No T10, OV.BattleUI.debug.state() dava hint='', ufoHinted=false e contactTurn=1. Captura shots/069-m4_end.png: 6 soldados encostados à parede do casco, com a porta fora do ecrã. Resultado: derrota com 8 mortos, nave perdida e −352 pontos (shots/075-m4_result.png, shots/073-noreport_T16.png). Causa no código: ufoHintDue(), linha ~1293, tem `if ((k !== 'crash' && k !== 'landed') || !B.mission.night) return false;`.",
+  "fix": "Tirar a condição `!B.mission.night` de ufoHintDue, ou de dia usar um limiar próprio (por exemplo 4 turnos sem contacto). Mudar o texto para algo acionável, como «Os alienígenas estão dentro do OVNI: procure a porta (a abertura no casco) e entre com 2–3 soldados de cada vez». Juntar um «Mostrar» que centre na porta (B.breaches ou o tile de porta do bloco) em vez de no centro do OVNI.",
+  "persona": "Sofia, 40 anos, MacBook Air só com trackpad, nunca jogou X-COM, joga jogos casuais no telemóvel. Campanha em Recruta (instantâneo be0a0a2), base no centro de Portugal."
+ },
+ {
+  "file": "ovni-1999/js/ui/geo_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "Quando a equipa chega à noite a um ataque terrorista, o pop-up «EQUIPA NO LOCAL» é verde e não avisa que é noite. Não há botão «Esperar pelo dia», embora o ataque ainda dure horas depois do amanhecer. Nos OVNIs o mesmo pop-up avisa e propõe esperar. O pop-up «ATAQUE TERRORISTA!» também não diz «lá será noite», ao contrário do de OVNI abatido.",
+  "evidence": "13 jan 07:58, Nova Iorque: OV.GMath.dayPhase dava 'night', o dia chegava dentro de 3 h e o local durava 11,5 h (leftS=41400). Pop-up sem aviso nenhum, só com INICIAR MISSÃO, ESPERAR e REGRESSAR (shots/050-terror_arrived_night.png). O briefing a seguir diz «HORA Noite… Use sinalizadores» (shots/051-briefing_terror.png). O pop-up de terror diz só «chega em 3 h 55 min: há tempo para responder» (shots/049-pop_terrorSite.png). Causa: nightAt(), linha ~373, começa com `if (!ref || ref.kind !== 'ufo') return null;`, e teamEtaLine do terror não usa a fase do dia.",
+  "fix": "Em nightAt, aceitar também ref.kind === 'site' e calcular h até 'day'. Oferecer «Esperar pelo dia (≈3 h; o ataque dura ≈11 h)» só quando h < leftS/3600 com margem; caso contrário, dizer «não dá para esperar: o ataque acaba antes de amanhecer». No pop-up de terror, juntar o mesmo «lá será noite: há N sinalizadores a bordo» que já aparece no OVNI abatido.",
+  "persona": "Sofia, 40 anos, MacBook Air só com trackpad, nunca jogou X-COM, joga jogos casuais no telemóvel. Campanha em Recruta (instantâneo be0a0a2), base no centro de Portugal."
+ },
+ {
+  "file": "ovni-1999/js/ui/battle_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "Ao fabricar armas novas, nada leva a Sofia a usá-las. Os recrutas novos recebem as Espingardas Laser automaticamente, mas os veteranos continuam com a Espingarda antiga e uma Sargento só com uma Pistola, enquanto 10 Pistolas Laser ficam no armazém. O pop-up «FABRICO CONCLUÍDO» só tem IR PARA A BASE e OK.",
+  "evidence": "Pop-up de 17 jan: «Encomenda terminada: 5 × Espingarda Laser», sem ação de equipar. No briefing de 18 jan (shots/099-briefing6.png), os 5 recrutas novos têm espingardas laser, e Duarte Ferreira (5 missões) e Gemma Jones (Sargento) têm a Espingarda normal. Aisha Ibrahim (Sargento) só tem Pistola. O armazém mostra «Pistola Laser ×10» por usar (shots/066-armazem.png). Nada no ecrã sugere o «Auto-equipar».",
+  "fix": "No pop-up de fabrico concluído de uma arma, e no regresso da nave à base quando há armas melhores no armazém, oferecer «Equipar a equipa com as novas armas» (o auto-equipar da nave, que prefere a melhor arma que cabe na Força). Também se pode pôr uma linha no briefing, por exemplo «Há 10 Pistolas Laser no armazém: troque em Equipar».",
+  "persona": "Sofia, 40 anos, MacBook Air só com trackpad, nunca jogou X-COM, joga jogos casuais no telemóvel. Campanha em Recruta (instantâneo be0a0a2), base no centro de Portugal."
+ },
+ {
+  "file": "ovni-1999/js/i18n/pt-PT.geoui.js",
+  "area": "data",
+  "severity": "minor",
+  "claim": "O pop-up de chegada à noite repete a mesma explicação em dois parágrafos seguidos. A Sofia lê duas vezes que os alienígenas veem no escuro e que pode esperar pelo dia.",
+  "evidence": "6 jan 23:53 (OVNI despenhado): «É noite: os alienígenas veem no escuro e os soldados não. Esperar pelo dia (cerca de 5 h)?», seguido de «Lá é noite: os alienígenas veem no escuro e os soldados só veem bem perto das luzes. Pode esperar pelo dia (cerca de 5 h), se os destroços durarem até lá.» (shots/042-pop_craftArrived.png). O mesmo com o OVNI aterrado a 14 jan (shots/067-landed_night.png). Origem: no craftArrived, geo_ui.js faz unshift de geo.ev.arrived.night.ask (l.509) por cima de geo.ev.arrived.night/.crash/.safe (l.260–262).",
+  "fix": "Quando waitDef está ativo, usar só a pergunta curta mais a parte que é nova: «É noite: os alienígenas veem no escuro. Esperar pelo dia (cerca de 5 h)? Os destroços duram até lá.» Em alternativa, trocar os textos longos por variantes sem a primeira frase quando a pergunta já foi mostrada.",
+  "persona": "Sofia, 40 anos, MacBook Air só com trackpad, nunca jogou X-COM, joga jogos casuais no telemóvel. Campanha em Recruta (instantâneo be0a0a2), base no centro de Portugal."
+ },
+ {
+  "file": "ovni-1999/js/ui/geo_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "O armazém sobrelotado só se anuncia no relatório da missão. No Geoscape o «!» de Bases só fala de engenheiros parados, e não há nada na lista «Próximos passos». Mas sobrelotado bloqueia todas as compras, incluindo a munição do intercetor. Além disso, no relatório o número aparece com ponto (57.9/50), enquanto o resto do jogo usa vírgula (57,9/50).",
+  "evidence": "Relatório da missão 4 (repetida): «Armazém sobrelotado (57.9/50): venda material ou construa armazéns.» No Mercado e na barra da base aparece «57,9/50». A dica do botão Bases mostra só «10 engenheiros sem trabalho» (shots/081-bases_hover.png). No Mercado, todas as linhas dizem «O armazém não tem espaço suficiente», com a Munição de Canhão a 0 (shots/082-mercado.png). O armazém começou a 41,7/50 e encheu em 4 missões. Causas: idleStaff()/badge em geo_ui.js (~l.467) não considera capacities().stores; campaign_ui.js:1527 passa model.storage.used em bruto para T('cp.db.storageOver').",
+  "fix": "Incluir o armazém sobrelotado no «!» de Bases e na dica (por exemplo «Armazém 57,9/50: não pode comprar munição»), ou mostrar uma linha nos Próximos passos com o botão «Vender material». Em campaign_ui.js, formatar used e cap com o formatador de decimais pt-PT usado na base (vírgula, 1 casa).",
+  "persona": "Sofia, 40 anos, MacBook Air só com trackpad, nunca jogou X-COM, joga jogos casuais no telemóvel. Campanha em Recruta (instantâneo be0a0a2), base no centro de Portugal."
+ },
+ {
+  "file": "ovni-1999/js/ui/base_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "Na Base → Instalações, depois de construir, a lista «CONSTRUIR INSTALAÇÃO» desce cerca de 90 px por cada obra, porque aparece a secção «EM CONSTRUÇÃO». Ao clicar onde estava a «Contenção Alienígena», a Sofia apanhou outra linha e acabou por construir um segundo Armazém. O diálogo de confirmação nomeia a instalação, mas a Sofia vinha a contar com a linha que tinha visto.",
+  "evidence": "Antes da 1.ª obra, a Contenção estava em y≈576 CSS (shots/087-build_hover.png). Depois de «Obras iniciadas: Armazém», a lista desceu (a Contenção passou para y≈734), e um clique em (1000,597) deixou ativa a escolha Armazém. Daí resultou um 2.º Armazém por $150 000 (shots/089-built2.png: «EM CONSTRUÇÃO: Armazém, Armazém»).",
+  "fix": "Pôr a secção «EM CONSTRUÇÃO» por baixo da lista de construção (ou num cartão de altura fixa por cima, já reservado), para que as linhas não mudem de sítio depois de uma obra. Em alternativa, depois de confirmar, manter o scroll ancorado na linha clicada.",
+  "persona": "Sofia, 40 anos, MacBook Air só com trackpad, nunca jogou X-COM, joga jogos casuais no telemóvel. Campanha em Recruta (instantâneo be0a0a2), base no centro de Portugal."
+ },
+ {
+  "file": "ovni-1999/js/i18n/pt-PT.base.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "A Sofia não percebe dois termos, que não têm dica: o selo «DESCONHECIDO» num projeto de investigação (desconhecido o quê?) e «60 h-eng» na Nova produção.",
+  "evidence": "Investigação → Armas Laser mostra o selo «DESCONHECIDO» sem title nem aria-label (verificado: title='' e aria=null; shots/013-research_started.png). A Nova produção mostra «Pistola Laser 60 h-eng · $14 000 · espaço 2» sem dica (shots/038-nova_producao.png). Só depois de iniciar o fabrico aparece «Próxima unidade dentro de 6 horas».",
+  "fix": "Mudar o selo para «Tempo: desconhecido» e pôr como title «Os cientistas ainda não sabem quanto tempo vai demorar; a estimativa aparece com o progresso». Escrever «60 horas de engenheiro (≈6 h com os seus 10 engenheiros)», ou pôr isso no title de «h-eng».",
+  "persona": "Sofia, 40 anos, MacBook Air só com trackpad, nunca jogou X-COM, joga jogos casuais no telemóvel. Campanha em Recruta (instantâneo be0a0a2), base no centro de Portugal."
+ },
+ {
+  "file": "ovni-1999/js/ui/battle_ui.js",
+  "area": "ui",
+  "severity": "major",
+  "claim": "Um tiro normal (espingarda, pistola, canhão) com aliados mesmo ao lado da linha de fogo não tem qualquer aviso. Só há aviso quando um aliado bloqueia exatamente a linha («X está na linha de tiro»). Com acertos de 20–40 %, os tiros que falham matam colegas, e o Tiago, que junta os soldados, perdeu 3 soldados assim na 1.ª missão da campanha.",
+  "evidence": "Campanha Recruta, 3 jan 1999, OVNI-2 Batedor Médio de dia. Registo: «3x: Thandiwe Dlamini foi morta em combate — tiro de Nuno Oliveira», «5x: Olivier Simon foi morto — tiro de Yuji Inoue», «8x: Felipe Lima foi morto — tiro de William Johnson». Resultado DERROTA, 10/10 mortos (/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/crianca/shots/080_c1_end.png). Repetindo a missão, medi em cada pontaria a distância dos aliados ao segmento atirador→alvo:\n- Kevin Davis: rótulo «Acerto ≈ 25 % · 12 UT (inclui rodar)», sem sub-aviso, com Wolfgang Weber a 0,41 casas da linha. Depois do tiro, o registo diz «1x: Wolfgang Weber ficou ferido: −10 … — tiro de Kevin Davis» (/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/crianca/shots/085_ff_near_line.png).\n- David Wilson: «Acerto ≈ 20 % · 20 UT», sem aviso, com 5 aliados a menos de 1 casa da linha (/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/crianca/shots/106_ff_near_line.png). O clique no contador vermelho centra o alienígena, por isso os colegas junto ao atirador ficam fora do ecrã.\n- O mesmo aconteceu em 2 de 3 Batalhas Rápidas: «Petra Schmidt ← tiro de Rodrigo Barbosa» e «Sanjay Nair ferido — tiro de Lucas dos Santos».\nEm previewTarget (~l.691), o sub-aviso bs.friendlyRisk só é posto quando tr.unitId é um aliado.",
+  "fix": "Em previewTarget, além do aliado que bloqueia, procurar aliados vistos a ≤ 1 casa do segmento atirador→alvo (sobretudo nas primeiras ~6 casas, onde o desvio dos falhanços os apanha). Se houver, pôr T0.sub = «Risco: N aliados perto da linha de tiro» (subCol 'out') e desenhar um contorno vermelho nesses soldados. Em Recruta, com acerto < 50 %, reutilizar a confirmação de 2.º clique dos explosivos («Clique outra vez — pode atingir Wolfgang»). No relatório, quando houve mortes por tiro amigo, a dica pode dizer «Não dispares por cima dos teus soldados — afasta-os da linha».",
+  "persona": "Tiago, 11 anos (Recruta + Batalhas Rápidas, rato e teclado, clica depressa, não lê textos longos)"
+ },
+ {
+  "file": "ovni-1999/js/ui/screens.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "A Batalha Rápida deixa escolher Cidónia (e Base Alienígena) com o «Mês 0 · Espingardas» que vem por omissão, sem nenhum aviso. Com espingardas e Fato de Combate contra Etéreos, uma Crisálida e um Sectópode de blindagem 72, a missão é quase impossível. Só o relatório de derrota diz para escolher um mês mais alto.",
+  "evidence": "Menu → Batalha Rápida → «Cidónia» (o mês fica em 0, «Espingardas»). O resumo mostra só «Forças mistas · 7 alienígenas» (/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/crianca/shots/p2_qb_cydonia.png).\n- Alienígenas: ethereal_commander, ethereal_leader, 2 ethereal_soldier, chryssalid, sectopod (armadura 72/65/65/50/45) e muton_soldier.\n- X-COM: 6 espingardas e 2 lança-foguetes.\n- Resultado: 7 mortos em 5 turnos e 1 abate. DERROTA −541 com «Dica: As armas da equipa são fracas contra Forças mistas… Escolha um «Mês» mais alto».",
+  "fix": "No ecrã da Batalha Rápida, ao escolher Cidónia passar o Mês para 4 automaticamente (e ≥ 2 para Base Alienígena), como já se faz com o terreno e a hora («determinados pela missão»). Em alternativa, mostrar no RESUMO uma linha vermelha: «Com espingardas, esta missão é quase impossível — escolha o Mês 3 ou 4».",
+  "persona": "Tiago, 11 anos (Recruta + Batalhas Rápidas, rato e teclado, clica depressa, não lê textos longos)"
+ },
+ {
+  "file": "ovni-1999/js/ui/screens.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "Numa VITÓRIA classificada FRACO por causa de civis mortos pelos explosivos da X-COM (−200), o relatório não diz porque é que a nota é má. Além disso, o aviso dos explosivos («atinge 8 aliados») conta civis como «aliados», por isso o Tiago não percebe que vai matar civis.",
+  "evidence": "Batalha Rápida, Terror de noite, mês 4, Blaster. Relatório: «VITÓRIA… Civis mortos pela X-COM ×4 −200 … TOTAL −49 AVALIAÇÃO FRACO», sem linha de causa nem dica (/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/crianca/shots/038_night_now.png). lossNotes/lossCauses só olham para soldados X-COM (u.type === 'soldier'). blastPreview (battle_ui.js ~l.808) conta como risco qualquer unidade não alienígena, e o rótulo diz «Clique outra vez para disparar — atinge 8 aliados» (/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/crianca/shots/024_blaster_after_dbl.png).",
+  "fix": "Em lossNotes, quando houver civis mortos pela X-COM, acrescentar «N civis mortos pelas tuas armas (−X pontos)» e, em vitória, a dica «Num ataque terrorista, cada civil morto por ti tira 50 pontos: não uses o Blaster perto deles». Em blastPreview, separar a contagem em soldados e civis, e no rótulo dizer «atinge 3 soldados e 5 civis».",
+  "persona": "Tiago, 11 anos (Recruta + Batalhas Rápidas, rato e teclado, clica depressa, não lê textos longos)"
+ },
+ {
+  "file": "ovni-1999/js/ui/campaign_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "Um duplo clique em «REPETIR A MISSÃO» no relatório abre o briefing, e o 2.º clique cai no botão «EQUIPAR» do briefing, que está no mesmo sítio. O Tiago vai parar ao ecrã Equipar, que não pediu.",
+  "evidence": "Relatório de derrota da campanha (OVNI-2) → page.dblclick em «REPETIR A MISSÃO». A pilha passa a [geoscape, cbriefing, equip], com «EQUIPAR A BORDO · SKYRANGER-1» aberto (/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/crianca/shots/081_repeat_click.png). Os botões estão na mesma posição: REPETIR em (937,744) no relatório (/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/crianca/shots/080_c1_end.png) e EQUIPAR em (938,744) no briefing.",
+  "fix": "Aplicar a guarda de ~400 ms e de event.detail ≥ 2, que o briefing já usa no botão primário, a todos os botões do briefing (Cancelar, Equipar), ou de forma genérica a qualquer cena acabada de abrir.",
+  "persona": "Tiago, 11 anos (Recruta + Batalhas Rápidas, rato e teclado, clica depressa, não lê textos longos)"
+ },
+ {
+  "file": "ovni-1999/js/ui/screens.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "O relatório diz «X ← tiro de Y» para uma morte por foguete quando o atirador também morreu antes do fim, enquanto o registo da batalha diz «explosão (Y)». friendlyHow decide pela arma que o atirador tem na mão no fim, e um soldado morto já largou tudo.",
+  "evidence": "Batalha Rápida Cidónia. Registo: «3x: Julie Gauthier foi morta em combate — explosão (Daniel Gauthier)». Relatório: «1 soldado morto por fogo amigo: Julie Gauthier ← tiro de Daniel Gauthier». Daniel morreu mais tarde, e killUnit → dropAll esvazia k.items, por isso friendlyHow não vê o lança-foguetes e devolve 'shot' (deathCause do foguete = 'shot'). A dica escolhida para fogo amigo também pode ficar errada (tip.friendly.shot em vez da dos explosivos).",
+  "fix": "Guardar a causa no momento da morte: em combat.killUnit (ou no impacto), registar u.deathBlast = true / u.deathWeapon = tipo da munição quando o dano vem de uma explosão. friendlyHow passa a usar esse campo em vez das mãos do atirador no fim da batalha.",
+  "persona": "Tiago, 11 anos (Recruta + Batalhas Rápidas, rato e teclado, clica depressa, não lê textos longos)"
+ },
+ {
+  "file": "ovni-1999/js/ui/base_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "No Mercado › Vender, vender o último exemplar de um artefacto que ainda é preciso para investigação (cadáver, pistola de plasma…) faz desaparecer o tópico sem aviso. A linha não indica «necessário para investigar», «TUDO» vende também o último e não há confirmação.",
+  "evidence": "- Vendi os 4 Cadáveres de Sectoide (+80 000 $): a «Autópsia: Sectoide» desapareceu do Novo Projeto e ficou só Pistola de Plasma, Granada Alienígena, Kit Médico e Detetor.\n- A linha da Pistola de Plasma com 1 em armazém mostra só «$84 000 cada · em armazém: 1 · liberta 0,1 un.», sem qualquer aviso.\n- Capturas:\n  - /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/minmaxer/shots/049_sell.png\n  - /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/minmaxer/shots/052_sell_pp_last.png\n  - /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/minmaxer/shots/053_research_after_sell.png",
+  "fix": "- Na lista de venda, assinalar os itens que são needItem de um tópico ainda não investigado e não em curso: etiqueta «Necessário: Autópsia: Sectoide».\n- Pedir confirmação ao vender a última unidade (ou fazer «TUDO» deixar 1).\n- Pode usar Data.researchAvailable com e sem o item para detetar o tópico perdido.",
+  "persona": "Inês, otimizadora. Joga em Veterano com trackpad e teclado, procura exploits e usa a simulação headless. Ronda 4, cerca de 63 min de jogo real no browser (log em /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/minmaxer/mylog.txt), mais scripts Node na mesma pasta. Campanha própria (semente 4242) de 1 a 10 jan. Para chegar a conteúdo mais avançado, importei pelo ecrã Carregar uma gravação do bot de campanha a 4 mar 1999 (semente 5, Veterano) e joguei a partir daí até 1 abr: 2 OVNIs aterrados, relatório de março e início do assalto a uma base alienígena."
+ },
+ {
+  "file": "ovni-1999/js/i18n/pt-PT.screens.js",
+  "area": "data",
+  "severity": "minor",
+  "claim": "O briefing de um OVNI aterrado diz «Uma nave capturada inteira vale mais pontos e mais material», mas no debriefing não há linha para o OVNI intacto. Os componentes recuperados (fontes de energia, navegação, ligas) só dão pontos enquanto não forem investigados, por isso a meio da campanha um OVNI aterrado dá os mesmos pontos que um despenhado: só os abates.",
+  "evidence": "Batedor Grande aterrado, 8 mar 1999 (gravação importada do bot). O relatório mostra só Alienígenas abatidos +48, capturados +20 e Soldados mortos −85, apesar de entregar 10 Ligas, 1 Fonte de Energia, 2 Navegação OVNI e 50 Elerium. Captura /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/minmaxer/shots/118_debrief_mid.png. No código, battle.js debrief: «artefactos ainda não investigados dão pontos» (`if (!rp || (topic && listHas(researched, topic))) continue`). Texto em scr.br.obj.landed.2.",
+  "fix": "Mudar o texto para «Uma nave capturada inteira dá mais material (fontes de energia intactas, ligas a 100 %)», ou acrescentar ao debriefing uma linha «OVNI capturado intacto» com pontos (por exemplo o score do OVNI, ×1 como no abate).",
+  "persona": "Inês, otimizadora. Joga em Veterano com trackpad e teclado, procura exploits e usa a simulação headless. Ronda 4, cerca de 63 min de jogo real no browser (log em /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/minmaxer/mylog.txt), mais scripts Node na mesma pasta. Campanha própria (semente 4242) de 1 a 10 jan. Para chegar a conteúdo mais avançado, importei pelo ecrã Carregar uma gravação do bot de campanha a 4 mar 1999 (semente 5, Veterano) e joguei a partir daí até 1 abr: 2 OVNIs aterrados, relatório de março e início do assalto a uma base alienígena."
+ },
+ {
+  "file": "ovni-1999/js/ui/base_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "Na lista «Construir instalação», a secção «Em construção» aparece por cima da lista assim que a primeira obra começa, e tudo desce cerca de 140 px. Quem constrói várias coisas seguidas carrega no item errado. Com Shift+clique (constrói sem confirmar) gastei 800 000 $ numa Oficina quando queria a Contenção.",
+  "evidence": "- Antes da 1.ª obra, a Contenção Alienígena estava em y≈590 e a Oficina em y≈468: /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/minmaxer/shots/055_build_lab.png.\n- Depois de iniciar o Laboratório, a secção EM CONSTRUÇÃO empurrou a lista: a Oficina passou para y≈606 e a Contenção para y≈728. O clique no sítio onde estava a Contenção escolheu a Oficina, e o Shift+clique na grelha construiu-a. O aviso diz «Obras iniciadas: Oficina (13 dias)»: /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/minmaxer/shots/057_built.png.",
+  "fix": "- Pôr «Em construção» abaixo da lista de construção (ou numa coluna ou separador próprio), para a lista não mudar de posição.\n- Em alternativa, manter o scroll ancorado no item escolhido.\n- Mostrar o nome do item selecionado junto ao cursor da grelha antes do Shift+clique.",
+  "persona": "Inês, otimizadora. Joga em Veterano com trackpad e teclado, procura exploits e usa a simulação headless. Ronda 4, cerca de 63 min de jogo real no browser (log em /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/minmaxer/mylog.txt), mais scripts Node na mesma pasta. Campanha própria (semente 4242) de 1 a 10 jan. Para chegar a conteúdo mais avançado, importei pelo ecrã Carregar uma gravação do bot de campanha a 4 mar 1999 (semente 5, Veterano) e joguei a partir daí até 1 abr: 2 OVNIs aterrados, relatório de março e início do assalto a uma base alienígena."
+ },
+ {
+  "file": "ovni-1999/js/ui/geo_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "Duas bases alienígenas descobertas a 1° uma da outra aparecem na lista LOCAIS com o mesmo texto, «Base alienígena / Nigéria». Uma é de Flutuantes e a outra de Mutões (muito mais difícil), e só se distinguem abrindo o cartão de cada uma. Os dois alertas «BASE ALIENÍGENA DESCOBERTA» (20 e 28 mar) também parecem repetidos.",
+  "evidence": "G.alienBases: a1 floater (5,8; 5,5) e a2 muton (6,8; 5,6), ambas discovered. Captura /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/minmaxer/shots/149_ab_card.png: duas linhas iguais no painel LOCAIS.",
+  "fix": "Na lista e no alerta, mostrar a raça quando é conhecida («Base alienígena · Flutuantes · Nigéria»), ou numerar («Base alienígena 2»). No alerta de descoberta, quando já existir outra base no mesmo país, dizer «outra base alienígena».",
+  "persona": "Inês, otimizadora. Joga em Veterano com trackpad e teclado, procura exploits e usa a simulação headless. Ronda 4, cerca de 63 min de jogo real no browser (log em /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/minmaxer/mylog.txt), mais scripts Node na mesma pasta. Campanha própria (semente 4242) de 1 a 10 jan. Para chegar a conteúdo mais avançado, importei pelo ecrã Carregar uma gravação do bot de campanha a 4 mar 1999 (semente 5, Veterano) e joguei a partir daí até 1 abr: 2 OVNIs aterrados, relatório de março e início do assalto a uma base alienígena."
+ },
+ {
+  "file": "ovni-1999/js/ui/dom.js",
+  "area": "ui",
+  "severity": "major",
+  "claim": "In the base, after activating a button that has no data-act (for example the scientist stepper −5/−/+/+5/Todos in Investigação), focus jumps to «NOVO PROJETO». The next Enter opens the «Novo projeto» dialog instead of repeating the action. The same thing happens in Naves («Mudar o nome da nave», «COMPRAR NAVE») and in Soldados («Mudar o nome do soldado», armadura «NENHUMA», «DESPEDIR SOLDADO»).",
+  "evidence": "Base → 2 → Tab to «Retirar 5 cientistas — Kit Médico» → Enter. Focus goes to «Novo projeto», traced to focusin from refocus at base_ui.js:584. A second Enter opened the dialog with «Iniciar: Detetor de Movimento» focused. Shots: shots/019-focusjump.png and 018-resassign.png. The cause: OV.Dom.tooltip() sets data-lp=\"1\" on every button (dom.js:254). focusKey (dom.js:77) then prefers the dataset and returns «button[data-lp=\"1\"]», which matches 46 buttons, so refocus focuses the first one. Measured with OV.Dom.focusKey: tab 2 has 11 buttons with this generic key, tab 6 has 2 and tab 7 has 4.",
+  "fix": "In focusKey, ignore internal dataset keys (lp, and any key without identity), and fall back to id or aria-label when nothing else is left. Better still, give the stepper and soldier/craft buttons a stable data-act/data-topic (e.g. data-act=\"sci-5\" data-topic=\"medikit\"). Add a test that checks querySelectorAll(focusKey(b)).length === 1 for every button in the base.",
+  "persona": "Pedro: keyboard only, deuteranopia (CDP deuteranopia emulation), 125% zoom on 1280×800 (1024×560 CSS, DSF 2.5), prefers-reduced-motion"
+ },
+ {
+  "file": "ovni-1999/js/ui/base_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "The oneShot 400 ms guard also blocks keyboard activations. A second Enter pressed on purpose in «CONTRATAR +5» is lost without a sound, toast or visible sign, so the keyboard player does not know the order did not go through.",
+  "evidence": "Pessoal → focus «Contratar 5 soldados» → Enter, Enter (300 ms apart). Funds went from $5 020 000 to $4 820 000, which is a single order of $200 000, with no toast for the second press. Log: «base: … one Enter dropped by oneShot». Code: oneShot() at base_ui.js:95–100 uses `t - lastOnceT < 400` for any event.",
+  "fix": "Apply the time window only to pointer clicks (e.detail >= 1). For keyboard activation (e.detail === 0), accept every Enter. If a guard is still wanted, show a toast such as «Encomenda já feita — carregue outra vez para repetir».",
+  "persona": "Pedro: keyboard only, deuteranopia (CDP deuteranopia emulation), 125% zoom on 1280×800 (1024×560 CSS, DSF 2.5), prefers-reduced-motion"
+ },
+ {
+  "file": "ovni-1999/js/ui/base_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "In the Mercado, a keyboard user has to go through 87 tab stops (−, +, +10 and Comprar on every row), and ↑/↓/PageDown do nothing. Reaching Carregador de Espingarda takes about 42 Tabs and Sinalizador about 85. The Comprar/Vender toggle has no aria-pressed, so the active mode is shown only by a light background.",
+  "evidence": "Base → 8. Counted 87 buttons with tabIndex >= 0, Sinalizador at index 84 and the rifle at 32. ArrowDown/ArrowUp/PageDown with focus on «Comprar 1 × Espingarda» left focus where it was (no change). outerHTML of the toggle: `<button class=\"btn small seg on\" data-mode=\"buy\">` with no aria-pressed. Shot: shots/054-market.png.",
+  "fix": "Make each item row a single tab stop (roving tabindex). On the row, ←/→ change the quantity (Shift ×10), Enter buys, and ↑/↓/PageUp/PageDown move between rows. Add jump keys per section (Naves, Armamento, Armas…) or type-ahead by name. Put aria-pressed (or role=radio with aria-checked) on Comprar/Vender.",
+  "persona": "Pedro: keyboard only, deuteranopia (CDP deuteranopia emulation), 125% zoom on 1280×800 (1024×560 CSS, DSF 2.5), prefers-reduced-motion"
+ },
+ {
+  "file": "ovni-1999/js/ui/screens.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "The mission briefing has a scrolling list (the soldier cards, 244 px hidden at 1024×560), but ↓/PageDown/End do nothing while focus is on «INICIAR MISSÃO», where it starts. The only way to scroll is to find the scroll area with Tab. The debrief and the monthly report already scroll with these keys.",
+  "evidence": "Briefing of OVNI-2: .scr-brief-body scrollTop stays 0/244 after ArrowDown, PageDown and End. After one Tab (focus on the DIV), ArrowDown goes to 40, 80 and PageDown to 244. Shots: shots/021-brief.png and 022-brief-focusdiv.png.",
+  "fix": "In the briefing's keys(), call OV.Screens.ui.scrollKeys(ev, body), as the debrief and the monthly report do. Add «↑ ↓ PageDown deslocam» to the footer.",
+  "persona": "Pedro: keyboard only, deuteranopia (CDP deuteranopia emulation), 125% zoom on 1280×800 (1024×560 CSS, DSF 2.5), prefers-reduced-motion"
+ },
+ {
+  "file": "ovni-1999/js/ui/inventory_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "Ainda presente (ronda 2), em parte: the spatial navigation in the combat inventory still jumps unexpectedly. From the empty MÃO ESQUERDA, ← goes to the first belt cell (below, not to the left), and ↓ sometimes goes to the Espingarda in MÃO DIREITA (to the right) instead of the belt.",
+  "evidence": "Combat → I, with the keyboard focus on MÃO ESQUERDA. ArrowLeft gives «s1 cell kfocus | 20» (belt magazine). ArrowDown gives «s3 big kfocus | Espingarda 20/20». Shots: shots/070-invA-lefthand.png and 071-invB-afterDown.png. In other sequences, ↓ from the same box went to the belt. navMove (inventory_ui.js:501–535) keeps candidates that do not overlap (horiz && overlap<=4 && side>main*2.5 lets in cells further down). With ↓ the hand-to-hand order of the same zone wins over the belt below.",
+  "fix": "←/→: when there is no candidate on the same row (overlap), stay where you are (or wrap) instead of going to another row. ↓: prefer candidates whose top is below the current bottom (b.top >= a.bottom - 4), and only then same-row cells. Treat both hands as one row and the belt as the row below.",
+  "persona": "Pedro: keyboard only, deuteranopia (CDP deuteranopia emulation), 125% zoom on 1280×800 (1024×560 CSS, DSF 2.5), prefers-reduced-motion"
+ },
+ {
+  "file": "ovni-1999/js/ui/battle_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "The message log (N) and the turn summary do not record whether the X-COM shots hit or missed. The only feedback is a small red number that floats for 1 s on the map (0xff5a4a, which turns brownish under deuteranopia). After the shot I still did not know whether my 90 % shot had hit.",
+  "evidence": "Turn 9: Catarina fired a snap shot (Acerto ≈ 90 %) at the Sectoide at 25,2. Afterwards, the log (N) has only «Catarina Sousa foi morta em combate — tiro de Sectoide Soldado». The alien was left at hp 12 (as read from OV.Game.B) and there was no hit or miss line. logEntry (battle_ui.js:1371–1376) ignores 'damage' when !mine(u). Shots: shots/043-fired.png and 044-log.png.",
+  "fix": "Add entries for shots from your own soldiers: «{name} acertou em {alien} (−n)» / «{name} falhou» (one per burst, counting hits). Also show the damage number in a colour that stays visible to colour-blind players (white with a dark outline, or the cvd palette), for at least 1.5 s when reduced motion is on.",
+  "persona": "Pedro: keyboard only, deuteranopia (CDP deuteranopia emulation), 125% zoom on 1280×800 (1024×560 CSS, DSF 2.5), prefers-reduced-motion"
+ },
+ {
+  "file": "ovni-1999/js/ui/battle_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "The state of the UT reserve buttons (Sem reserva / Tiro rápido / Apontado / Rajada / Ajoelhar) is shown only by colour (class .on, a gold outline) and has no aria-pressed. The Geoscape speed radiogroup has no aria-label/aria-labelledby, and all six radios are tab stops, unlike the radiogroups in Opções.",
+  "evidence": "After Shift+2: every .bs-res has aria-pressed=null, and only «Reservar tiro rápido» has class «on». Screenshot shots/072-reserve.png. Geoscape: the radiogroup «5 seg…1 dia» has aria-labelledby null and tabIndex 0 on every option.",
+  "fix": "Set aria-pressed=true/false (or role=radio with aria-checked inside a role=radiogroup labelled «Reserva de UT»), and give the active button a shape cue (a filled background or a ✓). In the Geoscape, use aria-label=\"Velocidade do tempo\" and a roving tabindex, as in Opções.",
+  "persona": "Pedro: keyboard only, deuteranopia (CDP deuteranopia emulation), 125% zoom on 1280×800 (1024×560 CSS, DSF 2.5), prefers-reduced-motion"
+ },
+ {
+  "file": "ovni-1999/js/gfx/render.js",
+  "area": "gfx",
+  "severity": "minor",
+  "claim": "Ainda presente (ronda 3), em parte: when you centre on an alien with «1» in the city (Local de terror), the alien stands behind a building wall and is completely hidden. Only a yellowish smudge on the ground shows it. Under deuteranopia that smudge looks like the gold/yellow markers of my own soldiers, so I could not tell what, or where, the «1» was.",
+  "evidence": "Terror mission, Caracas, turn 1. A Reaper is at 22,13, and the HUD shows «1». Pressing 1 and then ← for the cursor shows only a yellow blob behind the wall, with the path ✕ marks over the wall. Shot: shots/100-alien-cvd4.png (with the «Daltonismo» palette on).",
+  "fix": "Draw an always-visible silhouette or outline of visible aliens through walls (an x-ray outline in the hostile shape, such as a diamond), or cut away the walls between the camera and the centred alien or cursor. On centring with 1–0, show a label with the alien's name or type next to the marker.",
+  "persona": "Pedro: keyboard only, deuteranopia (CDP deuteranopia emulation), 125% zoom on 1280×800 (1024×560 CSS, DSF 2.5), prefers-reduced-motion"
+ },
+ {
+  "file": "ovni-1999/js/ui/battle_ui.js",
+  "area": "ui",
+  "severity": "major",
+  "claim": "In aim mode, tapping an alien that stands right behind the active soldier (one tile up-screen, e.g. adjacent inside the UFO) selects the soldier's own tile. The label shows «Ação impossível». Only a strip about 10 px tall at the top of the alien's head hits it. Tapping the red alien button «1» in aim mode only moves the camera; it does not aim. So in close combat by touch you have to hunt for the exact pixel.",
+  "evidence": "Campaign mission 1 (Medium Scout, Portugal), turn 8. Rajesh at (14,28) aims his pistol at the Sectoid at (13,27). A tap at the alien's centre (OV.BattleUI.debug.unitScreen → 149,490) gives target.label «Ação impossível» with the red reticle on Rajesh himself. Tap at 148,455: «Sem linha de tiro — alguém no caminho» (tile 11,25). Tap at 149,470: «Acerto ≈ 79 %». In a second test (alien 52 at 14,27), tapping the .bs-alien button in aim mode left target:null and only centred the camera. Shots: persona/r4/ipad/shots/061_rajesh_aim.png, 060_alien_behind_wall_crop.png, 063_alienbtn_in_target.png.",
+  "fix": "In pickAt/OV.BattleRender.pick, when S.mode is 'target' or 'throw', give priority to the rects of visible hostile units: never resolve to the selected unit's own tile when a hostile's rect, including its head and the chevron area, overlaps the touch point. Use a touch tolerance of about 20 px for hostile rects. In aim mode, a tap on the .bs-alien button should set the target on that alien (preview the shot), not just centre the camera.",
+  "persona": "Marta, a touch-only player on an iPad Pro 11\" in Safari, emulated with Playwright (hasTouch, isMobile, DPR 2, 1194×834 landscape and 834×1194 portrait). Session lasted about 75 minutes in real time. She played a Recruta campaign: base Sintra (Lisbon); base management in portrait (build, hire, Market Buy/Sell, rename by virtual keyboard, Ufopédia, Financiamento, Gravar); Medium Scout mission (day, landscape); Large Scout mission (night → «Esperar pelo dia», played in portrait). To reach the 1 Feb month report she skipped ahead by OK-ing the remaining January events. She then played one Quick Battle at an Alien Base (10 soldiers, Recruta), in landscape and portrait, and aborted it at turn 8."
+ },
+ {
+  "file": "ovni-1999/css/basescape.css",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "In portrait (834×1194), the base shows the 6×6 facility grid, the selected-facility card and the stats on every tab. That takes about 780 px, so the tab content (Market, Soldiers, Research) gets only a 520 px scrolling box. In Soldiers, tapping a soldier opens the card (rename, armour, craft, dismiss) below the box's fold, nearly invisible. Nothing seems to happen until you scroll inside the small box.",
+  "evidence": "Base → Soldados in portrait, tap «Kenta Kato». The row is highlighted, but the card with RENOMEAR sits at y=1165 (at the bottom edge, cut off). .bsc-content scroll: clientHeight 520 / scrollHeight 905; Market: 520 / 2098. On the right of the grid there are about 330 px of empty space. Shots: persona/r4/ipad/shots/033_sold_tap_kenta.png, 031_mercado_portrait.png, 035_sold_rename.png.",
+  "fix": "Under @media (orientation:portrait) and (max-width:900px), on tabs other than Instalações, hide or collapse the grid and the facility card (e.g. a «Ver base» button), so .bsc-content takes the full height. Or shrink the grid to about 50 % with the stats beside it. Also, when a soldier is selected in Soldados, call scrollIntoView({block:'nearest'}) on the card.",
+  "persona": "Marta, a touch-only player on an iPad Pro 11\" in Safari, emulated with Playwright (hasTouch, isMobile, DPR 2, 1194×834 landscape and 834×1194 portrait). Session lasted about 75 minutes in real time. She played a Recruta campaign: base Sintra (Lisbon); base management in portrait (build, hire, Market Buy/Sell, rename by virtual keyboard, Ufopédia, Financiamento, Gravar); Medium Scout mission (day, landscape); Large Scout mission (night → «Esperar pelo dia», played in portrait). To reach the 1 Feb month report she skipped ahead by OK-ing the remaining January events. She then played one Quick Battle at an Alien Base (10 soldiers, Recruta), in landscape and portrait, and aborted it at turn 8."
+ },
+ {
+  "file": "ovni-1999/css/battle.css",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "In portrait, Equipar (base and briefing) says «Toque no objeto e depois no destino, ou arraste-o com o dedo». But dragging a row from the Armazém up to a hand or the backpack only scrolls the list, even after holding 600 ms. The destinations are all above, and .inv-it.row has touch-action: pan-y. Dragging from the belt to the backpack works.",
+  "evidence": "Briefing → EQUIPAR in portrait. Drag from the «Pistola» row (300,866) to the left hand (179,442) with a 40 ms hold and with a 600 ms hold: MÃO ESQUERDA stays «VAZIA», Peso 20/31, and the Armazém list scrolls to the end. Drag from the belt grenade to the backpack: works (MOCHILA 1/9). Tap-then-tap works. Shots: persona/r4/ipad/shots/089_drag_mid.png, 095_drag_h600.png.",
+  "fix": "Start a drag on a long press: after about 300 ms without movement on an .inv-it.row, enter drag mode and call preventDefault on the following touchmove events (non-passive touchmove listener) so the list does not scroll. Show the item lifting as feedback. Or, in portrait/touch, change the hint to «toque no objeto e depois no destino (arrastar: toque longo)».",
+  "persona": "Marta, a touch-only player on an iPad Pro 11\" in Safari, emulated with Playwright (hasTouch, isMobile, DPR 2, 1194×834 landscape and 834×1194 portrait). Session lasted about 75 minutes in real time. She played a Recruta campaign: base Sintra (Lisbon); base management in portrait (build, hire, Market Buy/Sell, rename by virtual keyboard, Ufopédia, Financiamento, Gravar); Medium Scout mission (day, landscape); Large Scout mission (night → «Esperar pelo dia», played in portrait). To reach the 1 Feb month report she skipped ahead by OK-ing the remaining January events. She then played one Quick Battle at an Alien Base (10 soldiers, Recruta), in landscape and portrait, and aborted it at turn 8."
+ },
+ {
+  "file": "ovni-1999/js/ui/geo_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "«Esperar pelo dia» does not speed up time. After the «Equipa no local» popup the clock is back at «5 seg», so waiting about 5 game hours takes about 5 minutes of real time with nothing to do. The toast only says «Avisamos quando amanhecer».",
+  "evidence": "Campaign, 6 jan 01:59, OVNI-3 in the Reino Unido. Tap ESPERAR PELO DIA. After 133 s of real time it was only 04:16 (2 h 17 min of game time), speed still «5 seg». Manually choosing «30 min» reached «AMANHECEU NO LOCAL» at 06:43 in 1.7 s. Shot: persona/r4/ipad/shots/084_dawn.png. waitForDay() (geo_ui.js about line 2481) only queues G.ui.waitDay and the toast.",
+  "fix": "In waitForDay, raise the clock to a fast speed (30 min or 1 hora) if it is slower, as the original does when you wait. The checkWaitDay or dawn popup already stops it. Or add a «Acelerar» button to the toast, or change the text to «…toque em 1 hora para esperar mais depressa».",
+  "persona": "Marta, a touch-only player on an iPad Pro 11\" in Safari, emulated with Playwright (hasTouch, isMobile, DPR 2, 1194×834 landscape and 834×1194 portrait). Session lasted about 75 minutes in real time. She played a Recruta campaign: base Sintra (Lisbon); base management in portrait (build, hire, Market Buy/Sell, rename by virtual keyboard, Ufopédia, Financiamento, Gravar); Medium Scout mission (day, landscape); Large Scout mission (night → «Esperar pelo dia», played in portrait). To reach the 1 Feb month report she skipped ahead by OK-ing the remaining January events. She then played one Quick Battle at an Alien Base (10 soldiers, Recruta), in landscape and portrait, and aborted it at turn 8."
+ },
+ {
+  "file": "ovni-1999/js/ui/geo_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "In Recruta, the «Equipa no local» popup at night repeats the same advice twice in a row: «É noite: os alienígenas veem no escuro e os soldados não. Esperar pelo dia (cerca de 5 h)?» and then «Lá é noite: os alienígenas veem no escuro e os soldados só veem bem perto das luzes. Esperar pelo dia (cerca de 5 h) torna a missão bem mais fácil — …».",
+  "evidence": "Campaign, 6 jan 01:59, arrival of Águia at OVNI-3 (night). Shot: persona/r4/ipad/shots/083_arrive2.png. In geo_ui.js, line 2021 unshifts geo.ev.arrived.night(.safe) and line 2025 unshifts geo.ev.arrived.night.ask, both with the same {t}.",
+  "fix": "When waitDef is true (the ask line is shown), use a short variant of the second line without «Esperar pelo dia (cerca de {t})». For example 'geo.ev.arrived.night.safe.short': «Nestes primeiros meses, um OVNI que aterra de noite fica no chão até amanhecer.» Or merge the two into a single line.",
+  "persona": "Marta, a touch-only player on an iPad Pro 11\" in Safari, emulated with Playwright (hasTouch, isMobile, DPR 2, 1194×834 landscape and 834×1194 portrait). Session lasted about 75 minutes in real time. She played a Recruta campaign: base Sintra (Lisbon); base management in portrait (build, hire, Market Buy/Sell, rename by virtual keyboard, Ufopédia, Financiamento, Gravar); Medium Scout mission (day, landscape); Large Scout mission (night → «Esperar pelo dia», played in portrait). To reach the 1 Feb month report she skipped ahead by OK-ing the remaining January events. She then played one Quick Battle at an Alien Base (10 soldiers, Recruta), in landscape and portrait, and aborted it at turn 8."
+ },
+ {
+  "file": "ovni-1999/js/ui/campaign_ui.js",
+  "area": "data",
+  "severity": "minor",
+  "claim": "The mission report shows the overfull storage with an English decimal point, «Armazém sobrelotado (51.2/50)». The rest of the game uses the pt-PT comma («ARMAZÉM 51,2/50» in the base and «41,7/50»).",
+  "evidence": "Report for mission 1 (Medium Scout), right column: «Armazém sobrelotado (51.2/50): venda material ou construa armazéns.» In the base on the same day: «ARMAZENAMENTO 51,2/50». Shot: persona/r4/ipad/shots/072_debrief_scrolled.png. campaign_ui.js:1524 passes model.storage.used (a raw number from sim/campaign.js:825) into T('cp.db.storageOver').",
+  "fix": "Format with the same helper as the base (e.g. OV.U.fmtNum(used, 1) or Number.toLocaleString('pt-PT', {maximumFractionDigits:1})) before interpolating {used}.",
+  "persona": "Marta, a touch-only player on an iPad Pro 11\" in Safari, emulated with Playwright (hasTouch, isMobile, DPR 2, 1194×834 landscape and 834×1194 portrait). Session lasted about 75 minutes in real time. She played a Recruta campaign: base Sintra (Lisbon); base management in portrait (build, hire, Market Buy/Sell, rename by virtual keyboard, Ufopédia, Financiamento, Gravar); Medium Scout mission (day, landscape); Large Scout mission (night → «Esperar pelo dia», played in portrait). To reach the 1 Feb month report she skipped ahead by OK-ing the remaining January events. She then played one Quick Battle at an Alien Base (10 soldiers, Recruta), in landscape and portrait, and aborted it at turn 8."
+ },
+ {
+  "file": "ovni-1999/js/ui/input.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "Still present (round 1), now intermittent. In combat at maximum zoom (2), a two-finger pan sometimes drops the zoom to 1.5 on its own. The globe no longer does this (zoom 5 held across 4 pans).",
+  "evidence": "Alien Base Quick Battle, landscape. In 4 batches of «pinch out to 2 → 4–5 two-finger pans (fingers 80 px apart, distance constant)», zoom dropped 2 → 1.5 in 3 of the 12 sequences tested: [2,2,1.5,…] (t55), [2,1.5,1.5,…] (t56 run 1), [2,2,2,1.5,1.5] (t57 run 1). The other sequences stayed at 2. The value always snaps to 1.5 (SNAPS via scheduleSnap), so a zoom event with factor < 1 was emitted during a pure pan. Logs: persona/r4/ipad/log.txt and the t55/t56/t57 scripts in persona/r4/ipad/.",
+  "fix": "Make the pinch absolute and per-gesture: keep z0 = cam.zoom and d0 from the pointerIds of the current gesture, and compute z = z0·d/d0 only after the PINCH_DEAD threshold. Clear the touches Map on pointerup/pointercancel/lostpointercapture so a lost finger is not reused. In battle_ui, cancel any pending scheduleSnap/zoomTween when a pan starts, and do not apply factor < 1 when it comes from a gesture that started at ZMAX without passing the threshold.",
+  "persona": "Marta, a touch-only player on an iPad Pro 11\" in Safari, emulated with Playwright (hasTouch, isMobile, DPR 2, 1194×834 landscape and 834×1194 portrait). Session lasted about 75 minutes in real time. She played a Recruta campaign: base Sintra (Lisbon); base management in portrait (build, hire, Market Buy/Sell, rename by virtual keyboard, Ufopédia, Financiamento, Gravar); Medium Scout mission (day, landscape); Large Scout mission (night → «Esperar pelo dia», played in portrait). To reach the 1 Feb month report she skipped ahead by OK-ing the remaining January events. She then played one Quick Battle at an Alien Base (10 soldiers, Recruta), in landscape and portrait, and aborted it at turn 8."
+ },
+ {
+  "file": "ovni-1999/js/ui/battle_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "Partly still present (rounds 1–3). On the iPad the Options screen still shows mouse-only settings, «Deslocar nas margens do ecrã» and «Roda do rato: Nível/Zoom», and the text «Pede um 2.º clique…». The long-press tooltips on HUD buttons show the keyboard key («Ajoelhar / levantar [K]»).",
+  "evidence": "Geoscape → Opções in landscape: the CONTROLOS section shows «Deslocar nas margens do ecrã» and «Roda do rato», and JOGO says «Pede um 2.º clique antes de disparar…». Long press on the kneel button in combat: tooltip «Ajoelhar / levantar K». Shots: persona/r4/ipad/shots/118_options.png, 045_longpress_kneel.png.",
+  "fix": "With isTouch() / matchMedia('(hover:none)'), hide the edge-scrolling and mouse-wheel rows (hud.opt.wheel around line 1651) and use a '.touch' variant: «Pede um 2.º toque…». In the tooltip, hide the .key element under @media (hover:none), as is already done for .btn .key.",
+  "persona": "Marta, a touch-only player on an iPad Pro 11\" in Safari, emulated with Playwright (hasTouch, isMobile, DPR 2, 1194×834 landscape and 834×1194 portrait). Session lasted about 75 minutes in real time. She played a Recruta campaign: base Sintra (Lisbon); base management in portrait (build, hire, Market Buy/Sell, rename by virtual keyboard, Ufopédia, Financiamento, Gravar); Medium Scout mission (day, landscape); Large Scout mission (night → «Esperar pelo dia», played in portrait). To reach the 1 Feb month report she skipped ahead by OK-ing the remaining January events. She then played one Quick Battle at an Alien Base (10 soldiers, Recruta), in landscape and portrait, and aborted it at turn 8."
+ },
+ {
+  "file": "ovni-1999/js/ui/campaign_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "In «Local da primeira base», rotating the iPad from landscape to portrait keeps the globe's old centre. The chosen site (the marker over Lisbon) ends up off-screen or behind the panel until you tap CENTRAR.",
+  "evidence": "New campaign → step 2 in landscape with the site at 38.7° N 9.1° O. Rotate to 834×1194: only the Atlantic and Canada are visible and there is no marker (shot persona/r4/ipad/shots/007_step2_portrait.png). After tapping CENTRAR, Portugal and the marker appear (008_step2_portrait_centrar.png).",
+  "fix": "On the resize/orientationchange handler of the site-picking scene, re-centre the view on the selected site (or keep the lat/lon centre while recomputing the area visible above the panel in portrait).",
+  "persona": "Marta, a touch-only player on an iPad Pro 11\" in Safari, emulated with Playwright (hasTouch, isMobile, DPR 2, 1194×834 landscape and 834×1194 portrait). Session lasted about 75 minutes in real time. She played a Recruta campaign: base Sintra (Lisbon); base management in portrait (build, hire, Market Buy/Sell, rename by virtual keyboard, Ufopédia, Financiamento, Gravar); Medium Scout mission (day, landscape); Large Scout mission (night → «Esperar pelo dia», played in portrait). To reach the 1 Feb month report she skipped ahead by OK-ing the remaining January events. She then played one Quick Battle at an Alien Base (10 soldiers, Recruta), in landscape and portrait, and aborted it at turn 8."
+ }
+]

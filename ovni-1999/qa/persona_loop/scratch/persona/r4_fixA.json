@@ -1,0 +1,74 @@
+[
+ {
+  "file": "ovni-1999/js/ui/battle_ui.js",
+  "area": "ui",
+  "severity": "major",
+  "claim": "Um tiro normal (espingarda, pistola, canhão) com aliados mesmo ao lado da linha de fogo não tem qualquer aviso. Só há aviso quando um aliado bloqueia exatamente a linha («X está na linha de tiro»). Com acertos de 20–40 %, os tiros que falham matam colegas, e o Tiago, que junta os soldados, perdeu 3 soldados assim na 1.ª missão da campanha.",
+  "evidence": "Campanha Recruta, 3 jan 1999, OVNI-2 Batedor Médio de dia. Registo: «3x: Thandiwe Dlamini foi morta em combate — tiro de Nuno Oliveira», «5x: Olivier Simon foi morto — tiro de Yuji Inoue», «8x: Felipe Lima foi morto — tiro de William Johnson». Resultado DERROTA, 10/10 mortos (/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/crianca/shots/080_c1_end.png). Repetindo a missão, medi em cada pontaria a distância dos aliados ao segmento atirador→alvo:\n- Kevin Davis: rótulo «Acerto ≈ 25 % · 12 UT (inclui rodar)», sem sub-aviso, com Wolfgang Weber a 0,41 casas da linha. Depois do tiro, o registo diz «1x: Wolfgang Weber ficou ferido: −10 … — tiro de Kevin Davis» (/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/crianca/shots/085_ff_near_line.png).\n- David Wilson: «Acerto ≈ 20 % · 20 UT», sem aviso, com 5 aliados a menos de 1 casa da linha (/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/crianca/shots/106_ff_near_line.png). O clique no contador vermelho centra o alienígena, por isso os colegas junto ao atirador ficam fora do ecrã.\n- O mesmo aconteceu em 2 de 3 Batalhas Rápidas: «Petra Schmidt ← tiro de Rodrigo Barbosa» e «Sanjay Nair ferido — tiro de Lucas dos Santos».\nEm previewTarget (~l.691), o sub-aviso bs.friendlyRisk só é posto quando tr.unitId é um aliado.",
+  "fix": "Em previewTarget, além do aliado que bloqueia, procurar aliados vistos a ≤ 1 casa do segmento atirador→alvo (sobretudo nas primeiras ~6 casas, onde o desvio dos falhanços os apanha). Se houver, pôr T0.sub = «Risco: N aliados perto da linha de tiro» (subCol 'out') e desenhar um contorno vermelho nesses soldados. Em Recruta, com acerto < 50 %, reutilizar a confirmação de 2.º clique dos explosivos («Clique outra vez — pode atingir Wolfgang»). No relatório, quando houve mortes por tiro amigo, a dica pode dizer «Não dispares por cima dos teus soldados — afasta-os da linha».",
+  "persona": "Tiago, 11 anos (Recruta + Batalhas Rápidas, rato e teclado, clica depressa, não lê textos longos)"
+ },
+ {
+  "file": "ovni-1999/js/ui/inventory_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "Ainda presente (ronda 2), em parte: the spatial navigation in the combat inventory still jumps unexpectedly. From the empty MÃO ESQUERDA, ← goes to the first belt cell (below, not to the left), and ↓ sometimes goes to the Espingarda in MÃO DIREITA (to the right) instead of the belt.",
+  "evidence": "Combat → I, with the keyboard focus on MÃO ESQUERDA. ArrowLeft gives «s1 cell kfocus | 20» (belt magazine). ArrowDown gives «s3 big kfocus | Espingarda 20/20». Shots: shots/070-invA-lefthand.png and 071-invB-afterDown.png. In other sequences, ↓ from the same box went to the belt. navMove (inventory_ui.js:501–535) keeps candidates that do not overlap (horiz && overlap<=4 && side>main*2.5 lets in cells further down). With ↓ the hand-to-hand order of the same zone wins over the belt below.",
+  "fix": "←/→: when there is no candidate on the same row (overlap), stay where you are (or wrap) instead of going to another row. ↓: prefer candidates whose top is below the current bottom (b.top >= a.bottom - 4), and only then same-row cells. Treat both hands as one row and the belt as the row below.",
+  "persona": "Pedro: keyboard only, deuteranopia (CDP deuteranopia emulation), 125% zoom on 1280×800 (1024×560 CSS, DSF 2.5), prefers-reduced-motion"
+ },
+ {
+  "file": "ovni-1999/js/ui/battle_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "The message log (N) and the turn summary do not record whether the X-COM shots hit or missed. The only feedback is a small red number that floats for 1 s on the map (0xff5a4a, which turns brownish under deuteranopia). After the shot I still did not know whether my 90 % shot had hit.",
+  "evidence": "Turn 9: Catarina fired a snap shot (Acerto ≈ 90 %) at the Sectoide at 25,2. Afterwards, the log (N) has only «Catarina Sousa foi morta em combate — tiro de Sectoide Soldado». The alien was left at hp 12 (as read from OV.Game.B) and there was no hit or miss line. logEntry (battle_ui.js:1371–1376) ignores 'damage' when !mine(u). Shots: shots/043-fired.png and 044-log.png.",
+  "fix": "Add entries for shots from your own soldiers: «{name} acertou em {alien} (−n)» / «{name} falhou» (one per burst, counting hits). Also show the damage number in a colour that stays visible to colour-blind players (white with a dark outline, or the cvd palette), for at least 1.5 s when reduced motion is on.",
+  "persona": "Pedro: keyboard only, deuteranopia (CDP deuteranopia emulation), 125% zoom on 1280×800 (1024×560 CSS, DSF 2.5), prefers-reduced-motion"
+ },
+ {
+  "file": "ovni-1999/js/ui/battle_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "The state of the UT reserve buttons (Sem reserva / Tiro rápido / Apontado / Rajada / Ajoelhar) is shown only by colour (class .on, a gold outline) and has no aria-pressed. The Geoscape speed radiogroup has no aria-label/aria-labelledby, and all six radios are tab stops, unlike the radiogroups in Opções.",
+  "evidence": "After Shift+2: every .bs-res has aria-pressed=null, and only «Reservar tiro rápido» has class «on». Screenshot shots/072-reserve.png. Geoscape: the radiogroup «5 seg…1 dia» has aria-labelledby null and tabIndex 0 on every option.",
+  "fix": "Set aria-pressed=true/false (or role=radio with aria-checked inside a role=radiogroup labelled «Reserva de UT»), and give the active button a shape cue (a filled background or a ✓). In the Geoscape, use aria-label=\"Velocidade do tempo\" and a roving tabindex, as in Opções.",
+  "persona": "Pedro: keyboard only, deuteranopia (CDP deuteranopia emulation), 125% zoom on 1280×800 (1024×560 CSS, DSF 2.5), prefers-reduced-motion"
+ },
+ {
+  "file": "ovni-1999/js/gfx/render.js",
+  "area": "gfx",
+  "severity": "minor",
+  "claim": "Ainda presente (ronda 3), em parte: when you centre on an alien with «1» in the city (Local de terror), the alien stands behind a building wall and is completely hidden. Only a yellowish smudge on the ground shows it. Under deuteranopia that smudge looks like the gold/yellow markers of my own soldiers, so I could not tell what, or where, the «1» was.",
+  "evidence": "Terror mission, Caracas, turn 1. A Reaper is at 22,13, and the HUD shows «1». Pressing 1 and then ← for the cursor shows only a yellow blob behind the wall, with the path ✕ marks over the wall. Shot: shots/100-alien-cvd4.png (with the «Daltonismo» palette on).",
+  "fix": "Draw an always-visible silhouette or outline of visible aliens through walls (an x-ray outline in the hostile shape, such as a diamond), or cut away the walls between the camera and the centred alien or cursor. On centring with 1–0, show a label with the alien's name or type next to the marker.",
+  "persona": "Pedro: keyboard only, deuteranopia (CDP deuteranopia emulation), 125% zoom on 1280×800 (1024×560 CSS, DSF 2.5), prefers-reduced-motion"
+ },
+ {
+  "file": "ovni-1999/js/ui/battle_ui.js",
+  "area": "ui",
+  "severity": "major",
+  "claim": "In aim mode, tapping an alien that stands right behind the active soldier (one tile up-screen, e.g. adjacent inside the UFO) selects the soldier's own tile. The label shows «Ação impossível». Only a strip about 10 px tall at the top of the alien's head hits it. Tapping the red alien button «1» in aim mode only moves the camera; it does not aim. So in close combat by touch you have to hunt for the exact pixel.",
+  "evidence": "Campaign mission 1 (Medium Scout, Portugal), turn 8. Rajesh at (14,28) aims his pistol at the Sectoid at (13,27). A tap at the alien's centre (OV.BattleUI.debug.unitScreen → 149,490) gives target.label «Ação impossível» with the red reticle on Rajesh himself. Tap at 148,455: «Sem linha de tiro — alguém no caminho» (tile 11,25). Tap at 149,470: «Acerto ≈ 79 %». In a second test (alien 52 at 14,27), tapping the .bs-alien button in aim mode left target:null and only centred the camera. Shots: persona/r4/ipad/shots/061_rajesh_aim.png, 060_alien_behind_wall_crop.png, 063_alienbtn_in_target.png.",
+  "fix": "In pickAt/OV.BattleRender.pick, when S.mode is 'target' or 'throw', give priority to the rects of visible hostile units: never resolve to the selected unit's own tile when a hostile's rect, including its head and the chevron area, overlaps the touch point. Use a touch tolerance of about 20 px for hostile rects. In aim mode, a tap on the .bs-alien button should set the target on that alien (preview the shot), not just centre the camera.",
+  "persona": "Marta, a touch-only player on an iPad Pro 11\" in Safari, emulated with Playwright (hasTouch, isMobile, DPR 2, 1194×834 landscape and 834×1194 portrait). Session lasted about 75 minutes in real time. She played a Recruta campaign: base Sintra (Lisbon); base management in portrait (build, hire, Market Buy/Sell, rename by virtual keyboard, Ufopédia, Financiamento, Gravar); Medium Scout mission (day, landscape); Large Scout mission (night → «Esperar pelo dia», played in portrait). To reach the 1 Feb month report she skipped ahead by OK-ing the remaining January events. She then played one Quick Battle at an Alien Base (10 soldiers, Recruta), in landscape and portrait, and aborted it at turn 8."
+ },
+ {
+  "file": "ovni-1999/css/battle.css",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "In portrait, Equipar (base and briefing) says «Toque no objeto e depois no destino, ou arraste-o com o dedo». But dragging a row from the Armazém up to a hand or the backpack only scrolls the list, even after holding 600 ms. The destinations are all above, and .inv-it.row has touch-action: pan-y. Dragging from the belt to the backpack works.",
+  "evidence": "Briefing → EQUIPAR in portrait. Drag from the «Pistola» row (300,866) to the left hand (179,442) with a 40 ms hold and with a 600 ms hold: MÃO ESQUERDA stays «VAZIA», Peso 20/31, and the Armazém list scrolls to the end. Drag from the belt grenade to the backpack: works (MOCHILA 1/9). Tap-then-tap works. Shots: persona/r4/ipad/shots/089_drag_mid.png, 095_drag_h600.png.",
+  "fix": "Start a drag on a long press: after about 300 ms without movement on an .inv-it.row, enter drag mode and call preventDefault on the following touchmove events (non-passive touchmove listener) so the list does not scroll. Show the item lifting as feedback. Or, in portrait/touch, change the hint to «toque no objeto e depois no destino (arrastar: toque longo)».",
+  "persona": "Marta, a touch-only player on an iPad Pro 11\" in Safari, emulated with Playwright (hasTouch, isMobile, DPR 2, 1194×834 landscape and 834×1194 portrait). Session lasted about 75 minutes in real time. She played a Recruta campaign: base Sintra (Lisbon); base management in portrait (build, hire, Market Buy/Sell, rename by virtual keyboard, Ufopédia, Financiamento, Gravar); Medium Scout mission (day, landscape); Large Scout mission (night → «Esperar pelo dia», played in portrait). To reach the 1 Feb month report she skipped ahead by OK-ing the remaining January events. She then played one Quick Battle at an Alien Base (10 soldiers, Recruta), in landscape and portrait, and aborted it at turn 8."
+ },
+ {
+  "file": "ovni-1999/js/ui/input.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "Still present (round 1), now intermittent. In combat at maximum zoom (2), a two-finger pan sometimes drops the zoom to 1.5 on its own. The globe no longer does this (zoom 5 held across 4 pans).",
+  "evidence": "Alien Base Quick Battle, landscape. In 4 batches of «pinch out to 2 → 4–5 two-finger pans (fingers 80 px apart, distance constant)», zoom dropped 2 → 1.5 in 3 of the 12 sequences tested: [2,2,1.5,…] (t55), [2,1.5,1.5,…] (t56 run 1), [2,2,2,1.5,1.5] (t57 run 1). The other sequences stayed at 2. The value always snaps to 1.5 (SNAPS via scheduleSnap), so a zoom event with factor < 1 was emitted during a pure pan. Logs: persona/r4/ipad/log.txt and the t55/t56/t57 scripts in persona/r4/ipad/.",
+  "fix": "Make the pinch absolute and per-gesture: keep z0 = cam.zoom and d0 from the pointerIds of the current gesture, and compute z = z0·d/d0 only after the PINCH_DEAD threshold. Clear the touches Map on pointerup/pointercancel/lostpointercapture so a lost finger is not reused. In battle_ui, cancel any pending scheduleSnap/zoomTween when a pan starts, and do not apply factor < 1 when it comes from a gesture that started at ZMAX without passing the threshold.",
+  "persona": "Marta, a touch-only player on an iPad Pro 11\" in Safari, emulated with Playwright (hasTouch, isMobile, DPR 2, 1194×834 landscape and 834×1194 portrait). Session lasted about 75 minutes in real time. She played a Recruta campaign: base Sintra (Lisbon); base management in portrait (build, hire, Market Buy/Sell, rename by virtual keyboard, Ufopédia, Financiamento, Gravar); Medium Scout mission (day, landscape); Large Scout mission (night → «Esperar pelo dia», played in portrait). To reach the 1 Feb month report she skipped ahead by OK-ing the remaining January events. She then played one Quick Battle at an Alien Base (10 soldiers, Recruta), in landscape and portrait, and aborted it at turn 8."
+ }
+]

@@ -1,0 +1,70 @@
+[
+ {
+  "from": "screens fixer",
+  "issue": "battle_ui.js (battle fixer), finding 2, blastPreview at ~l.798: split the risk count. Inside the loop, replace `if (dx * dx + dy * dy <= r * r) risk++;` with `if (dx * dx + dy * dy <= r * r) { risk++; if (f.origSide === 'civ' || f.side === 'civ') civ++; }` (declare `let civ = 0;`), and return `{ x, y, z, r, smoke, risk, civ }`. In the 3 places that build the risk label (hud.throw.risk l.736/783, hud.confirmBlast.* l.742/786), use the plain key when civ === 0 and a new '.mix' variant when civ > 0, with params {s: risk - civ, c: civ}. Example pt-PT.battle.js keys: 'hud.throw.risk.mix': 'Risco: atinge {s} soldado(s) e {c} civil(is)'; 'hud.confirmBlast.click.mix' / '.tap.mix' / '.key.mix': 'Clique outra vez para disparar — atinge {s} soldados e {c} civis' (tap/key wording as in the existing variants)."
+ },
+ {
+  "from": "screens fixer",
+  "issue": "combat.js (sim owner), finding 3 root cause: record the fatal damage type. In damageUnit (~l.524) call `killUnit(B, u, atk ? atk.id : null, o.cause || 'damage', { rng: r, dmgType })`. In killUnit, after `u.deathCause = cause || 'damage';`, add `u.deathDmg = o.dmgType || null;`. Optionally, in applyImpact's radius branch (~l.430), pass `cause: o.cause && o.cause !== 'shot' ? o.cause : 'explosion'` so rockets are not tagged 'shot'. screens.js already reads u.deathDmg first (HE/IN/STUN/SMOKE = explosion). Until then it falls back to the starting loadout and the weapons on the corpse tile."
+ },
+ {
+  "from": "screens fixer",
+  "issue": "battle_ui.js (battle fixer), finding 6 Battlescape half: the in-battle options at ~l.1672-1673 (hud.opt.wheel, hud.opt.edgeScroll) should be skipped when matchMedia('(hover: none) and (pointer: coarse)').matches, as screens.js now does. The Geoscape → Opções panel the persona opened is fixed."
+ },
+ {
+  "from": "screens fixer",
+  "issue": "pt-PT.campaign.js (campaign_ui owner), finding 5 footer: cp.br.hint / cp.br.hint.night should mention the arrows like scr.br.hint, e.g. 'Enter inicia · E equipar · ↑ ↓ deslocam · Esc cancela'. The keys themselves already work in cbriefing through the makeScreen fallback (verified by qa/persona_r4_screens.mjs step 2b)."
+ },
+ {
+  "from": "sim fixer",
+  "issue": "Failing test, not caused by me: ui_persona_r3.test.js › 'persona r3: dica do teclado some…' fails on the check `ctx.globalAlpha = sel || tgt ? 0.72 : 0.42;` in js/gfx/battle_render.js. That file is being edited by the battle/UI fixer right now; none of my files are involved."
+ },
+ {
+  "from": "sim fixer",
+  "issue": "UI patch for js/ui/screens.js (lossCauses, the debrief tip for finding 0). Insert right after the line `if (out.wounds && kit && out.tip !== 'scr.db.tip.wounds') out.tip2 = 'scr.db.tip.wounds';`:\n    out.panics = (B.stats && B.stats.xcomPanics) | 0;\n    if (out.panics >= 2) { if (!out.tip) out.tip = 'scr.db.tip.panic'; else if (!out.tip2) out.tip2 = 'scr.db.tip.panic'; }\nand add to js/i18n/pt-PT.screens.js: 'scr.db.tip.panic': 'Os soldados entram em pânico quando veem colegas morrer: leve um Sargento ou outro oficial (sobe a moral de todos) e não avance com a equipa toda ao mesmo tempo.'"
+ },
+ {
+  "from": "sim fixer",
+  "issue": "UI patch for js/ui/campaign_ui.js (debrief, alien containment block, finding 3). Replace the capturedStored loop with:\n      const sur = model.surrendered || {};\n      for (const ty of Object.keys(model.capturedStored || {})) { const n = model.capturedStored[ty] - (sur[ty] | 0); if (n > 0) contain.push(el('li', { class: 'good', text: T('cp.db.contained', { name: unitName(ty), n, base: baseName(base) }) })); }\n      for (const ty of Object.keys(sur)) contain.push(el('li', { class: 'good', text: T('cp.db.surrendered', { name: unitName(ty), n: sur[ty], base: baseName(base) }) }));\nand add to js/i18n/pt-PT.campaign.js: 'cp.db.surrendered': '{name} ×{n}: rendeu-se ao tomarmos a base — para a contenção de {base}.'\nWithout this patch the surrendered aliens still appear, in the usual «para a contenção» line."
+ },
+ {
+  "from": "sim fixer",
+  "issue": "Optional UI note for an objective win (debrief.objective === true), in campaign_ui.js and the quick-battle debrief in screens.js: 'cp.db.objective' / 'scr.db.objective': 'Centro de controlo destruído: a base caiu e os alienígenas que restavam fugiram com o que levavam.'"
+ },
+ {
+  "from": "sim fixer",
+  "issue": "Bot campaign samples are small (Veterano 6 seeds, Super-humano 5 seeds; Recruta only a 2-seed, 120-day determinism check). The Veterano win rate moved 67 → 50 %, from a single seed whose Cydonia battle went differently. A 24-seed sweep would confirm the campaign targets before the next round; I skipped it to save shared CPU."
+ },
+ {
+  "from": "shell fixer",
+  "issue": "The one remaining Node failure is ui_persona_r3.test.js, «atirador e alvo mais visíveis através das paredes». It belongs to the Battlescape fixer and is not caused by my files."
+ },
+ {
+  "from": "shell fixer",
+  "issue": "Waiting for dawn sets the clock to «30 min», but an unrelated alert (for example «OVNI detetado») drops it back to 5 seg, as in the original game. The wait itself stays queued, so the player must pick a faster speed again. If we want the speed restored automatically after such an alert while a wait is pending, that is a small geo_ui follow-up."
+ },
+ {
+  "from": "shell fixer",
+  "issue": "The first qa/full_campaign.mjs run failed with «Target page, context or browser has been closed» at 291 s, most likely from CPU contention with the other agents. The rerun passed: «campanha completa sem erros»."
+ },
+ {
+  "from": "battle fixer",
+  "issue": "Finding #4, Geoscape part (js/ui/geo_ui.js, not mine): the speed radiogroup already has aria-label = T('geo.speed') ('Velocidade do tempo'), but all 6 radios are still tab stops. Patch for the radiogroup:\n- In the refresh loop next to b.setAttribute('aria-checked', …) (~l.1066), add: b.tabIndex = i === clk.speed ? 0 : -1;\n- After the creation loop (~l.971), add: speedBox.addEventListener('keydown', (e) => { const d = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 0; if (!d) return; e.preventDefault(); e.stopPropagation(); const i = (OV.Clock ? G.clock.speed : 0) + d; const n = Math.max(0, Math.min(SPEED_N - 1, i)); setSpeed(n); speeds[n].focus(); });\n- Use whatever expression geo_ui already uses for the current speed instead of G.clock.speed."
+ },
+ {
+  "from": "battle fixer",
+  "issue": "Finding #7, touch hints in other owners' i18n files. Change pt-PT.base.js 'base.equip.hint.touch' to «Toque no objeto e depois no destino, ou mantenha o dedo nele um instante e arraste-o.» Change pt-PT.campaign.js 'cp.eq.hint.touch' to «Toque num objeto e depois no destino, ou mantenha o dedo nele e arraste-o · toque num soldado para mudar · «Concluído» guarda». The long-press drag works in both screens; only the wording differs."
+ },
+ {
+  "from": "battle fixer",
+  "issue": "Finding #5, sim side (optional, js/sim/battle/los.js): the renderer now draws aliens that X-COM sees on undiscovered tiles. The root inconsistency remains: OV.LOS adds an enemy to B._.visible.xcom without setting map.disc |= 1 on that enemy's tiles (Terror site, alien behind a window; 2×2 units only partly in view). Marking each visible enemy's unitTiles as discovered in the visibility pass would also reveal the floor under them."
+ },
+ {
+  "from": "battle fixer",
+  "issue": "Finding #1, optional extra the persona suggested (js/ui/screens.js, debrief owner): when the mission log has a friendly-fire death, show a tip such as «Não dispares por cima dos teus soldados — afasta-os da linha». The Battlescape already shows the warning before the shot."
+ },
+ {
+  "from": "battle fixer",
+  "issue": "tools/tests/battle_ai.test.js «≤ 20 ms por ação alienígena» failed once (21.7 ms) while 3 Chromium QA runs were loading the 4 shared CPUs. It passes on a quiet CPU; it is a timing check that is sensitive to load, not a regression."
+ }
+]

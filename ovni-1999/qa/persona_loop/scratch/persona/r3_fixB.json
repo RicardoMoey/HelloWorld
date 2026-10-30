@@ -1,0 +1,146 @@
+[
+ {
+  "file": "ovni-1999/js/ui/geo_ui.js",
+  "area": "ui",
+  "severity": "major",
+  "claim": "No diálogo «Enviar equipa», um só clique na linha da Skyranger envia a nave mesmo com o aviso «Só 2 soldados contra 3–4 alienígenas». No briefing seguinte só aparece um aviso informativo azul, «Vão 8 lugares vazios na nave». O Tiago mandou 2 soldados de noite contra um Batedor Médio: DERROTA, nave perdida, −221.",
+  "evidence": "Campanha, 1 fev 1999. Depois de uma missão com 5 mortos, ficaram 2 soldados a bordo e 4 recrutas na base, desembarcados e sem armas. squadShort conta os soldados aptos da base (6) e não os que vão a bordo, por isso não houve alerta no Geoscape. No diálogo, o aviso e o botão «EMBARCAR 4 E EQUIPAR» ficam por baixo da linha da Skyranger, e clicar na linha (o alvo maior e o primeiro) envia logo. Ecrãs: /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r3/crianca/shots/184_send_dialog_2soldiers.png e /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r3/crianca/shots/166_cbrief.png (EQUIPA DE ASSALTO · 2, só um aviso azul). Resultado: /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r3/crianca/shots/179_c6_deb.png (DERROTA, Nave X-COM perdida −200).",
+  "fix": "Quando fit < crew.min, o clique na linha da nave deve abrir uma confirmação de uma linha: «Só 2 soldados contra 3–4. [Embarcar 4 e enviar] [Enviar assim]», com o primeiro botão por omissão (Enter). Em alternativa, tornar «Embarcar N e equipar» a ação primária. No briefing da campanha, pôr em AVISOS (estilo 'bad', não 'info') a mesma frase geo.fix.short quando a equipa a bordo for menor do que o efetivo estimado. Em squadShort, contar os soldados a bordo do transporte e não só os da base.",
+  "persona": "Tiago, 11 an"
+ },
+ {
+  "file": "ovni-1999/js/ui/geo_ui.js",
+  "area": "ui",
+  "severity": "major",
+  "claim": "Em Recruta, o aviso «Equipa no local» de noite tem «Iniciar missão» como botão por omissão (Enter). O conselho de esperar pelo dia é um parágrafo que o Tiago não lê. As 3 missões noturnas que ele aceitou com Enter foram as piores da campanha: 9 turnos sem ver nada, uma derrota, e 5 em 6 mortos «tiro de atacante não visto».",
+  "evidence": "Os ecrãs /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r3/crianca/shots/097_pop_craftArrived.png e /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r3/crianca/shots/186_pop_craftArrived.png mostram «INICIAR MISSÃO ↵» realçado, com «ESPERAR PELO DIA W» ao lado. Missão c4 (Polar, noite): turnos 1–9 sem contacto, com a equipa encostada ao casco do OVNI (/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r3/crianca/shots/116_c4_turn_9.png). Missão c6 (deserto, noite): DERROTA. Missão c7 (deserto, noite): «3x: Marco Gallo foi morto em combate — tiro de atacante não visto» e VITÓRIA com 5 de 6 mortos (/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r3/crianca/shots/197_c7_deb.png). As missões de dia no mesmo período tiveram 0 a 2 mortos.",
+  "fix": "Em Recruta (ou quando é a 1.ª missão noturna), se o amanhecer chegar antes de os destroços expirarem ou de o OVNI levantar voo, fazer de «Esperar pelo dia» o botão primário (Enter) e passar «Iniciar missão» a secundário. Em alternativa, mostrar uma pergunta curta: «É noite: eles veem-te, tu não. Esperar pelo dia (≈4 h)? [Esperar] [Atacar já]». Na batalha noturna, depois de ~5 turnos sem contacto, mostrar a dica «Os alienígenas estão dentro do OVNI — procurem a porta» num OVNI aterrado ou despenhado.",
+  "persona": "Tiago, 11 an"
+ },
+ {
+  "file": "ovni-1999/js/ui/campaign_ui.js",
+  "area": "ui",
+  "severity": "major",
+  "claim": "O Tiago comprou 10 Lança-Foguetes («Encomenda: 10 × Lança-Foguetes», depois «CHEGARAM ENCOMENDAS»), mas nas 3 missões seguintes ninguém os levou. O ecrã «Equipar» do briefing só mostra o material que vai a bordo e não diz que os 11 lança-foguetes ficaram na base nem como os levar.",
+  "evidence": "Stores da base: rocket_launcher 11. As mãos dos soldados na batalha eram só espingardas e pistolas. Ecrã /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r3/crianca/shots/090_equip_screen.png: chip «MATERIAL Só o que vai a bordo», e o ARMAZÉM tem Pistola ×2, munições, granadas e nenhum lança-foguetes. O aviso de entrega (/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r3/crianca/shots/055_pop_deliveryArrived.png) só tem «Ir para a base» e «OK». Só em Base → Naves → Equipar, com a nave no hangar, aparecem «Lança-Foguetes ×11» (/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r3/crianca/shots/130_home_equip.png).",
+  "fix": "No equip em missão (cp.eq.away), acrescentar uma linha: «Ficaram na base: 11 Lança-Foguetes, 4 Foguetes… Para os levar, equipe a nave no hangar (B → Naves → Equipar) antes de partir.» No aviso deliveryArrived de armas, acrescentar o botão «Pôr na Skyranger-1» (abre o equip da nave em casa). Em alternativa, o auto-kit dos recrutas pode preferir armas novas compradas.",
+  "persona": "Tiago, 11 an"
+ },
+ {
+  "file": "ovni-1999/js/ui/base_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "No separador Pessoal, um duplo clique em «CONTRATAR +5» contrata 10 soldados: são 2 encomendas e 2 toasts, $400 000 em vez de $200 000 e mais salários. O guard oneShot do Mercado (corrigido na ronda 2) não foi aplicado aos botões Contratar e Despedir.",
+  "evidence": "Base Lusitânia, 11 jan 1999. Os fundos passaram de 5 960 000 para 5 560 000 (10 × $40 000) e aparecem «Contratação: 5 soldados» ×2 e «ENCOMENDAS A CAMINHO 10 soldados» (/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r3/crianca/shots/076_hire_dbl.png). Em base_ui.js ~l.965-976, os handlers de hireBtns e sackBtns chamam act() sem oneShot(e), por isso um duplo clique em «DESPEDIR 5» também despede 10.",
+  "fix": "Passar o evento ao on: dos botões Contratar e Despedir e sair cedo com `if (!oneShot(e)) return;`, o mesmo que já se faz no Mercado. Vale a pena rever da mesma forma Produção (+/−, Iniciar) e Construir instalação.",
+  "persona": "Tiago, 11 an"
+ },
+ {
+  "file": "ovni-1999/js/ui/campaign_ui.js",
+  "area": "sim",
+  "severity": "minor",
+  "claim": "Ainda presente (ronda 2), em parte: a correção do reseed só se aplica à gravação «Antes da missão». Com uma gravação manual (Posição 1) feita no Geoscape antes de chegar ao local, carregar e voltar a entrar gera exatamente o mesmo mapa, com cada alienígena no mesmo sítio. Continua a haver repetição com informação perfeita.",
+  "evidence": "Gravei na Posição 1 a 5 jan 20:58 (G.rng.map 1997376088). A 1.ª entrada no OVNI-3 deu a semente 1357215150 e os alienígenas 55(34,9), 59(5,5), 63(25,7), 67(29,4) e 71(12,7) (shots/020_battle1_start.png).\n\nSaí para o menu e carreguei a Posição 1 (G.rng.map voltou a 1997376088). Ao chegar e iniciar, a semente foi 1357215150 e as 5 posições eram as mesmas (shots/028_battle2_start_same.png).\n\nEm contrapartida, «Repetir a missão» depois do abort deu outro mapa (386656253 passou a 2040968621).",
+  "fix": "Aplicar o sal no carregamento de qualquer ranhura e não só em loadExtra('preMission'). Guardar em G um contador de carregamentos (G.loadCount++ em Save.load) e misturá-lo em Campaign.startMission: seed = map.u32() ^ hash(loadCount). Assim, carregar uma gravação manual também sorteia outro mapa e o jogo continua determinístico para os testes, que não carregam.",
+  "persona": "Inês, otimiz"
+ },
+ {
+  "file": "ovni-1999/css/geo.css",
+  "area": "ui",
+  "severity": "major",
+  "claim": "At 1024×560 (125 % on 1280×800), the Geoscape side panel overflows as soon as there are two persistent warnings («30 cientistas parados» and «Só N soldados aptos»). The «OVNIS DETETADOS», «LOCAIS» and «NAVES NO AR» lists go below the window, and the panel does not scroll. Tab puts focus on the UFO row outside the screen, so the keyboard user loses the focus and the list of contacts.",
+  "evidence": "10 Jan 1999, OVNI-4 landed. .geo-side measures top 10 / bottom 550 with scrollHeight 631 > clientHeight 537 and overflow-y: visible. The «OVNIS DETETADOS» label is at y=585, and .geo-lists is at top 583 / bottom 643, with the window at 560. After Tab, activeElement is BUTTON «OVNI-4 · Aterrado · Batedor Grande» with rect y 603–642, and scrollTop is 0 on both the document and the aside. The «CONTRATAR SOLDADOS» button is cut off at the bottom edge (540–568). Screenshots: /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r3/acessivel/shots/108-geo-side.png, 109-geo-lists-focus.png and 106-contratar-focus.png",
+  "fix": "Make .geo-side a flex column with max-height:100% and overflow:auto (or give .geo-lists flex:1 1 auto; min-height:0), and turn the warnings into compact single-line chips when height is under 640 px. On focusin inside the aside, call el.scrollIntoView({block:'nearest'}). Add an «N avisos» summary that expands on demand.",
+  "persona": "Pedro: plays"
+ },
+ {
+  "file": "ovni-1999/js/ui/campaign_ui.js",
+  "area": "ui",
+  "severity": "major",
+  "claim": "The monthly report cannot be scrolled from the keyboard. ↓, PageDown and End do nothing, and Tab stays on «CONTINUAR». The hidden part holds the funding cuts (Nigéria −$43 000), the total and «Contas do mês». This is the same problem fixed in the debrief in round 2, now on a new screen.",
+  "evidence": "Report for «Janeiro de 1999»: .cp-mr-body.scr-scroll has scrollTop 0 of 221 with tabIndex −1. ArrowDown, PageDown and End all left it at 0, and four Tabs kept focus on BUTTON CONTINUAR. Rows below the fold: «Brasil… Nigéria $243 000 −$43 000 $200 000 … Portugal… Total $6 000 000 −$25 000 $5 975 000», plus the «CONTAS DO MÊS» section. Screenshot: /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r3/acessivel/shots/120-month.png",
+  "fix": "In the monthly report's keys(), call OV.Screens.ui.scrollKeys(ev, body) (↑/↓/PageUp/PageDown/Home/End), as the debrief does, and give .cp-mr-body tabindex=0 with a visible :focus-visible. Optionally show a «▼ mais abaixo» marker while scrollTop < max.",
+  "persona": "Pedro: plays"
+ },
+ {
+  "file": "ovni-1999/js/ui/base_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "Ainda presente (ronda 2), em parte: starting the campaign's first project with N, «Iniciar: Armas Laser» and Enter drops focus to BODY. On later starts, focus correctly returns to «NOVO PROJETO».",
+  "evidence": "1 Jan 1999, Investigação tab (reached with → from the tablist), no project running. N opened the dialog with focus on «Iniciar: Armas Laser», and Enter gave activeElement BODY. On 3 Jan, N, «Iniciar: Kit Médico» and Enter gave focus on «NOVO PROJETO (1)». Screenshot: /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r3/acessivel/shots/015-research-started.png",
+  "fix": "In the dialog's returnTo, resolve the [data-act=newResearch] button after renderContent(), because it is recreated when the list goes from 0 to 1 project. Use OV.Dom.refocus('[data-act=newResearch]', S.root) as the fallback when the original trigger is no longer in the DOM.",
+  "persona": "Pedro: plays"
+ },
+ {
+  "file": "ovni-1999/js/i18n/pt-PT.base.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "In the base's build mode, the text only talks about the mouse («Posição válida: clique para construir.»), although arrows and Enter work. With the cursor in column A, the tooltip «Posição ocupada por outra instalação.» is cut off at the left edge of the screen.",
+  "evidence": "base.build.validHere is used with S.kcur active, and Enter opens «Construir Alojamentos por $400 000?». With the cursor at (2,2), the tooltip reads «…ocupada por outra instalação.» starting at x<0. Screenshots: /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r3/acessivel/shots/020-build-mode.png and 126-build-invalid.png",
+  "fix": "Add a 'base.build.validHere.key' variant («Posição válida: Enter constrói · setas mudam a casa · Esc cancela») when the last input was the keyboard, and clamp the tooltip inside the viewport.",
+  "persona": "Pedro: plays"
+ },
+ {
+  "file": "ovni-1999/js/ui/geo_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "In «Escolher no globo» (destination for a craft), the crosshair is invisible until the first arrow press. After that press the instruction banner (setas + Enter… Esc cancela) is replaced by the coordinates, so the reminder of how to confirm or cancel disappears.",
+  "evidence": "Interceção → Intercetor-1 → G: no crosshair at the globe centre (104). After ArrowLeft the crosshair appears and the banner shows only «Ponto 31,1° N · 32,1° E 1620 mn · 46 min» (105). Screenshots: /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r3/acessivel/shots/104-globe-pick.png and 105-globe-pick-arrow.png",
+  "fix": "Draw the crosshair as soon as target mode starts. Keep a second line under the coordinates: «Enter: escolher · Esc: cancelar».",
+  "persona": "Pedro: plays"
+ },
+ {
+  "file": "ovni-1999/js/i18n/pt-PT.base.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "Ainda presente (ronda 1/2), em parte: repeated buttons still have accessible names without context. In Investigação each project has «Atribuir mais 1 cientista / Retirar 5 cientistas / Atribuir todos os livres» with no project name. In the message log every «MOSTRAR» is «Centrar a câmara onde aconteceu». In the «Novo projeto» dialog the button is «Abrir o artigo da Ufopédia».",
+  "evidence": "Tab through Investigação with 2 projects: «+:Atribuir mais 1 cientista», «+5:Atribuir mais 5 cientistas», «TODOS:Atribuir todos os livres», repeated for Pistola Laser and Kit Médico. In N, three Tabs gave three «MOSTRAR:Centrar a câmara onde aconteceu». In Novo projeto: «UFOPÉDIA:Abrir o artigo da Ufopédia». Keys: base.sci.plus1, hud.report.show.tip, base.tip.article.",
+  "fix": "Interpolate the context: «Atribuir mais 1 cientista a Kit Médico», «Mostrar: Olivier Petit abateu Sectoide Navegador», «Abrir na Ufopédia: Kit Médico».",
+  "persona": "Pedro: plays"
+ },
+ {
+  "file": "ovni-1999/js/i18n/pt-PT.base.js",
+  "area": "data",
+  "severity": "minor",
+  "claim": "The Investigação subtitle uses the plural for a single project: «1 projetos disponíveis».",
+  "evidence": "3 Jan 1999, Investigação tab: «Investigação / 1 projetos disponíveis / NOVO PROJETO (1)». The key 'base.research.sub': '{n} projetos disponíveis' has no singular form.",
+  "fix": "Use Tn with 'base.research.sub.one': '1 projeto disponível' / '.other': '{n} projetos disponíveis'.",
+  "persona": "Pedro: plays"
+ },
+ {
+  "file": "ovni-1999/css/geo.css",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "In portrait (834×1194), the country table in Financiamento overflows sideways and the «Evolução» column (sparkline) is cut off at «EV». The box (.geo-fund-l.scroll) has touch-action: pan-y, so a horizontal finger swipe does not scroll it. On iPad, that column can never be seen.",
+  "evidence": "Geoscape → Financiamento in portrait: the EVOLUÇÃO header sits at x=302, w=76 in a 254 px box (scrollWidth 309 > clientWidth 254, overflow-x:auto, touchAction 'pan-y'). A 150 px horizontal drag leaves scrollLeft=0; a vertical drag scrolls (scrollTop=135). Shot: shots/093_funding_port.png (header «EV» cut off). In landscape (shots/094_funding_land.png) it fits (443/443).",
+  "fix": "Under @media (max-width:900px), put the Financiamento dialog in one column (country table at 100% width, chart below) so the table does not overflow. Or give .geo-fund-l touch-action: pan-x pan-y, overriding the generic .scroll{touch-action:pan-y} rule in base.css:58.",
+  "persona": "Marta: iPad "
+ },
+ {
+  "file": "ovni-1999/js/i18n/pt-PT.dogfight.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "Partly still present (round 2): in the Geoscape there are still keyboard-only texts on the iPad. The interception hint says «Normal (3) … 2 Cauteloso … 4 Agressivo … 5 Desengatar … Q/E ligam e desligam cada arma». The banner over the open combat says «M abre a janela de combate.». The night-arrival popup says «em combate lançam-se com L para iluminar».",
+  "evidence": "Intercepting OVNI-3 by touch: shots/075_intercept_event.png (hint with 2–5 and Q/E; top banner «Tempo parado: interceção em curso · M abre a janela de combate.»). After it was shot down: shots/076_df_min.png («…lançam-se com L para iluminar»). Keys without a .touch variant: 'df.hint.modes' (pt-PT.dogfight.js:9), 'geo.dfBanner.text' (pt-PT.geoui.js:373), 'geo.ev.team.eta.night.flares.one/other' (pt-PT.geoui.js:241-242).",
+  "fix": "Add '.touch' variants and pick them with isTouch()/lastPointerType, as already done for other keys. 'df.hint.modes.touch': «Começa em Normal: a nave aproxima-se até ao alcance da arma mais curta. Cauteloso dispara de mais longe, Agressivo encosta, Desengatar regressa. Os interruptores ligam e desligam cada arma.» 'geo.dfBanner.text.touch': «Toque na ficha da interceção para a abrir.» '…flares.*.touch': «…em combate lançam-se com o botão do sinalizador para iluminar.»",
+  "persona": "Marta: iPad "
+ },
+ {
+  "file": "ovni-1999/js/ui/campaign_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "In «Escolha a dificuldade», the three cards show key badges «1», «2», «3» on the iPad, where there are no number keys. The hover:none rule only hides .btn .key/.modal .key, not .cp-diff-n.",
+  "evidence": "New Campaign, step 1, landscape touch: the 1/2/3 badges in the top-right corner of the Recruta, Veterano and Super-humano cards (shots/002_newcamp.png). Element: el('span', {class:'cp-diff-n', text: String(d+1)}) at campaign_ui.js:594. base.css:139-143 does not cover it.",
+  "fix": "In campaign.css, inside the existing @media (hover:none) block (line 255), add «.cp-diff-n { display:none; }». Or give the span class 'key' so the generic rule in base.css hides it.",
+  "persona": "Marta: iPad "
+ },
+ {
+  "file": "ovni-1999/js/ui/campaign_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "When choosing the first base's site, a double tap on the sea (the gesture the hint suggests for «Toque duplo: centrar») centres the globe but also shows the warning «A base tem de ficar em terra firme.» twice, stacked. The centre gesture also differs from the Geoscape, which teaches «toque longo centra».",
+  "evidence": "New Campaign → Recruta → Escolher local; double tap at (300,250) over the Atlantic. The globe centres, and two identical toasts appear at the top (shots/133_ng_after_dbl.png, compare shots/132_ng_before_dbl.png). Hint on this screen: «Arrastar: rodar · Pinça: aproximar · Toque: escolher · Toque duplo: centrar». Hint in the Geoscape: «…toque para selecionar · toque longo centra» (shots/006_geo_intro.png).",
+  "fix": "In the site-picking scene, delay the error from the 1st tap by about 250 ms and cancel it if a 2nd tap arrives (double tap = centre only), or do not repeat a toast already on screen (dedupe in OV.Dom.toast). Accept long press = centre here too, and use the same text as the Geoscape («toque longo centra») so one gesture is taught.",
+  "persona": "Marta: iPad "
+ }
+]

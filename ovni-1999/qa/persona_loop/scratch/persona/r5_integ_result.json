@@ -1,0 +1,103 @@
+{
+  "summary": "OVNI persona round 5: integrate cross-fixer leftovers and run the balance sweep",
+  "agentCount": 1,
+  "logs": [],
+  "result": {
+    "fix": {
+      "files_written": [
+        "/home/user/HelloWorld/ovni-1999/js/sim/battle/actions.js",
+        "/home/user/HelloWorld/ovni-1999/js/sim/geo/missions.js",
+        "/home/user/HelloWorld/ovni-1999/js/ui/battle_ui.js",
+        "/home/user/HelloWorld/ovni-1999/js/ui/inventory_ui.js",
+        "/home/user/HelloWorld/ovni-1999/js/ui/campaign_ui.js",
+        "/home/user/HelloWorld/ovni-1999/js/ui/screens.js",
+        "/home/user/HelloWorld/ovni-1999/js/ui/base_ui.js",
+        "/home/user/HelloWorld/ovni-1999/js/ui/geo_ui.js",
+        "/home/user/HelloWorld/ovni-1999/js/ui/ufopaedia.js",
+        "/home/user/HelloWorld/ovni-1999/js/i18n/pt-PT.battle.js",
+        "/home/user/HelloWorld/ovni-1999/js/i18n/pt-PT.hud.js",
+        "/home/user/HelloWorld/ovni-1999/js/i18n/pt-PT.screens.js",
+        "/home/user/HelloWorld/ovni-1999/js/i18n/pt-PT.campaign.js",
+        "/home/user/HelloWorld/ovni-1999/js/i18n/pt-PT.base.js",
+        "/home/user/HelloWorld/ovni-1999/js/i18n/pt-PT.geoui.js",
+        "/home/user/HelloWorld/ovni-1999/css/battle.css",
+        "/home/user/HelloWorld/ovni-1999/css/campaign.css",
+        "/home/user/HelloWorld/ovni-1999/css/basescape.css",
+        "/home/user/HelloWorld/ovni-1999/css/ufopaedia.css",
+        "/home/user/HelloWorld/ovni-1999/docs/CAMPAIGN_API.md",
+        "/home/user/HelloWorld/ovni-1999/DESIGN.md",
+        "/home/user/HelloWorld/ovni-1999/tools/tests/integration_r5.test.js",
+        "/home/user/HelloWorld/ovni-1999/tools/tests/shell_persona_r5.test.js",
+        "/home/user/HelloWorld/ovni-1999/tools/tests/integration_r1.test.js",
+        "/home/user/HelloWorld/ovni-1999/qa/integration_r5.mjs",
+        "/home/user/HelloWorld/ovni-1999/qa/integration_r4.mjs",
+        "/home/user/HelloWorld/ovni-1999/qa/integration_r3.mjs"
+      ],
+      "tests": {
+        "passed": 844,
+        "failed": 0
+      },
+      "api": "**Simulation**\n\n- **Walk into a door with someone behind it** (`OV.Act` walk, `P.walk` in `js/sim/battle/actions.js`):\n  - **When:** the next step goes through a closed swing door or UFO door, and an unseen unit (`occupant`) stands right behind it.\n  - **What happens instead of `interrupt 'blocked'`:**\n    - TU are checked with `tuReason(TU_DOOR)`, so the TU reserve counts.\n    - The door opens with `OV.Env.openDoor`, `TU_DOOR` is charged and the soldier turns to face the step.\n    - Sight is refreshed through `settle`, then the walk stops with `interrupt 'spotted'`.\n    - It returns `{ok: false, reason: 'spotted', moved, door: true}`.\n  - **Fallbacks:**\n    - If the door cannot open (e.g. a 2×2 unit), the walk still stops with `'blocked'`.\n    - Without enough TU it stops with `'noTU'` or `'reserved'`.\n  - The AI and the bots get the same behaviour. The Battlescape's own pre-check (`doorBlock`) is unchanged.\n- **UFO lifts off** (`OV.Missions.onUfoLiftOff`):\n  - Every ground transport heading for that UFO is recalled with `OV.World.recall`. \"Ground transport\" means a transport with no weapons, or one with soldiers aboard.\n  - Only crafts with status `out` or `patrol` and no dogfight are recalled. Interceptors keep chasing.\n  - The `ufoLiftOff` and `landedUfoGone` events gain `recalled: [craftId]`. The events table in `CAMPAIGN_API` is updated.\n\n**UI**\n\n- **`OV.BattleUI.causesFor(B)`** returns `{soldierId: text}`: how each soldier died in the last finished battle, using the battle log's wording.\n  - Kill entries in the log now carry `uid`.\n  - `debug.state()` gains `exitHinted`.\n- **`OV.CampaignUI.heavyLeft(G, craft)`** returns `[{id, n}]`: two-handed heavy weapons left in the base stores with none aboard, in `OV.Campaign.kitGuns` order.\n- **`OV.CampaignUI.autoKit`** now orders guns with `OV.Campaign.kitGuns`. Ammo goes on the belt, or in the backpack when it does not fit (rockets).\n- **`OV.InventoryUI.model.autoLoadout`** accepts `opts.keepMed`. AUTO-EQUIPAR passes it when the soldier already carried a medikit.\n- **`OV.Screens.lossCauses`** returns `clustered` (from `OV.Battle.clusteredDeaths`). With 2 or more, the first tip becomes `scr.db.tip.clustered`; equipa pequena (outnumbered) and melee tips keep priority.\n- **Alien-base exit win (Battlescape):**\n  - `exitHint()` runs after every action. Once, it shows the panel (also kept in the log, N), a toast, and turns the Abort button green (`.exit-win`).\n  - `abortMission()` says the exit is a VICTORY and uses a primary button «Sair — base destruída». With nobody aboard it warns instead (`hud.abort.exitNoOne`).\n- **Squad row:** a bleeding soldier gets a ✚ marker (`.bs-sq-bleed`), and «, ferido a sangrar» is added to the row's spoken label and tooltip.\n- **Base › Instalações:** new defence bar from `OV.Campaign.defenceOdds`. It shows strength / need, the lose / repel / hold odds and how many soldiers or Missile Defences are missing. It says whether an attack is actually on its way (`base.def.threat` / `base.def.noThreat`).\n- **Geoscape `baseAttack` popup:** shows the odds, and the garrison shortfall when there is a risk of losing the base.\n- **`baseDefence` popup:** when `ev.held`, it lists the facilities that went back under construction.\n- **Ufopédia nav:** each section is wrapped in `.up-nav-group`, so a sticky heading is pushed away by the next one instead of covering it.\n\n**New i18n keys**\n\n- `bs.obj.exitWin`\n- `hud.exit.title`, `hud.exit.toast`\n- `hud.abort.exitTitle`, `hud.abort.exitWin`, `hud.abort.exitWinBtn`, `hud.abort.exitNoOne`\n- `hud.tip.abort.exitWin`\n- `hud.sq.bleeding`\n- `scr.db.tip.clustered`\n- `scr.howto.ptr.4.mac`\n- `cp.br.leftHeavy.one`, `cp.br.leftHeavy.other`\n- `base.def.*` (14 keys)\n- `geo.ev.baseDefence.held`, `geo.ev.baseDefence.held.none`\n- `geo.ev.baseAttack.odds`, `geo.ev.baseAttack.short.one`, `geo.ev.baseAttack.short.other`, `geo.ev.baseAttack.shortMd`\n\n**Changed i18n texts:** `bs.noRoute`, `scr.br.obj.alienBase.1`, `scr.db.objective`, `cp.db.surrendered`, `scr.howto.ptr.4`.",
+      "summary": "I implemented every item in `r5_integration.json` after re-checking each against the current code; the only thing left undone is one optional debrief tip. The Node suite is green (`node tools/test.js --strict --i18n`: 844 passed, 0 failed), and all 26 browser QA scripts plus `full_campaign` finish green.\n\n**Balance:** Veterano went from 11/24 to 13/24 with no council defeats, so I did not change `tuning.js`.\n\n**Integration items**\n\n| Item | Status | What changed |\n|---|---|---|\n| Door with someone behind it | Done | The engine now opens the door and stops (4 TU), as in the original. The AI and bots behave the same; the Battlescape's own check is unchanged. |\n| Transports recalled when a UFO lifts off | Done | The sim recalls them, so the headless bot stops chasing too. The Geoscape only explains it with a toast; interceptors keep chasing. |\n| Auto-kit uses `OV.Campaign.kitGuns` (Tiago) | Done | 14 rockets now arm 7 recruits with a Rocket Launcher and 2 rockets in the backpack; the rest get pistols. |\n| Briefing line for heavy weapons left at base | Done, worded differently | See the first open issue. |\n| «posto de comando» surrender text | Done | |\n| Alien-base exit-win hint and abort confirmation | Done | Once the control centre is destroyed: a panel (also kept in the log), the toast «Centro de controlo destruído — volte à nave e aborte para vencer», and a green Abortar button. The confirmation says the exit counts as a VITÓRIA, with a «Sair — base destruída» button. With nobody aboard it warns that there is no win. |\n| Blaster «no route» text | Done | |\n| Briefing objective and debrief objective texts | Done | |\n| Clustered-deaths debrief tip | Done | «Espalhe os soldados… os tiros que falham acertam no do lado…» comes first, except when the squad was outnumbered or the deaths were mostly melee. |\n| Memorial shows each death's cause (optional) | Done | Uses the battle log's wording, e.g. «Morta em combate — atacante não visto». |\n| Grenade-dominant debrief tip (optional) | Skipped | The memorial cause covers most of it. |\n| Como Jogar door line | Done | Alt+click on Windows/Linux, ⌥ Option+click on Mac, and a note that walking into a door with someone behind it opens it. |\n| Bleeding marker on the squad row | Done | A ✚ marker, and «, ferido a sangrar» in the spoken label and tooltip. |\n| AUTO-EQUIPAR keeps the medikit | Done | |\n| Base defence odds in Instalações | Done | Shows strength / needed, loss / repel / hold-at-a-cost odds, and how many soldiers or Missile Defences are missing. |\n| Base attack popup | Done | Shows the odds and the garrison shortfall. |\n| «Aguentámos a custo» popup | Done | Lists the facilities that went back to construction. |\n| Equip screen at heights of 700 px or less | Done | The footer hint now wraps to 2 lines beside the Concluído button, and the left-at-base note no longer shows a cut third line. |\n| Ufopédia sticky section headings | Done | Each section is its own group, so the next heading pushes the previous one away instead of covering it. |\n\n**Balance numbers (campaign bot, 240 days)**\n- **Recruta, seeds 1–12:** 12/12 victories, median day 136.5, no council defeats, 7/7 base attacks repelled.\n- **Veterano:** 13/24 = 54 % (seeds 1–12: 7/12; seeds 13–24: 6/12), up from 11/24 = 46 % last round.\n  - No council defeats; all 43 base attacks repelled (none held at a cost, none lost).\n  - Endings: 13 victories, 7 Cydonia losses, 4 timeouts.\n  - That sits at the bottom edge of the 55–67 % target and improved, so `tuning.js` is unchanged.\n- **Battle sweep (veteran bot, Veterano, 40 seeds):**\n\n| Mission | Won | Dead per battle |\n|---|---|---|\n| Small scout | 100 % | 0.70 |\n| Medium scout | 95 % | 1.82 |\n| Large scout | 100 % | 0.65 |\n| Harvester | 100 % | 0.95 |\n| Abductor | 100 % | 1.10 |\n| Supply ship | 98 % | 1.82 |\n| Terror ship | 90 % | 1.85 |\n| Battleship | 95 % | 2.95 |\n| Terror site | 100 % | 1.82 |\n| Alien base | 93 % | 4.28 |\n| Cydonia | 80 % | 6.72 |\n\nThese numbers are written into DESIGN §22.\n\n**Tests and QA**\n- **New Node test** `tools/tests/integration_r5.test.js` (9 tests). It covers the engine door, the lift-off recall, the auto-kit case, the heavy-weapons line, keeping the medikit, the clustered tip, the exit-win HUD and abort, the bleeding marker, the defence odds UI, the CSS clamps, the Ufopédia groups and the Como Jogar line.\n- **New browser QA** `qa/integration_r5.mjs`: 38/38. It checks:\n  - the alien-base exit through to the victory debrief (desktop and iPad);\n  - the bleeding marker, and the memorial cause;\n  - the defence bar at 1440×900 and 1024×576;\n  - that Ufopédia headings never overlap while scrolling;\n  - the equip footer and the left-at-base note at 1024×560;\n  - the Como Jogar line.\n- **Old checks updated to the new rules:**\n  - `qa/integration_r4.mjs`: the objective win now aborts after the control centre is destroyed; the surrender wording changed.\n  - `qa/integration_r3.mjs`: the footer hint is now 2 lines instead of 1.\n  - `shell_persona_r5` and `integration_r1` text and regex checks.\n- **Results:**\n  - integration_r3 30/30 and integration_r4 31/31 after the update.\n  - persona_r5_battle first failed #8 (backpack pushed off-screen at 1024×560 by the 2-line footer). I fixed it by keeping the hint beside the button, and the rerun passed with 0 failures.\n  - Green on the first run: persona_r5_shell 71/71, persona_r5_screens 33/33, persona_r4_battle, persona_r4_shell 72/72, persona_r4_screens 108/108, persona_r4_late 34/34, persona_r3_battle, persona_r3_shell 113/113, persona_r3_screens 54/54, persona_r3_casual 64/64, battle_play, inventory_check, screens_check 49/49, base_ui_check 90/90, campaign_flow_check 127/127, geo_check 37/37, dogfight_check, ufopaedia_check 103/103, ux_regress.\n  - `full_campaign.mjs` passed.\n- **Screenshots I looked at:** the exit-win hint and confirmation (desktop and iPad), the defence bar, the Ufopédia list, the equip screen at 1024×560, the memorial and the bleeding row.",
+      "screenshots": [
+        "/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/ui4/integration_r5/A-exit-hint-desk.png",
+        "/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/ui4/integration_r5/A-exit-confirm-padL.png",
+        "/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/ui4/integration_r5/A-exit-debrief-desk.png",
+        "/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/ui4/integration_r5/B-bleed-zoom.png",
+        "/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/ui4/integration_r5/C-memorial-zoom.png",
+        "/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/ui4/integration_r5/D-defence-desk.png",
+        "/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/ui4/integration_r5/D-defence-zoom.png",
+        "/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/ui4/integration_r5/E-ufopaedia-zoom.png",
+        "/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/ui4/integration_r5/F-equip-low.png",
+        "/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/ui4/integration_r5/G-howto.png",
+        "/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/ui4/persona_r5/14_equip_1024x560.png"
+      ],
+      "deviations": [
+        "Heavy weapons left at base («cp.br.leftHeavy»): the proposed «E para levar» button was wrong. The campaign briefing happens when the craft has landed at the site, and away from the hangar `Campaign.equipPool` does not offer base stores. The line is now informational: it lists the heavy weapons left behind and says to prepare the soldiers at the base next time (Naves › Equipar). It only appears when some soldier on the mission carries only a pistol or no gun, so it does not show on every first mission.",
+        "Base defence bar: the sim's estimate is a worst case (an intact Battleship of the strongest race of the month). Shown raw, it reads «72 % risk» at month 1 on Veterano before any attack is possible. The bar now says whether a retaliation actually targets the base. Without one, the tone drops from bad to warn and a note explains it is only an estimate.",
+        "Exit-win hint: instead of only a 3.4 s toast, it also opens the turn panel once (unless a report is already open), stays in the log (N) with «Mostrar» pointing at the craft, and turns the Abort button green with a pulse that respects reduce-motion. The abort tooltip changes too.",
+        "Equip footer: the integration patch put the 2-line hint in the ≤700 px rule. The footer rule actually lives at ≤640 px, and wrapping the hint pushed «Concluído» onto its own row, which hid the backpack (persona_r5_battle #8). The hint now uses `flex: 1 1 0` and the footer `nowrap`, so it wraps to 2 lines beside the button.",
+        "Left-at-base note: `max-height` alone still let a third line show in the bottom padding. The bottom space is now a transparent border, because overflow clips at the padding edge.",
+        "Clustered tip: the patch would overwrite tip2 and lose a tip. Existing tips now shift down to tip2 and tip3, and outnumbered and melee keep first place.",
+        "Como Jogar: the old line said «⌥ Option» on every platform. The base line now says Alt, and a `.mac` variant keeps ⌥."
+      ],
+      "open_issues": [
+        "Optional, not done: a debrief tip chosen by the dominant cause of death (e.g. alien grenade → «afaste os soldados do círculo vermelho»). The memorial now names each soldier's cause.",
+        "AUTO-EQUIPAR in the base (`CampaignUI.autoKit` without `opts.all`) skips soldiers who already carry a pistol, so it does not swap a pistol for a stored Rocket Launcher. The new heavy-weapons briefing line therefore tells the player to equip at the base by hand. A later round could offer the swap, like `gunUpgrades`.",
+        "Veterano is at 54 %, right at the bottom of the 55–67 % target. The losses are Cydonia battles (7/24) and timeouts (4/24), where the bot never gathers the armour it waits for. They are not caused by this round's rules.",
+        "Three `python3 -m http.server` processes from earlier sessions are still running (ports 47109, 50111 and 55399, started 07:01, 10:13 and 10:59). They are not mine and I left them alone."
+      ]
+    }
+  },
+  "workflowProgress": [
+    {
+      "type": "workflow_phase",
+      "index": 1,
+      "title": "Integração"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 1,
+      "label": "integrador-r5",
+      "phaseIndex": 1,
+      "phaseTitle": "Integração",
+      "agentId": "aede33672f9d01abc",
+      "model": "claude-opus-5-5",
+      "state": "done",
+      "startedAt": 1793369267779,
+      "queuedAt": 1793369267748,
+      "attempt": 1,
+      "lastToolName": "StructuredOutput",
+      "lastToolSummary": "**Simulation** - **Walk into a door with someone behind it*…",
+      "promptPreview": "You are a senior engineer on \"OVNI: Inimigo Desconhecido\" (repo /home/user/HelloWorld/ovni-1999), a faithful browser reverse-engineering of UFO: Enemy Unknown (1994) — vanilla JS classic-script IIFEs on global OV, Canvas 2D + DOM overlay, zero deps, no build, pt-PT European UI, Mac-first (trackpad + keyboard; also mouse and iPad touch). User brief: «capricha na jogabilidade» — gameplay feel and po…",
+      "promptFramed": true,
+      "lastProgressAt": 1793373044347,
+      "tokens": 397201,
+      "toolCalls": 194,
+      "durationMs": 3776568,
+      "resultPreview": "{\"files_written\":[\"/home/user/HelloWorld/ovni-1999/js/sim/battle/actions.js\",\"/home/user/HelloWorld/ovni-1999/js/sim/geo/missions.js\",\"/home/user/HelloWorld/ovni-1999/js/ui/battle_ui.js\",\"/home/user/HelloWorld/ovni-1999/js/ui/inventory_ui.js\",\"/home/user/HelloWorld/ovni-1999/js/ui/campaign_ui.js\",\"/home/user/HelloWorld/ovni-1999/js/ui/screens.js\",\"/home/user/HelloWorld/ovni-1999/js/ui/base_ui.js\",…"
+    }
+  ],
+  "totalTokens": 397201,
+  "totalToolCalls": 194
+}

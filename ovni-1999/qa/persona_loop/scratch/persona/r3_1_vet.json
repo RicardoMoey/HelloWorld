@@ -1,0 +1,74 @@
+{
+ "persona": "Rui",
+ "rating": 7,
+ "wouldContinue": true,
+ "summary": "Joguei cerca de 62 minutos reais. Primeiro uma Batalha Rápida de Base Alienígena (Veterano, mês 3), em que destruí a base. Depois um Raptor de noite em Super-humano, mês 4: abandonei-o no turno 4, com 5 mortos. Fiz um Batedor Grande de dia (Veterano, mês 1) para testar portas e captura e saí a meio, depois de capturar o Engenheiro. Por fim, a primeira missão de uma campanha em Veterano: um Batedor Médio aterrado de noite em Espanha, ganha com 5 mortos. Quase tudo o que reportei nas rondas anteriores está corrigido. A reserva para ajoelhar já funciona a partir de joelhos: o soldado para com «Tiro rápido + ajoelhar» e volta a ajoelhar. Com ⌥ sobre a porta do OVNI aparece «Abrir a porta sem entrar · 6 UT», e a porta abre por 6 UT sem o soldado entrar; sem estar ao lado já não promete «0 UT». A Base Alienígena é «Penumbra» e já não traz a nota noturna. O «Efetivo estimado» do mês 0 bate certo (3–4, com 4 no terreno). O kit médico já não transborda. O ⌫ funciona com o rato. Os sinalizadores vão no cinto e a Batalha Rápida tem ecrã Equipar com bastões atordoadores e granadas de fumo. Capturei um Flutuante Engenheiro com o bastão («Golpe ≈ 100 %»), como em 1994. O Lançador Blaster seguiu a rota guiada. O fogo de reação, o pânico psiónico do Comandante e o fogo amigo sobre um inconsciente soam ao original. O painel «Durante o turno alienígena» com «Atacante» é uma melhoria clara. Continua a irritar-me o planeamento do equipamento. O carregador «NA ARMA» ocupa uma casa do cinto e o ecrã recusa uma granada de fumo («Não cabe aí») que em combate caberia. Na Batalha Rápida do mês 4, metade da equipa começa com excesso de peso e menos UT. Os destruidores de imersão são pequenos: dois «Richard Moore» na mesma equipa, uma base alienígena sem artefactos e as dicas «F1» num Mac. Continuaria, sobretudo pela campanha em Super-humano.",
+ "findings": [
+  {
+   "file": "ovni-1999/js/ui/inventory_ui.js",
+   "area": "ui",
+   "severity": "major",
+   "claim": "Regressão (correção da ronda 2): o ecrã «Equipar» mostra o carregador que vai dentro da arma como uma casa «NA ARMA» no CINTO e conta-o na lotação. O cinto aparece cheio (4/4) e recusa outra granada com «Não cabe aí». Em combate esse carregador está na arma e o cinto fica 3/4. Não se consegue planear o cinto clássico: arma carregada, 2 carregadores, granada e fumo.",
+   "evidence": "Batalha Rápida, Base Alienígena, mês 3: Richard Jackson tem no cinto «NA ARMA», «28», granada e «28», 4/4. Ao largar uma Granada de Fumo no cinto aparece «Não cabe aí» (/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r3/veterano/shots/008_smoke_belt.png). Em combate o inventário do mesmo soldado é «CINTO 3/4», com uma casa vazia, e o estado diz items.belt=[10,11,12] (011_inv_richard.png). Na campanha acontece o mesmo: Kagiso fica com o cinto 4/4, «NA ARMA», 20, granada e sinalizador (101_cequip.png). O Auto-equipar da Leonor também dá 4/4, com «NA ARMA» a ocupar uma casa.",
+   "fix": "Mostrar o carregador «Na arma» como insígnia na mão (o «28/28» já lá está), e não numa casa do cinto. Excluí-lo da contagem e da validação de espaço do cinto (eqCommit/fits), simulando o autoLoad como o combate faz. O cinto do Equipar fica igual ao do inventário em combate.",
+   "verdict": "CONFIRMED"
+  },
+  {
+   "file": "ovni-1999/js/ui/screens.js",
+   "area": "data",
+   "severity": "major",
+   "claim": "Ainda presente (ronda 2), noutra forma: na Batalha Rápida do mês 4, o equipamento inicial (Plasma Pesado, 2 carregadores, 2 sinalizadores e explosivo na mochila) ignora a Força. 5 dos 10 soldados começam com excesso de peso e menos UT, apesar de o botão «Auto-equipar» do mesmo ecrã já respeitar a Força.",
+   "evidence": "OVNI Aterrado, Raptor, Noite, Super-humano, mês 4. Estado inicial no ecrã Equipar: Carlos Ramos 37/34, Leonor Rodrigues 26/20, Jean Richard 26/23, John Smith 26/20 e Matteo Costa 26/20, todos a vermelho com «Excesso de peso: começa a missão com menos UT» (/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r3/veterano/shots/057_leonor.png, 058_carlos.png). No turno 1 tinham John 39 UT, Matteo 41 e Jean 44. «AUTO-EQUIPAR» na Leonor passa a 20/20, «Dentro da Força» (059_leonor_auto.png).",
+   "fix": "Em loadoutFor, aplicar a todos os soldados a mesma regra do Auto-equipar: depois de montar o kit, retirar por ordem os extras (explosivo, 2.º sinalizador, carregador extra) até o peso ≤ Força e deixá-los no armazém da nave. Ou gerar o kit inicial chamando o próprio autoLoadout de cada soldado.",
+   "verdict": "CONFIRMED"
+  },
+  {
+   "file": "ovni-1999/js/ui/screens.js",
+   "area": "ui",
+   "severity": "minor",
+   "claim": "Ainda presente (ronda 2), em parte: na Batalha Rápida, depois de clicar em «ALEATÓRIA» (semente), Enter volta a sortear a semente em vez de começar, apesar de o rodapé dizer «Enter começa». O deslizador e os botões de opção já foram corrigidos.",
+   "evidence": "Clique em ALEATÓRIA e depois Enter: activeElement=<button class=\"btn small ghost\">Aleatória</button>, a semente passa de 10 para 57550 (a raça também mudou de Flutuantes para Homens-Serpente) e a cena continua «quickbattle» (/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r3/veterano/shots/055_enter_on_random.png). Clicar em «Noite» e depois Enter já abre o briefing.",
+   "fix": "Em keys() da Batalha Rápida, tratar Enter também quando o foco está no botão Aleatória (ou em qualquer botão que não seja VOLTAR) como «começar», ou tirar o foco desse botão (blur) depois do clique.",
+   "verdict": "CONFIRMED"
+  },
+  {
+   "file": "ovni-1999/js/sim/geo/soldiers.js",
+   "area": "data",
+   "severity": "minor",
+   "claim": "O recrutamento não evita nomes repetidos. A equipa inicial da campanha tem dois «Richard Moore» (EUA), e o relatório mostra ambos na progressão, um promovido e o outro não. No combate e nos avisos («Richard Moore reage!», «foi morto») não se sabe qual é qual.",
+   "evidence": "Campanha Veterano, 3 jan 1999: o briefing mostra dois cartões «REC. Richard Moore · EUA», com UT 53/SAÚ 29 e UT 57/SAÚ 35 (/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r3/veterano/shots/100_cbrief.png). No relatório aparece «SOLD. Richard Moore · 1 abate PROMOVIDO» e «REC. Richard Moore Sem progressos» (111_cdebrief.png). generate() chama Data.soldierName sem verificar duplicados, e o grupo EUA tem só 12×15 nomes masculinos.",
+   "fix": "Em generate(), voltar a sortear o nome (até N tentativas) enquanto coincidir com o de um soldado vivo em G.soldiers. Em alternativa, acrescentar uma inicial ou um número («Richard Moore II»).",
+   "verdict": "CONFIRMED"
+  },
+  {
+   "file": "ovni-1999/js/sim/battle/battle.js",
+   "area": "data",
+   "severity": "minor",
+   "claim": "Destruir uma base alienígena não dá nenhum artefacto (Cirurgia, Sala de Exames, Comida, Entretenimento, Reprodução), apesar de os blocos ALIENBASE_LAB e COMMAND terem dispositivos alienígenas («mesas de cirurgia»). No original, as bases eram a fonte clássica desses componentes. A recuperação de artefactos só existe para OVNIs (ufos.js artefacts).",
+   "evidence": "Batalha Rápida, Base Alienígena, Veterano, mês 3, vitória: o material recuperado é só Granada Alienígena, Destroços de Ciberdisco, Pistolas e Espingardas de Plasma, carregadores e cadáveres (/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r3/veterano/shots/052_end.png). blocks_alien.js tem 'u' (dispositivo) em ALIENBASE_LAB/COMMAND. A recolha em battle.js (~l.816) só conta componentes de «OVNI tomado».",
+   "fix": "Dar ao dep_alien_base uma tabela de artefactos (por exemplo alien_food, alien_surgery, examination_room, alien_entertainment, alien_reproduction, um ou dois de cada) e recuperar os dispositivos 'u' intactos da base como faz o OVNI, com os pontos de artefacto não investigado.",
+   "verdict": "PLAUSIBLE"
+  },
+  {
+   "file": "ovni-1999/js/i18n/pt-PT.hud.js",
+   "area": "ui",
+   "severity": "minor",
+   "claim": "Os avisos de reserva no combate dizem «F1 = sem reserva». Num Mac (o alvo principal), F1 baixa o brilho, a não ser que se use fn. O atalho Mac documentado no «Como Jogar» é ⇧1, mas os avisos que aparecem a toda a hora nunca o referem.",
+   "evidence": "Toast «Parou para guardar as UT reservadas — para ir mais longe, mude a reserva (F1 = sem reserva)» depois de cada movimento cortado pela reserva (/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r3/veterano/shots/012_kneel_reserve.png). As chaves hud.stop.reserved, hud.path.reserve.fix e hud.path.reserve.deny (pt-PT.hud.js:140–144) dizem só F1. scr.howto.key.14 dá «⇧1 … ⇧4 (F1–F4)».",
+   "fix": "Mudar os três textos para «⇧1 = sem reserva» (ou «⇧1 / F1»), na mesma ordem de prioridade do «Como Jogar».",
+   "verdict": "CONFIRMED"
+  }
+ ],
+ "delights": [
+  "A reserva para ajoelhar funciona a partir de joelhos: «Custa 46 UT · ficam 9 — o soldado para antes, para guardar 21 UT (Tiro rápido + ajoelhar)» e depois volta a ajoelhar. O ciclo clássico funciona.",
+  "Porta do OVNI com ⌥: «Abrir a porta sem entrar · 6 UT», abre por 6 UT e o soldado fica cá fora. Abrir e recuar finalmente funciona.",
+  "A captura com o Bastão Atordoador: «Golpe ≈ 100 % · 18 UT», e o Flutuante Engenheiro fica atordoado (stun 79/35) ao primeiro golpe, como em 1994.",
+  "A bomba do Lançador Blaster com «Bomba guiada · rota 17 casas» matou um Homem-Serpente atrás de cobertura.",
+  "O painel «Durante o turno alienígena» mostra quem matou quem, incluindo fogo amigo («tiro de Chukwuemeka Chukwu»), com o botão «Atacante».",
+  "Os sinalizadores no cinto iluminam bem o trigo de noite. O «Esperar pelo dia» na chegada da nave é uma boa adição.",
+  "O Comandante Sectoide pôs um recruta em pânico com um ataque psiónico, e o fogo de reação de um soldado ajoelhado acabou com ele. Soube ao original.",
+  "O painel do kit médico por partes do corpo, com cargas e UT, e o motivo «Não há feridas nessa parte do corpo» por baixo do título.",
+  "O fogo de reação parece autêntico: no turno 1 da base, um soldado reagiu e matou o Sectoide Médico que o tinha alvejado.",
+  "A Batalha Rápida agora tem ecrã Equipar com bastões atordoadores, granadas de fumo e o Lançador Pequeno com bombas atordoantes."
+ ]
+}

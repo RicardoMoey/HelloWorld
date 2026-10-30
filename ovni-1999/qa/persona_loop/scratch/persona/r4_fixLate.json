@@ -1,0 +1,110 @@
+[
+ {
+  "file": "ovni-1999/js/ui/battle_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "Com a reserva «Tiro rápido» ligada, um soldado com o Lançador Blaster (só tem tiro apontado) vê «o soldado para antes, para guardar 38 UT (Tiro rápido + ajoelhar)». O motor (OV.Act.reserveTU) passa corretamente para o tiro apontado: 34 + 4 = 38. O rótulo é que não muda e diz que se reserva um tiro que a arma não tem.",
+  "evidence": "Batalha Rápida: Nave de Abastecimento, Dia, Super-humano, mês 4. Rui Almeida tem o Lançador Blaster, cujo menu é só «Tiro apontado · 34 UT». Com ⇧2 e J ligados, o caminho até (24,34) mostra «Custa 20 UT · ficam 32 — o soldado para antes, para guardar 38 UT (Tiro rápido + ajoelhar)» (/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/veterano/shots/113_reserve_label_launcher.png). Na primeira batalha, a Tatiana (também com o Blaster) recebeu «para guardar 41 UT (Tiro rápido + ajoelhar)». walkReserve() escreve T('mode.' + S.B.reserve) e não o modo efetivo que reserveTU usa (auto→snap→aimed).",
+  "fix": "OV.Act.reserveTU (ou uma função irmã) deve devolver também o modo efetivo ({tu, mode}). walkReserve e os avisos de reserva passam a usar T('mode.' + mode), por exemplo «Tiro apontado + ajoelhar (a arma não tem tiro rápido)».",
+  "persona": "Rui (testou o instantâneo be0a0a2)"
+ },
+ {
+  "file": "ovni-1999/js/ui/battle_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "Ao lançar uma granada para dentro de um OVNI pela porta aberta, as casas sem arco possível mostram «O alvo está debaixo de um teto». Isto leva a crer que não se pode lançar para sítios cobertos. Na mesma divisão, casas em linha com a porta aceitam o lançamento: OV.Act.planArc dá arco para (4,5) e (3,5), que também têm teto. O texto vem só de underRoof(p) quando planArc falha e não diz o verdadeiro motivo.",
+  "evidence": "Campanha Veterano, Batedor Médio, turno 6. A Natalia está em (9,5), com as duas portas do OVNI abertas. G e o cursor em (3,4), onde estava o Navegador, dão «O alvo está debaixo de um teto» (/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/veterano/shots/063_grenade_aim.png). Com planArc a partir da mesma posição: (3,5) tem arco (curva 0), (4,5) tem arco (curva 1) e (3,4) e (4,4) não têm. As quatro casas têm teto no nível 1. Ao apontar para (3,5) já aparece o custo normal, «Precisa de 47 UT (tem 38)».",
+  "fix": "Quando planArc falha e o alvo tem teto, mostrar «Sem trajetória até esta casa (paredes ou teto no caminho) — tente uma casa em linha com a porta». Reservar «Há um teto por cima» para quando é o próprio lançador que está debaixo de um teto. Ainda melhor: ao lançar, realçar as casas com arco válido.",
+  "persona": "Rui (testou o instantâneo be0a0a2)"
+ },
+ {
+  "file": "ovni-1999/js/ui/campaign_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "No Equipar do briefing, longe da base, o aviso «Ficaram em Base…» mostra no máximo 4 entradas, com as armas primeiro, e não indica que há mais. Os 2 Bastões Atordoadores e as 10 Granadas de Fumo comprados para capturar alienígenas ficaram na base sem nenhuma menção. Só se descobre no terreno que não há bastões a bordo.",
+  "evidence": "Campanha Veterano, 2 jan. Comprei 2 Bastões Atordoadores, 5 Granadas de Fumo e 10 Sinalizadores no Mercado e mandei a Skyranger para o OVNI-2. No briefing, Equipar mostra «Ficaram em Base Lusitânia: 1 × Canhão Automático, 1 × Lança-Foguetes, 6 × Canhão Automático: munição perfurante, 4 × Foguete Pequeno», e o armazém a bordo só tem munição do Canhão Pesado (/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/veterano/shots/051_cequip.png). Nesse momento base.stores tinha stun_rod 2 e smoke_grenade 10, e nenhum ia a bordo. leftAtBase() faz .slice(0, 4) sem contar o resto.",
+  "fix": "Acrescentar «e mais N tipos (…)» quando há mais de 4. Ou dar prioridade aos objetos comprados desde a última vez que a nave foi equipada, e ao material de captura (melee, granadas de fumo), antes das armas pesadas. Opcional: um aviso no Mercado, «Compras novas ficam no armazém: equipe a nave (Base › Naves › Equipar) antes de partir».",
+  "persona": "Rui (testou o instantâneo be0a0a2)"
+ },
+ {
+  "file": "ovni-1999/js/ui/geo_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "O pop-up «EQUIPA NO LOCAL» à noite diz duas vezes a mesma coisa. Primeiro «É noite: os alienígenas veem no escuro e os soldados não. Esperar pelo dia (cerca de 5 h)?» e logo a seguir «Lá é noite: os alienígenas veem no escuro e os soldados só veem bem perto das luzes. Pode esperar pelo dia (cerca de 5 h), se os destroços durarem até lá.»",
+  "evidence": "Campanha Veterano, 9 fev 1999 01:06, Skyranger-1 no OVNI-14 despenhado: os dois parágrafos aparecem seguidos (/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/veterano/shots/098_arr_night.png). No craftArrived, quando waitDef é verdadeiro, lines.unshift(geo.ev.arrived.night.ask) junta-se a geo.ev.arrived.night(.crash), e os dois textos repetem a explicação e as horas.",
+  "fix": "Com waitDef, mostrar só a pergunta curta e uma linha de porquê sem repetir as horas, por exemplo «Os alienígenas veem 20 casas no escuro; os soldados 9.». Ou usar uma variante de arrived.night sem «Pode esperar pelo dia (cerca de N h)» quando a pergunta já está em cima.",
+  "persona": "Rui (testou o instantâneo be0a0a2)"
+ },
+ {
+  "file": "ovni-1999/js/ui/screens.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "A dica do relatório não distingue mortes corpo a corpo e zombificação. Num Local de Terror perdido para Crisálidas (todos ajoelhados, mortos por «ataque de Crisálida» e transformados em zombies), a dica é «Avance de abrigo em abrigo e ajoelhe-se (K)… os alienígenas disparam quando se mexe à vista deles». É o conselho errado: contra Crisálidas o que importa é manter distância e ter fogo de reação, não ajoelhar.",
+  "evidence": "Batalha Rápida: Local de Terror, Noite, Veterano, mês 3, Homens-Serpente com 3 Crisálidas. Derrota com 10 mortos, a maioria com «foi morto em combate — ataque de Crisálida» e «transformou-se num zombie!» no painel do turno alienígena (109_turn.png). O relatório mostra a dica genérica scr.db.tip.enemy (/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/veterano/shots/112_terror_debrief.png). Em scr.db.tip.* não há nenhuma chave para corpo a corpo ou terror.",
+  "fix": "Em lossCauses, contar as mortes corpo a corpo (pela arma ou pelo tipo do atacante) e acrescentar scr.db.tip.melee: «Crisálidas e outros atacantes corpo a corpo: não os deixe chegar perto — mantenha UT para fogo de reação, cubra as esquinas e mate os zombies à distância (de cada um nasce uma Crisálida).»",
+  "persona": "Rui (testou o instantâneo be0a0a2)"
+ },
+ {
+  "file": "ovni-1999/js/ui/battle_ui.js",
+  "area": "ui",
+  "severity": "major",
+  "claim": "O conselho «os alienígenas estão dentro do OVNI» só aparece em missões noturnas. Num OVNI aterrado, de dia, a Sofia passou 10 turnos colada ao casco de um Batedor Grande sem nunca ver um alienígena e sem qualquer pista de que tinha de procurar a porta. Quando finalmente entrou, a equipa inteira morreu e perdeu o Skyranger.",
+  "evidence": "Campanha Recruta, missão 4: OVNI Aterrado, Batedor Grande, Quinta, HORA Dia, 15 jan 08:13. Do T1 ao T10 nenhum alienígena à vista (va=[]). Os 4 alienígenas vivos estavam todos dentro do retângulo do OVNI, em (31,31), (31,29), (35,30) e (35,31), com o B.ufo em x20–40/y20–40. No T10, OV.BattleUI.debug.state() dava hint='', ufoHinted=false e contactTurn=1. Captura shots/069-m4_end.png: 6 soldados encostados à parede do casco, com a porta fora do ecrã. Resultado: derrota com 8 mortos, nave perdida e −352 pontos (shots/075-m4_result.png, shots/073-noreport_T16.png). Causa no código: ufoHintDue(), linha ~1293, tem `if ((k !== 'crash' && k !== 'landed') || !B.mission.night) return false;`.",
+  "fix": "Tirar a condição `!B.mission.night` de ufoHintDue, ou de dia usar um limiar próprio (por exemplo 4 turnos sem contacto). Mudar o texto para algo acionável, como «Os alienígenas estão dentro do OVNI: procure a porta (a abertura no casco) e entre com 2–3 soldados de cada vez». Juntar um «Mostrar» que centre na porta (B.breaches ou o tile de porta do bloco) em vez de no centro do OVNI.",
+  "persona": "Sofia (testou o instantâneo be0a0a2)"
+ },
+ {
+  "file": "ovni-1999/js/ui/geo_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "Quando a equipa chega à noite a um ataque terrorista, o pop-up «EQUIPA NO LOCAL» é verde e não avisa que é noite. Não há botão «Esperar pelo dia», embora o ataque ainda dure horas depois do amanhecer. Nos OVNIs o mesmo pop-up avisa e propõe esperar. O pop-up «ATAQUE TERRORISTA!» também não diz «lá será noite», ao contrário do de OVNI abatido.",
+  "evidence": "13 jan 07:58, Nova Iorque: OV.GMath.dayPhase dava 'night', o dia chegava dentro de 3 h e o local durava 11,5 h (leftS=41400). Pop-up sem aviso nenhum, só com INICIAR MISSÃO, ESPERAR e REGRESSAR (shots/050-terror_arrived_night.png). O briefing a seguir diz «HORA Noite… Use sinalizadores» (shots/051-briefing_terror.png). O pop-up de terror diz só «chega em 3 h 55 min: há tempo para responder» (shots/049-pop_terrorSite.png). Causa: nightAt(), linha ~373, começa com `if (!ref || ref.kind !== 'ufo') return null;`, e teamEtaLine do terror não usa a fase do dia.",
+  "fix": "Em nightAt, aceitar também ref.kind === 'site' e calcular h até 'day'. Oferecer «Esperar pelo dia (≈3 h; o ataque dura ≈11 h)» só quando h < leftS/3600 com margem; caso contrário, dizer «não dá para esperar: o ataque acaba antes de amanhecer». No pop-up de terror, juntar o mesmo «lá será noite: há N sinalizadores a bordo» que já aparece no OVNI abatido.",
+  "persona": "Sofia (testou o instantâneo be0a0a2)"
+ },
+ {
+  "file": "ovni-1999/js/ui/battle_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "Ao fabricar armas novas, nada leva a Sofia a usá-las. Os recrutas novos recebem as Espingardas Laser automaticamente, mas os veteranos continuam com a Espingarda antiga e uma Sargento só com uma Pistola, enquanto 10 Pistolas Laser ficam no armazém. O pop-up «FABRICO CONCLUÍDO» só tem IR PARA A BASE e OK.",
+  "evidence": "Pop-up de 17 jan: «Encomenda terminada: 5 × Espingarda Laser», sem ação de equipar. No briefing de 18 jan (shots/099-briefing6.png), os 5 recrutas novos têm espingardas laser, e Duarte Ferreira (5 missões) e Gemma Jones (Sargento) têm a Espingarda normal. Aisha Ibrahim (Sargento) só tem Pistola. O armazém mostra «Pistola Laser ×10» por usar (shots/066-armazem.png). Nada no ecrã sugere o «Auto-equipar».",
+  "fix": "No pop-up de fabrico concluído de uma arma, e no regresso da nave à base quando há armas melhores no armazém, oferecer «Equipar a equipa com as novas armas» (o auto-equipar da nave, que prefere a melhor arma que cabe na Força). Também se pode pôr uma linha no briefing, por exemplo «Há 10 Pistolas Laser no armazém: troque em Equipar».",
+  "persona": "Sofia (testou o instantâneo be0a0a2)"
+ },
+ {
+  "file": "ovni-1999/js/i18n/pt-PT.geoui.js",
+  "area": "data",
+  "severity": "minor",
+  "claim": "O pop-up de chegada à noite repete a mesma explicação em dois parágrafos seguidos. A Sofia lê duas vezes que os alienígenas veem no escuro e que pode esperar pelo dia.",
+  "evidence": "6 jan 23:53 (OVNI despenhado): «É noite: os alienígenas veem no escuro e os soldados não. Esperar pelo dia (cerca de 5 h)?», seguido de «Lá é noite: os alienígenas veem no escuro e os soldados só veem bem perto das luzes. Pode esperar pelo dia (cerca de 5 h), se os destroços durarem até lá.» (shots/042-pop_craftArrived.png). O mesmo com o OVNI aterrado a 14 jan (shots/067-landed_night.png). Origem: no craftArrived, geo_ui.js faz unshift de geo.ev.arrived.night.ask (l.509) por cima de geo.ev.arrived.night/.crash/.safe (l.260–262).",
+  "fix": "Quando waitDef está ativo, usar só a pergunta curta mais a parte que é nova: «É noite: os alienígenas veem no escuro. Esperar pelo dia (cerca de 5 h)? Os destroços duram até lá.» Em alternativa, trocar os textos longos por variantes sem a primeira frase quando a pergunta já foi mostrada.",
+  "persona": "Sofia (testou o instantâneo be0a0a2)"
+ },
+ {
+  "file": "ovni-1999/js/ui/geo_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "O armazém sobrelotado só se anuncia no relatório da missão. No Geoscape o «!» de Bases só fala de engenheiros parados, e não há nada na lista «Próximos passos». Mas sobrelotado bloqueia todas as compras, incluindo a munição do intercetor. Além disso, no relatório o número aparece com ponto (57.9/50), enquanto o resto do jogo usa vírgula (57,9/50).",
+  "evidence": "Relatório da missão 4 (repetida): «Armazém sobrelotado (57.9/50): venda material ou construa armazéns.» No Mercado e na barra da base aparece «57,9/50». A dica do botão Bases mostra só «10 engenheiros sem trabalho» (shots/081-bases_hover.png). No Mercado, todas as linhas dizem «O armazém não tem espaço suficiente», com a Munição de Canhão a 0 (shots/082-mercado.png). O armazém começou a 41,7/50 e encheu em 4 missões. Causas: idleStaff()/badge em geo_ui.js (~l.467) não considera capacities().stores; campaign_ui.js:1527 passa model.storage.used em bruto para T('cp.db.storageOver').",
+  "fix": "Incluir o armazém sobrelotado no «!» de Bases e na dica (por exemplo «Armazém 57,9/50: não pode comprar munição»), ou mostrar uma linha nos Próximos passos com o botão «Vender material». Em campaign_ui.js, formatar used e cap com o formatador de decimais pt-PT usado na base (vírgula, 1 casa).",
+  "persona": "Sofia (testou o instantâneo be0a0a2)"
+ },
+ {
+  "file": "ovni-1999/js/ui/base_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "Na Base → Instalações, depois de construir, a lista «CONSTRUIR INSTALAÇÃO» desce cerca de 90 px por cada obra, porque aparece a secção «EM CONSTRUÇÃO». Ao clicar onde estava a «Contenção Alienígena», a Sofia apanhou outra linha e acabou por construir um segundo Armazém. O diálogo de confirmação nomeia a instalação, mas a Sofia vinha a contar com a linha que tinha visto.",
+  "evidence": "Antes da 1.ª obra, a Contenção estava em y≈576 CSS (shots/087-build_hover.png). Depois de «Obras iniciadas: Armazém», a lista desceu (a Contenção passou para y≈734), e um clique em (1000,597) deixou ativa a escolha Armazém. Daí resultou um 2.º Armazém por $150 000 (shots/089-built2.png: «EM CONSTRUÇÃO: Armazém, Armazém»).",
+  "fix": "Pôr a secção «EM CONSTRUÇÃO» por baixo da lista de construção (ou num cartão de altura fixa por cima, já reservado), para que as linhas não mudem de sítio depois de uma obra. Em alternativa, depois de confirmar, manter o scroll ancorado na linha clicada.",
+  "persona": "Sofia (testou o instantâneo be0a0a2)"
+ },
+ {
+  "file": "ovni-1999/js/i18n/pt-PT.base.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "A Sofia não percebe dois termos, que não têm dica: o selo «DESCONHECIDO» num projeto de investigação (desconhecido o quê?) e «60 h-eng» na Nova produção.",
+  "evidence": "Investigação → Armas Laser mostra o selo «DESCONHECIDO» sem title nem aria-label (verificado: title='' e aria=null; shots/013-research_started.png). A Nova produção mostra «Pistola Laser 60 h-eng · $14 000 · espaço 2» sem dica (shots/038-nova_producao.png). Só depois de iniciar o fabrico aparece «Próxima unidade dentro de 6 horas».",
+  "fix": "Mudar o selo para «Tempo: desconhecido» e pôr como title «Os cientistas ainda não sabem quanto tempo vai demorar; a estimativa aparece com o progresso». Escrever «60 horas de engenheiro (≈6 h com os seus 10 engenheiros)», ou pôr isso no title de «h-eng».",
+  "persona": "Sofia (testou o instantâneo be0a0a2)"
+ }
+]

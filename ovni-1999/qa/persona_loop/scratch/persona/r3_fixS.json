@@ -1,0 +1,49 @@
+[
+ {
+  "file": "ovni-1999/js/sim/geo/soldiers.js",
+  "area": "data",
+  "severity": "minor",
+  "claim": "O recrutamento não evita nomes repetidos. A equipa inicial da campanha tem dois «Richard Moore» (EUA), e o relatório mostra ambos na progressão, um promovido e o outro não. No combate e nos avisos («Richard Moore reage!», «foi morto») não se sabe qual é qual.",
+  "evidence": "Campanha Veterano, 3 jan 1999: o briefing mostra dois cartões «REC. Richard Moore · EUA», com UT 53/SAÚ 29 e UT 57/SAÚ 35 (/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r3/veterano/shots/100_cbrief.png). No relatório aparece «SOLD. Richard Moore · 1 abate PROMOVIDO» e «REC. Richard Moore Sem progressos» (111_cdebrief.png). generate() chama Data.soldierName sem verificar duplicados, e o grupo EUA tem só 12×15 nomes masculinos.",
+  "fix": "Em generate(), voltar a sortear o nome (até N tentativas) enquanto coincidir com o de um soldado vivo em G.soldiers. Em alternativa, acrescentar uma inicial ou um número («Richard Moore II»).",
+  "verdict": "CONFIRMED",
+  "persona": "Rui"
+ },
+ {
+  "file": "ovni-1999/js/sim/battle/battle.js",
+  "area": "data",
+  "severity": "minor",
+  "claim": "Destruir uma base alienígena não dá nenhum artefacto (Cirurgia, Sala de Exames, Comida, Entretenimento, Reprodução), apesar de os blocos ALIENBASE_LAB e COMMAND terem dispositivos alienígenas («mesas de cirurgia»). No original, as bases eram a fonte clássica desses componentes. A recuperação de artefactos só existe para OVNIs (ufos.js artefacts).",
+  "evidence": "Batalha Rápida, Base Alienígena, Veterano, mês 3, vitória: o material recuperado é só Granada Alienígena, Destroços de Ciberdisco, Pistolas e Espingardas de Plasma, carregadores e cadáveres (/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r3/veterano/shots/052_end.png). blocks_alien.js tem 'u' (dispositivo) em ALIENBASE_LAB/COMMAND. A recolha em battle.js (~l.816) só conta componentes de «OVNI tomado».",
+  "fix": "Dar ao dep_alien_base uma tabela de artefactos (por exemplo alien_food, alien_surgery, examination_room, alien_entertainment, alien_reproduction, um ou dois de cada) e recuperar os dispositivos 'u' intactos da base como faz o OVNI, com os pontos de artefacto não investigado.",
+  "verdict": "PLAUSIBLE",
+  "persona": "Rui"
+ },
+ {
+  "file": "ovni-1999/js/sim/campaign.js",
+  "area": "sim",
+  "severity": "major",
+  "claim": "Quinta de abortar: depois de abortar num OVNI aterrado ou despenhado, o local fica no mapa e a batalha seguinte volta a ter a tripulação completa. Basta dar «Novo destino» ao Skyranger logo após o relatório. Cada visita rende abates, artefactos levados para a nave (pistolas de plasma a 84 k$), pontos de artefacto e experiência ou promoções, sem custo de viagem. Nos destroços (24–72 h) dá para repetir dezenas de vezes.",
+  "evidence": "No browser (Veterano, semente 1999), OVNI-3, Batedor Grande aterrado na Escócia a 5 jan:\n- 1.ª batalha: Chinedu abateu o sectoide 59. A Olga apanhou a Pistola de Plasma do chão (8 UT) e entrou na nave. Abortei no turno 10.\n- Relatório: «Alienígenas abatidos ×1 +10», «Pistola de Plasma ×1 +3», «Carregador ×1 +1», entregues no armazém e «PROMOVIDO A SARGENTO» (shots/049_abort_debrief.png).\n- No Geoscape o OVNI-3 continuava «landed» e o Skyranger estava «returning». Com «Novo destino» → OVNI-3 apareceu «185 mn · 15 min» (shots/051_redirect_dlg.png).\n- A 2.ª batalha às 21:59 (semente 2902813257) tinha 4 sectoides novos (soldado ×2, navegador, engenheiro) (shots/054_battle_revisit.png).\n\nHeadless (/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r3/minmaxer/farm.js), Batedor Médio despenhado ao lado da base, 4 visitas abortadas. Cada visita deu 25/26/35/30 pontos e 205 k$/252 k$/319 k$/186 k$ de material, e o OVNI ficou sempre no mapa.\n\nNo código, startMission (campaign.js ~l.640) gera a missão do zero sem memória das baixas, e Missions.onSiteCleared só remove o OVNI quando result === 'win'.",
+  "fix": "Guardar no próprio OVNI o que já se perdeu (ufo.casualties com os tipos e patentes abatidos ou capturados, e ufo.looted). Ao reentrar, o deployment deve gerar só os sobreviventes e não repor o material já recuperado. Em alternativa, mais simples: depois de um abort com abates, a nave tem de voltar à base (estado 'returning' que não se pode redirecionar para o mesmo local antes de reabastecer), ou o local passa a ter tripulação mínima. Juntar um teste em tools/tests: abortar após 1 abate e reentrar ⇒ tripulação = original − 1.",
+  "persona": "Inês, otimiz"
+ },
+ {
+  "file": "ovni-1999/js/data/tuning.js",
+  "area": "sim",
+  "severity": "major",
+  "claim": "Ainda presente (ronda 1), atenuado: os OVNIs aterrados à noite nos meses 0–1 continuam a ser um pico injusto. O OVNI fica poucas horas no chão, por isso «Esperar pelo dia» não serve, mas o aviso continua a sugeri-lo («cerca de 9 h»). A correção dos 24–72 h só ajudou os destroços.",
+  "evidence": "node tools/sim.js battle --month 0 --seeds 12, Veterano:\n- large_scout --landed 1 --night 1: 75 % de vitórias e 4,50 baixas.\n- large_scout --night 1 (despenhado): 83 % e 3,08 (era 75 % e 4,25 na ronda 1).\n- medium_scout --night 1: 92 % e 2,25.\n- Super-humano, large_scout noturno: 75 % e 4,17.\n- A meta de DESIGN é ≥ 95 % e ≤ 1 baixa.\n\nNo browser, o OVNI-3 (Batedor Grande) aterrou às 20:00 na Escócia com groundLeftS de 3,4 h. O pop-up de chegada dizia «Esperar pelo dia (cerca de 9 h) torna a missão bem mais fácil, mas o OVNI pode descolar entretanto» (shots/018_pop.png), e o briefing tinha a «Sugestão: Esperar pelo dia (W)» (shots/019_briefing.png). Perdi 1 soldado e outro ficou ferido mortalmente só a acampar ajoelhado na nave.",
+  "fix": "Nos meses 0–1, para OVNIs aterrados de noite: tirar uma patente à tripulação (crewRules.earlyMonths também para 'landed'), ou reduzir a visão noturna alienígena de 20 para cerca de 14 casas. Esconder a sugestão «Esperar pelo dia» quando ufo.groundLeftS for menor do que as horas até ao amanhecer, ou dizer «o OVNI descola antes do amanhecer».",
+  "persona": "Inês, otimiz"
+ },
+ {
+  "file": "ovni-1999/js/data/tuning.js",
+  "area": "data",
+  "severity": "minor",
+  "claim": "Os custos de contratação estão marcados «orig», mas um cientista custa 30 000 $ e um engenheiro 25 000 $, iguais ao salário. No original contratar custava o dobro do salário (cientista 60 000 $, engenheiro 50 000 $; soldado 40 000 $ com salário de 20 000 $, que aqui está igual ao original). Com a investigação ×0,25, crescer em cientistas fica a metade do preço.",
+  "evidence": "tuning.js:107–111: comentário «// ---- soldados (orig; quotas ours)» seguido de SCIENTIST_HIRE: 30000, SCIENTIST_SALARY: 30000, ENGINEER_HIRE: 25000, ENGINEER_SALARY: 25000. O separador Pessoal mostra «Contratação: $30 000 · Salário: $30 000/mês» (shots/007_personnel.png). Com 9,38 M$ no fim de janeiro, sem fazer nada de especial, 40 cientistas custam 1,2 M$.",
+  "fix": "Repor SCIENTIST_HIRE 60000 e ENGINEER_HIRE 50000, ou, se a redução for intencional para o ritmo de 2–4 h, marcar como «ours» e documentar em DESIGN §14 com as outras compressões.",
+  "persona": "Inês, otimiz"
+ }
+]

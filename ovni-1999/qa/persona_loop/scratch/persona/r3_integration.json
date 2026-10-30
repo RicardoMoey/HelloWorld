@@ -1,0 +1,82 @@
+[
+ {
+  "from": "screens fixer",
+  "issue": "Sim patch (owner of js/sim/battle/combat.js), so the debrief can label friendly reaction-fire deaths exactly: in killUnit, next to `u.deathTurn = B.turn | 0;`, add `u.deathSide = B.side || null;`. screens.js lossCauses already reads it (reaction = a friendly shot while B.side !== 'xcom')."
+ },
+ {
+  "from": "screens fixer",
+  "issue": "Battle UI (owner of js/ui/battle_ui.js), part of the colour-blind finding: when the path destination step is 'reserve' (○) and S.B.reserve is 'none' (the preview falls back to the quick-shot reserve), append «· sem UT para disparar» to the path label. Add a pt-PT.hud key such as hud.path.noShot = 'sem UT para disparar'. Optional, from the iPad finding: show the overweight TU penalty in the HUD (e.g. «UT 46/51» or a ⚖ icon) when a soldier started overweight. Quick Battle kits now start within Força, so this is less urgent."
+ },
+ {
+  "from": "screens fixer",
+  "issue": "qa/full_campaign.mjs fails outside my files: «derrota inesperada: council» and «batalha jogada e relatório da campanha». Per its log, after the first crash the night «Equipa no local» dialog (craftArrived) sent Skyranger-1 back to base, so no battle was ever played and the council ended the game. This matches fixer B's in-progress geo_ui change (night arrival / «Esperar pelo dia» by default); the bot's choice in that dialog, or that default, needs updating there."
+ },
+ {
+  "from": "screens fixer",
+  "issue": "File-name collision: tools/tests/shell_persona_r3.test.js now belongs to the shell/strategy fixer. My round 3 screens tests are in tools/tests/screens_persona_r3.test.js."
+ },
+ {
+  "from": "sim fixer",
+  "issue": "Not my files: qa/full_campaign.mjs fails with «batalha jogada» missing and then a council defeat. At the first night crash site the `craftArrived` handler (around line 543) checks the text for /Iniciar missão/; the popup now says «Iniciar a missão?», so the regex misses and the script presses «Regressar». The Skyranger flies home, no battle is ever played, and the council ends the run. Another agent's run at 05:33 (ui4/campaign/log.txt) fails the same way. Patch for the QA/UI owner: in `case 'craftArrived'` accept /Iniciar (a )?missão/, or press «Esperar pelo dia» and let the dawn re-prompt come, instead of falling back to popBtn('Regressar')."
+ },
+ {
+  "from": "sim fixer",
+  "issue": "Patch for the UI fixer (js/ui/campaign_ui.js), so the briefing estimate uses the real garrison on a revisited site. Line ~1115: replace `const range = D().deploymentRange(M.deploymentId, M.difficulty, M.month);` with `const range = OV.Battle.crewRange ? OV.Battle.crewRange(mission) : D().deploymentRange(M.deploymentId, M.difficulty, M.month);`. Line ~1024: replace `range = M.deploymentId ? D().deploymentRange(M.deploymentId, M.difficulty, M.month) : null;` with `range = M.deploymentId ? (OV.Battle.crewRange ? OV.Battle.crewRange(mission) : D().deploymentRange(M.deploymentId, M.difficulty, M.month)) : null;`."
+ },
+ {
+  "from": "sim fixer",
+  "issue": "Patch for the UI fixer (js/ui/geo_ui.js crewEstimate, ~line 392): before the deploymentRange call, add `if (tg.obj && tg.obj.garrison && Array.isArray(tg.obj.garrison.crew)) return { min: tg.obj.garrison.crew.length, max: tg.obj.garrison.crew.length };`."
+ },
+ {
+  "from": "sim fixer",
+  "issue": "Text for the UI fixer (pt-PT.geoui.js and geo_ui.js ~line 1995): in months 0–1, with a landed UFO (G.month < OV.TUNE.NIGHT_LANDING_MONTHS and obj.status === 'landed'), «Esperar pelo dia» is now safe, because the UFO stays until 1 h after daylight. A new key such as 'geo.ev.arrived.night.safe' could say «… Esperar pelo dia (cerca de {t}) torna a missão bem mais fácil — nestes primeiros meses o OVNI fica no chão até amanhecer.» instead of «mas o OVNI pode descolar entretanto». The waitIsDefault comment ('o tempo no chão … não se conhece') still holds after month 1."
+ },
+ {
+  "from": "sim fixer",
+  "issue": "docs/DATA_API.md is not mine: its list of soldier helpers should add `soldierNamesTaken` and the optional `taken` argument of `soldierName`, and dep_alien_base.artefacts."
+ },
+ {
+  "from": "sim fixer",
+  "issue": "Interim failures during my session, all from other fixers' in-progress files and all resolved by the final run: geoui_model (missing geo.* i18n keys), data_crossref (Brazilian forms in geo.ev.delivery.gearHint and cp.eq.leftAtBase), and shell_persona_r3. The line «chaves i18n em falta: nao.existe.x» printed by --i18n is an existing test probe of the missing-key mechanism, not a missing key."
+ },
+ {
+  "from": "battle fixer",
+  "issue": "SIM PATCH (owner of js/sim/battle/bunits.js) for #0: load hand weapons before filling the belt, so the clip inside the weapon takes no belt space. Tested on a full copy of the repo: node tools/test.js --strict passes 702/702 there, hash/determinism tests included. In fromSoldier, replace the block from `const lo = loadout || s.loadout || {…};` through `if (o.autoLoad !== false) autoLoad(B, u);` with:\n    const lo = loadout || s.loadout || { R: null, L: null, belt: [], pack: [] };\n    /* cada arma na mão parte carregada com o 1.º carregador compatível do cinto e depois da mochila (a escolha de\n       autoLoad), tirado antes das capacidades: o carregador dentro da arma não ocupa o cinto (ecrã «Equipar») */\n    const preload = { R: null, L: null };\n    const skip = { belt: new Set(), pack: new Set() };\n    if (o.autoLoad !== false) {\n      for (const hand of ['R', 'L']) {\n        const def = Data.items[lo[hand]];\n        if (!def || !def.ammo || !def.ammo.length) continue;\n        for (const sl of ['belt', 'pack']) {\n          const k = (lo[sl] || []).findIndex((t, j) => !skip[sl].has(j) && def.ammo.indexOf(t) >= 0);\n          if (k >= 0) { skip[sl].add(k); preload[hand] = lo[sl][k]; break; }\n        }\n      }\n    }\n    for (const slot of SLOTS) {\n      const list = slot === 'R' || slot === 'L' ? (lo[slot] ? [lo[slot]] : []) : lo[slot] || [];\n      list.forEach((type, j) => {\n        if (!Data.items[type] || (skip[slot] && skip[slot].has(j))) return;\n        const it = newItem(B, type, (slot === 'R' || slot === 'L') && preload[slot] ? { ammo: preload[slot] } : undefined);\n        // o ecrã «Equipar» garante as capacidades; um carregamento inválido vai para a mochila\n        if (!giveItem(B, u, it.id, slot) && !giveItem(B, u, it.id, 'pack')) giveItem(B, u, it.id, 'pack', true);\n      });\n    }\n    if (o.autoLoad !== false) autoLoad(B, u);\nOnce this lands, tools/tests/ui_persona_r3.test.js checks exact screen = combat parity on its own (PRELOAD probe)."
+ },
+ {
+  "from": "battle fixer",
+  "issue": "SAME SEMANTICS for the other loadout builders, which still call D().fitsSlot on the raw belt list and so count the clip inside the weapon. Replace the third argument lo[sl] / lo[slot] / lo.belt with OV.InventoryUI.model.visibleIn(lo, sl):\n- js/ui/campaign_ui.js:187 (`fits`) and :257 (loadAmmo).\n- js/ui/screens.js:796 and :834 (Quick Battle default kits).\nOtherwise they can refuse a 4th belt item that the Equip screen now accepts."
+ },
+ {
+  "from": "battle fixer",
+  "issue": "SCREENS PATCH (owner of js/ui/screens.js, options scene, ~line 1771) for #3. In the footer, before the `playing ? … quit …` button, add:\n  (OV.Scenes.stack.some((x) => x.id === 'battlescape') && OV.BattleUI && OV.BattleUI.scene) ? (() => { const b = el('button', { type: 'button', class: 'btn danger', text: T('hud.btn.abort'), 'aria-keyshortcuts': 'X', onclick: () => { close(); OV.BattleUI.abort(); } }); OV.Dom.tooltip(b, () => '<b>' + OV.U.esc(T('hud.btn.abort')) + '</b> <span class=\"key\">X</span><br><span class=\"muted\">' + OV.U.esc(T('hud.tip.abort')) + '</span>'); return b; })() : null,\nBoth keys used (hud.btn.abort, hud.tip.abort) already exist in pt-PT.hud.js."
+ },
+ {
+  "from": "battle fixer",
+  "issue": "CAMPAIGN CSS PATCH (owner of css/campaign.css) for #8/#9. The .cp-eq header and footer take about 300 px at 1024×560, and in portrait the panel is capped at 900 px, leaving about 300 px empty. Add:\n@media (max-height: 640px) { .cp-eq .scr-head { padding-bottom: 6px; } .cp-eq .scr-chips { margin-top: 4px; } .cp-eq > footer { padding-block: 8px; } .cp-eq > footer .scr-hint { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } }\n@media (orientation: portrait) and (max-width: 900px) { .cp-eq { height: 100%; } }\n(.cp-eq is also used by the Quick Battle «Equipar».)"
+ },
+ {
+  "from": "battle fixer",
+  "issue": "UFOPAEDIA CSS PATCH (owner of css/ufopaedia.css) for #9: in portrait the panel is capped at 880 px and leaves about 300 px empty. Add:\n@media (orientation: portrait) and (max-width: 900px) { .up-panel { height: 100%; } }"
+ },
+ {
+  "from": "battle fixer",
+  "issue": "In passing: tools/tests/sim_persona_r3.test.js and shell_persona_r3.test.js (other fixers' new files) failed transiently mid-run and passed later. The final run is 726/726 green."
+ },
+ {
+  "from": "shell fixer",
+  "issue": "Battle fixer, #10 part: the Battlescape message-log «MOSTRAR» buttons have no context. Patch for js/ui/battle_ui.js around line 1442: build the label as `const ctx = (the log entry's text, e.g. line.textContent);` and set `b.setAttribute('aria-label', T(rev ? 'hud.report.showRevealed.tip' : from >= 0 ? 'hud.report.showFrom.tip' : 'hud.report.show.tip') + ' — ' + ctx)`. Alternatively add 'hud.report.show.aria': 'Mostrar: {what}' to pt-PT.hud.js."
+ },
+ {
+  "from": "shell fixer",
+  "issue": "Battle fixer, #1 second part (not done here): after about 5 turns with no contact on a night landed/crashed UFO, show a hint like «Os alienígenas estão dentro do OVNI — procurem a porta». It needs a new hud key and a check in battle_ui's turn start."
+ },
+ {
+  "from": "shell fixer",
+  "issue": "Shared transient failure: during the run, tools/tests/ui_persona_r3.test.js (another fixer's in-progress inventory test) failed twice («cinto do Equipar», «cinto cheio + carregador»). It passed in my final runs: 726/0."
+ },
+ {
+  "from": "shell fixer",
+  "issue": "A python3 http.server on port 54455 (PID 1169) was already running. It is not from my QA scripts (they use random ports and kill their server), so I left it."
+ }
+]

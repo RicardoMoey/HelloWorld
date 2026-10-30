@@ -1,0 +1,52 @@
+{
+ "files_written": [
+  "/home/user/HelloWorld/ovni-1999/js/ui/battle_ui.js",
+  "/home/user/HelloWorld/ovni-1999/js/i18n/pt-PT.hud.js",
+  "/home/user/HelloWorld/ovni-1999/js/sim/battle/combat.js",
+  "/home/user/HelloWorld/ovni-1999/js/ui/screens.js",
+  "/home/user/HelloWorld/ovni-1999/js/i18n/pt-PT.screens.js",
+  "/home/user/HelloWorld/ovni-1999/css/screens.css",
+  "/home/user/HelloWorld/ovni-1999/js/ui/campaign_ui.js",
+  "/home/user/HelloWorld/ovni-1999/js/i18n/pt-PT.campaign.js",
+  "/home/user/HelloWorld/ovni-1999/js/ui/geo_ui.js",
+  "/home/user/HelloWorld/ovni-1999/js/i18n/pt-PT.geoui.js",
+  "/home/user/HelloWorld/ovni-1999/js/i18n/pt-PT.base.js",
+  "/home/user/HelloWorld/ovni-1999/DESIGN.md",
+  "/home/user/HelloWorld/ovni-1999/tools/tests/integration_r4.test.js",
+  "/home/user/HelloWorld/ovni-1999/qa/integration_r4.mjs"
+ ],
+ "tests": {
+  "passed": 786,
+  "failed": 0
+ },
+ "api": "- OV.Combat.killUnit(B, u, killerId, cause, opts?{rng, dmgType}) now sets u.deathDmg = opts.dmgType || null, which records the damage type of the fatal hit. damageUnit passes its dmgType, and HE that destroys an unconscious body passes 'HE'. Bleeding and burning deaths get null.\n- OV.Screens.lossCauses(B, o) also returns panics (B.stats.xcomPanics). With panics >= 2 it fills tip, else tip2, else tip3 with 'scr.db.tip.panic'. lossNotes(B, result, o) adds a <p class=\"scr-cause good\"> 'scr.db.objective' note when result === 'win' and (o.objective || o.debrief.objective). It also renders tip3.\n- The campaign debrief now calls OV.Screens.lossNotes(B, result, {campaign:true, debrief: deb}).\n- battle_ui (internal): blastPreview() returns {x,y,z,r,smoke,risk,civ}. blastRiskText(base, b) uses the old plural key when civ===0 and base+'.who' with {who} otherwise.\n- geo_ui (internal): waitPending() and resumeWait(), plus S.waitResume.\n- New i18n keys:\n  - hud.throw.risk.who, hud.confirmBlast.{click,tap,key}.who, hud.blast.ally.one/.other, hud.blast.civ.one/.other, hud.blast.and\n  - scr.db.tip.panic, scr.db.objective\n  - cp.db.surrendered\n  - geo.toast.waitDay.resume\n- Changed texts: cp.br.hint and cp.br.hint.night (now mention ↑ ↓), base.equip.hint.touch and cp.eq.hint.touch (long-press wording).\n- New CSS rule: .scr-cause.good::before { content: '✓ ' }.",
+ "summary": "All the relevant items in r4_integration.json are implemented. The Node suite is green (`node tools/test.js --strict --i18n`: 786 passed, 0 failed). The only missing key is the deliberate `nao.existe.x`. My new browser check, qa/integration_r4.mjs, passes 31/31. I looked at its screenshots in scratchpad/ui4/integration_r4/.\n\nThe full QA sweep is NOT confirmed. That is the 23 listed qa/*.mjs scripts plus full_campaign.mjs. I started it in the background, but I had to submit before any of its results arrived. Logs will be in scratchpad/r4i_qa/ (summary.txt and <name>.log).\n\nPer item:\n1. **Civilians apart in the blast preview: done.** The preview now reads «Risco: 1 aliado e 1 civil no raio da explosão». The second-click confirmation, the throw path and the rocket path use the same wording. Without civilians the old text stays.\n2. **u.deathDmg in killUnit: done.** Without the debrief's earlier fallback, a friend's rocket would now read as a shot. I skipped the optional change to the radius branch's cause ('shot' → 'explosion'), because the battle log and the burst tracking read cause === 'shot'.\n3. **Mouse-only rows hidden on touch: done**, in battle_ui's fallback options panel. The Options button in battle actually opens the shared screens.js Options screen, which already hides those rows. The QA checks that screen on iPad and on desktop.\n4. **Campaign briefing footer mentions ↑ ↓: done.**\n5. and 10. **ui_persona_r3 failure: already fixed by the other fixers.** It passes now.\n6. **Panic debrief tip: done.** It shows with 2 or more panic episodes. I worded it «com ele a equipa perde menos moral» rather than «sobe a moral», because an officer reduces morale loss rather than raising morale.\n7. **Surrendered aliens in containment: done.** They get their own line, and the «para a contenção» line now shows only the aliens the squad captured.\n8. **Objective-win note: done**, in both the quick and campaign debriefs, with a ✓ instead of ⚠.\n9. **24-seed sweep: done** (see the balance numbers below).\n11. **Wait-for-dawn speed after an unrelated alert: done.** After such an alert, closing it restores the wait speed if a craft is still waiting and the player didn't pause or change the speed. A toast says so.\n12. **full_campaign flake under CPU load:** a report from the shell fixer, nothing to change. My own full_campaign run is part of the unconfirmed sweep.\n13. **Geoscape speed radiogroup: done.** It has a single Tab stop and ←→↑↓ change the speed and move the focus.\n14. **Long-press hint texts: done.**\n15. **Marking visible enemies' tiles as discovered in LOS: skipped.** It was optional, the renderer already draws those aliens, and the change touches 3 LOS paths and the battle state hash.\n16. **Friendly-fire tip on cheap wins: skipped.** A round-3 test deliberately keeps cheap wins tip-free, and the cause line already says who hit whom.\n17. **battle_ai timing flake:** nothing to do.\n\n**Balance** (campaign bot, 240 days):\n- **Recruta (seeds 1–12):** 12/12 victories, median day 142, 0 council defeats, 14/14 base attacks repelled.\n- **Veterano (seeds 1–12):** 5/12 = 42 %. Endings: 5 victories, 4 timeouts, 3 Cydonia losses.\n- **Veterano (seeds 13–24):** 6/12 = 50 %. Endings: 6 victories, 6 Cydonia losses.\n- **Veterano overall:** 11/24 = 46 %, against 12/24 in round 3, with 0 council defeats. All 29 base attacks were repelled and 78 % of alien-base assaults were won.\n\nThat is below the ≥ 55 % target, but only one seed in 24 off round 3, which is within noise. The causes are the bot losing the Cydonia battle (9/24 campaigns) and 4 timeouts. In those, the bot keeps waiting for the armour it wants before Cydonia: alloys run short, its power suits were lost in a Harvester wipe, and late on manufacturing stalls because storage is full. None of this comes from this round's morale, base-defence or alien-base rules, so I left tuning.js unchanged and wrote the numbers into DESIGN §22.",
+ "screenshots": [
+  "/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/ui4/integration_r4/A-blast-desk.png",
+  "/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/ui4/integration_r4/A-blast-confirm.png",
+  "/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/ui4/integration_r4/A-blast-zoom.png",
+  "/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/ui4/integration_r4/B-opts-desk.png",
+  "/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/ui4/integration_r4/B-opts-padL.png",
+  "/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/ui4/integration_r4/C-speed.png",
+  "/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/ui4/integration_r4/D-alert.png",
+  "/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/ui4/integration_r4/D-resumed.png",
+  "/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/ui4/integration_r4/E-panic-desk.png",
+  "/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/ui4/integration_r4/E-panic-padL.png",
+  "/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/ui4/integration_r4/E-objective-desk.png",
+  "/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/ui4/integration_r4/E-objective-padL.png",
+  "/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/ui4/integration_r4/F-surrender.png"
+ ],
+ "deviations": [
+  "Item 2: I did not change the cause applyImpact passes for radius hits ('shot' → 'explosion'). The battle log and the burst tracking read cause === 'shot', and u.deathDmg already tells the debrief it was an explosion.",
+  "Item 3: the in-battle Options button opens the shared screens.js Options screen, which already hides the mouse-only rows on touch. The battle_ui panel I patched is only the fallback used when that screen is missing.",
+  "Item 15 (optional): skipped marking visible enemies' tiles as discovered in LOS. The renderer already draws those aliens, and the change touches 3 LOS paths and the battle state hash.",
+  "Item 16 (optional): skipped the friendly-fire tip on cheap wins. A round-3 test deliberately keeps cheap wins tip-free; the cause line already names who hit whom.",
+  "Panic tip wording: «com ele a equipa perde menos moral» instead of «sobe a moral de todos», because an officer only reduces morale loss.",
+  "No tuning change: Veterano is at 46 % (11/24) against a ≥ 55 % target, but round 3 was 12/24 and the gap comes from the bot's Cydonia battle and gear bottleneck, not this round's rules. Documented in DESIGN §22."
+ ],
+ "open_issues": [
+  "The full QA sweep (persona_r1–r4 battle/shell/screens/casual, integration_r1–r3, battle_play, inventory_check, screens_check, base_ui_check, campaign_flow_check, geo_check, dogfight_check, ui_wave4_check, ux_regress, then full_campaign) was started in the background and had not finished when I submitted. Check /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/r4i_qa/summary.txt (one line '<name> exit=N' per script) and the <name>.log files. Re-run any failure alone, since timing checks are sensitive to CPU load.",
+  "Veterano bot win rate is 46 % (11/24) against the ≥ 55 % target. Cydonia ends 9/24 campaigns (the final battle is won 50–63 %). In 4/24 the bot times out at day 240 waiting for armour: alloys run short, power suits are lost in Harvester wipes, and late on manufacturing stalls because storage is full. For the sim/bot owner: look at the Cydonia difficulty on Veterano, or at the bot's readiness rules (finalKitReady, manufacturing that stalls on full storage).",
+  "Optional for the sim owner: in OV.LOS, set map.disc on the tiles of enemies X-COM can see (the 'Item 15' in deviations), so the floor under them is revealed too. It changes the battle state hash, so the golden tests need updating."
+ ]
+}

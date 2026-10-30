@@ -1,0 +1,722 @@
+<!doctype html>
+<html lang="pt-PT">
+<head>
+<meta charset="utf-8">
+<title>OVNI: Inimigo Desconhecido — Dossiê</title>
+<style>
+/* Dossiê impresso: A4 vertical, consola X-COM azul-marinho, títulos âmbar espaçados, dados em mono. */
+@page { size: A4; margin: 0; }
+:root {
+  --bg: #05080c; --bg2: #08101a; --panel: #0b131c; --panel2: #101b27; --line: #1a2b3c; --line2: #2b4864;
+  --ink: #e2ecf4; --ink2: #b9c8d4; --muted: #8399ac; --dim: #57708a;
+  --amber: #ffb53d; --amber-deep: #e0901f; --teal: #3fd7c5; --cyan: #58c8ff; --red: #ff5a4e; --green: #5fe08a; --violet: #b48cff;
+  --sans: "Inter", -apple-system, "Helvetica Neue", Arial, sans-serif;
+  --display: "Inter Display", "Inter", -apple-system, Arial, sans-serif;
+  --mono: "JetBrains Mono", "SF Mono", Menlo, monospace;
+}
+* { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+html, body { margin: 0; padding: 0; background: var(--bg); color: var(--ink); font: 400 9.6pt/1.5 var(--sans); }
+img { display: block; max-width: 100%; }
+p { margin: 0; }
+
+.page { position: relative; width: 210mm; height: 297mm; overflow: hidden; page-break-after: always; break-after: page; background: var(--bg); padding: 15mm 15mm 14mm; display: flex; flex-direction: column; gap: 5.5mm; }
+.page:last-child { page-break-after: auto; break-after: auto; }
+.page.alt { background: linear-gradient(180deg, var(--bg2), var(--bg) 60%); }
+.folio { position: absolute; left: 15mm; right: 15mm; bottom: 7mm; display: flex; justify-content: space-between; font: 600 6.6pt/1 var(--mono); letter-spacing: 1.6px; text-transform: uppercase; color: var(--dim); }
+.folio b { color: var(--amber); font-weight: 700; }
+.runner { display: flex; justify-content: space-between; align-items: center; font: 600 6.8pt/1 var(--mono); letter-spacing: 1.8px; text-transform: uppercase; color: var(--muted); padding-bottom: 3mm; border-bottom: 0.3mm solid var(--line); }
+.runner b { color: var(--amber); }
+
+.eyebrow { font: 700 7.4pt/1 var(--mono); letter-spacing: 2.6px; text-transform: uppercase; color: var(--teal); display: flex; align-items: center; gap: 3mm; margin: 0 0 2.5mm; }
+.eyebrow::before { content: ""; width: 9mm; height: 0.5mm; background: var(--teal); }
+h2 { font: 800 22pt/1.06 var(--display); letter-spacing: -0.3px; margin: 0; color: #f0f6fb; }
+h3 { font: 800 8pt/1.3 var(--sans); letter-spacing: 2px; text-transform: uppercase; color: var(--amber); margin: 0 0 1.8mm; }
+h4 { font: 800 11pt/1.25 var(--display); color: #f0f6fb; margin: 0; }
+.lead { font-size: 11pt; line-height: 1.55; color: var(--ink2); }
+.prose { display: grid; gap: 2.6mm; color: var(--ink2); }
+.mono { font-family: var(--mono); }
+kbd { font: 600 7.4pt/1 var(--mono); color: var(--ink); background: #0a1520; border: 0.25mm solid var(--line2); border-bottom-width: 0.5mm; border-radius: 0.6mm; padding: 0.5mm 1.2mm; white-space: nowrap; }
+
+.shot { border: 0.3mm solid var(--line2); border-radius: 1mm; overflow: hidden; background: #000; }
+.shot img { width: 100%; height: 100%; object-fit: cover; }
+.cap { font: 600 6.8pt/1.45 var(--mono); color: var(--muted); letter-spacing: 0.3px; margin-top: 1.6mm; }
+.cap b { color: var(--amber); }
+
+.cols2 { display: grid; grid-template-columns: 1fr 1fr; gap: 7mm; }
+.ticks { list-style: none; margin: 0; padding: 0; display: grid; gap: 1.7mm; }
+.ticks li { position: relative; padding-left: 4.4mm; color: var(--ink2); }
+.ticks li::before { content: ""; position: absolute; left: 0.4mm; top: 1.6mm; width: 1.6mm; height: 1.6mm; border: 0.45mm solid var(--teal); transform: rotate(45deg); }
+.ticks.amber li::before { border-color: var(--amber); }
+
+.facts { display: grid; grid-template-columns: repeat(6, 1fr); border-top: 0.3mm solid var(--line2); border-bottom: 0.3mm solid var(--line2); background: rgba(8, 14, 21, 0.9); }
+.facts div { padding: 3.4mm 3mm; border-left: 0.3mm solid var(--line); }
+.facts div:first-child { border-left: 0; }
+.facts dt { font: 800 19pt/1 var(--display); color: #f0f6fb; }
+.facts dd { margin: 1.6mm 0 0; font: 600 6.2pt/1.35 var(--mono); letter-spacing: 0.9px; text-transform: uppercase; color: var(--muted); }
+dl { margin: 0; }
+
+.sheet { border: 0.3mm solid var(--line2); background: var(--panel); border-radius: 1mm; overflow: hidden; }
+.sheet-h { display: flex; justify-content: space-between; align-items: baseline; gap: 3mm; padding: 2.4mm 3.4mm; border-bottom: 0.3mm solid var(--line2); background: var(--panel2); }
+.sheet-h h3 { margin: 0; }
+.sheet-h span { font: 600 6.4pt/1.3 var(--mono); color: var(--muted); letter-spacing: 0.8px; text-transform: uppercase; }
+table { width: 100%; border-collapse: collapse; font-size: 8.6pt; }
+th { text-align: left; font: 700 6.2pt/1.2 var(--mono); letter-spacing: 1px; text-transform: uppercase; color: var(--muted); padding: 2mm 3.4mm; border-bottom: 0.3mm solid var(--line2); }
+td { padding: 1.7mm 3.4mm; border-bottom: 0.25mm solid var(--line); color: var(--ink2); vertical-align: top; }
+tr:last-child td { border-bottom: 0; }
+td.r, th.r { text-align: right; font-family: var(--mono); white-space: nowrap; font-size: 8pt; }
+td b { color: var(--ink); }
+.note { font-size: 7.8pt; color: var(--muted); line-height: 1.5; padding: 2.4mm 3.4mm; border-top: 0.25mm solid var(--line); }
+
+/* capa */
+.cover { padding: 0; }
+.cover canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.cover .inner { position: relative; height: 100%; padding: 15mm 15mm 14mm; display: flex; flex-direction: column; }
+.cover .top { display: flex; justify-content: space-between; font: 600 7pt/1 var(--mono); letter-spacing: 2px; text-transform: uppercase; color: var(--muted); }
+.cover .top b { color: var(--amber); }
+.cover .stamp { color: var(--red); border: 0.3mm solid #6b2a24; padding: 1.4mm 2mm; border-radius: 0.5mm; }
+.title-ovni { font: 900 92pt/0.86 var(--display); letter-spacing: 10px; margin: 22mm 0 6mm -1mm; background: linear-gradient(180deg, #ffe7b0 0%, #ffc65e 38%, #e8941f 72%, #b86a10 100%); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 0 7mm rgba(255, 170, 50, 0.25)); }
+.title-sub { font: 800 18pt/1.2 var(--display); letter-spacing: 8px; color: #f0f6fb; text-transform: uppercase; margin: 0 0 4mm; }
+.title-line { font: 700 8pt/1 var(--mono); letter-spacing: 3.6px; color: var(--teal); display: flex; align-items: center; gap: 3.5mm; text-transform: uppercase; margin: 0 0 9mm; }
+.title-line::before { content: ""; width: 11mm; height: 0.5mm; background: var(--teal); }
+.cover .lead { max-width: 128mm; font-size: 11.5pt; }
+.cover .monitor { margin-top: auto; border: 0.35mm solid var(--line2); border-radius: 1.5mm; padding: 1.4mm; background: #000; box-shadow: 0 6mm 18mm rgba(0, 0, 0, 0.7); }
+.cover .monitor img { border-radius: 0.8mm; }
+.cover .tags { display: flex; gap: 2.2mm; margin-top: 6mm; flex-wrap: wrap; }
+.tag { font: 700 7pt/1 var(--mono); letter-spacing: 1px; text-transform: uppercase; padding: 2mm 2.6mm; border-radius: 0.5mm; border: 0.3mm solid var(--line2); color: var(--ink2); background: rgba(10, 20, 30, 0.75); display: inline-flex; align-items: center; gap: 1.8mm; }
+.tag i { width: 1.6mm; height: 1.6mm; border-radius: 50%; background: var(--amber); }
+
+/* geoscape */
+.loop { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4mm 5mm; }
+.loop div { border-top: 0.5mm solid var(--amber); padding-top: 2.4mm; display: grid; gap: 1.2mm; align-content: start; }
+.loop .n { font: 700 7pt/1 var(--mono); letter-spacing: 1.6px; color: var(--amber); }
+.loop b { font: 800 10.5pt/1.2 var(--display); color: #f0f6fb; }
+.loop p { font-size: 8.6pt; color: var(--ink2); line-height: 1.45; }
+
+/* turno */
+.steps { display: grid; grid-template-columns: 1fr 1fr; gap: 4mm 6mm; }
+.step { display: grid; gap: 1.8mm; align-content: start; }
+.step .shot { aspect-ratio: 16 / 8.8; }
+.step .n { font: 700 7pt/1 var(--mono); letter-spacing: 1.6px; color: var(--amber); display: flex; align-items: center; gap: 2.4mm; }
+.step .n::after { content: ""; flex: 1; height: 0.25mm; background: var(--line2); }
+.step p { font-size: 8.5pt; color: var(--ink2); line-height: 1.45; }
+
+.rules { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4.5mm 5mm; }
+.rule { border-top: 0.45mm solid var(--amber); padding-top: 2.4mm; display: grid; gap: 1.4mm; align-content: start; }
+.rule p { font-size: 8.4pt; color: var(--ink2); line-height: 1.45; }
+.rule .fig { font: 700 6.8pt/1.35 var(--mono); color: var(--teal); }
+
+.races { display: grid; grid-template-columns: repeat(5, 1fr); border: 0.3mm solid var(--line2); border-radius: 1mm; overflow: hidden; }
+.race { padding: 3.2mm 3mm; border-left: 0.3mm solid var(--line); background: var(--panel); display: grid; gap: 1.4mm; align-content: start; }
+.race:first-child { border-left: 0; }
+.race span { font: 700 6.2pt/1.3 var(--mono); color: var(--amber); letter-spacing: 0.7px; text-transform: uppercase; }
+.race b { font: 800 10.5pt/1.2 var(--display); color: #f0f6fb; }
+.race p { font-size: 8pt; color: var(--ink2); line-height: 1.4; }
+.chips { display: flex; flex-wrap: wrap; gap: 2mm; align-items: center; }
+.chips .lbl { font: 700 6.6pt/1 var(--mono); letter-spacing: 1.8px; color: var(--red); text-transform: uppercase; margin-right: 1.5mm; }
+.chips .tag { color: #ffb3a8; border-color: #6b2a24; background: #170b0a; }
+
+.terrains { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3.4mm; }
+.terrains figure { margin: 0; position: relative; border: 0.3mm solid var(--line2); border-radius: 1mm; overflow: hidden; background: #000; }
+.terrains img { width: 100%; aspect-ratio: 16 / 10; object-fit: cover; }
+.terrains figcaption { position: absolute; left: 0; right: 0; bottom: 0; padding: 6mm 2.6mm 2.2mm; background: linear-gradient(transparent, rgba(3, 6, 10, 0.93)); font: 700 7.4pt/1.2 var(--mono); letter-spacing: 1.6px; text-transform: uppercase; color: #f0f6fb; }
+.terrains figcaption small { display: block; margin-top: 0.8mm; font: 500 7.4pt/1.3 var(--sans); letter-spacing: 0; text-transform: none; color: var(--muted); }
+
+.controls { display: grid; grid-template-columns: 1fr 1fr; gap: 4.5mm; }
+.controls td { font-size: 8.2pt; padding: 1.5mm 3mm; }
+.controls td:first-child { width: 45%; }
+
+.howto { list-style: none; margin: 0; padding: 0; display: grid; gap: 2.4mm; counter-reset: h; }
+.howto li { display: grid; grid-template-columns: 7mm 1fr; gap: 3mm; align-items: start; counter-increment: h; color: var(--ink2); }
+.howto li::before { content: counter(h); width: 6.4mm; height: 6.4mm; display: grid; place-items: center; border: 0.3mm solid var(--amber); color: var(--amber); font: 800 8pt/1 var(--mono); border-radius: 0.5mm; }
+.code { border: 0.3mm solid var(--line2); background: #03070b; border-radius: 1mm; padding: 3.4mm 4mm; font: 500 8.4pt/1.7 var(--mono); color: #cfe3f2; white-space: pre; }
+.code .c { color: var(--dim); }
+
+.path { display: grid; grid-template-columns: repeat(7, 1fr); gap: 0; border: 0.3mm solid var(--line2); border-radius: 1mm; overflow: hidden; }
+.path div { position: relative; padding: 3mm 2.4mm 3mm 3.4mm; background: var(--panel); border-left: 0.3mm solid var(--line); display: grid; gap: 1.2mm; align-content: start; }
+.path div:first-child { border-left: 0; }
+.path .n { font: 700 6.4pt/1 var(--mono); letter-spacing: 1.2px; color: var(--amber); }
+.path b { font: 700 8.2pt/1.25 var(--sans); color: #f0f6fb; }
+.path div:last-child { background: #1a1209; }
+.path div:last-child b { color: var(--amber); }
+.metrics { display: grid; grid-template-columns: repeat(3, 1fr); border: 0.3mm solid var(--line2); border-radius: 1mm; overflow: hidden; }
+.metrics div { padding: 4mm 3.6mm; background: var(--panel); border-left: 0.3mm solid var(--line); border-top: 0.3mm solid var(--line); }
+.metrics div:nth-child(3n+1) { border-left: 0; }
+.metrics div:nth-child(-n+3) { border-top: 0; }
+.metrics dt { font: 800 17pt/1 var(--display); color: var(--amber); }
+.metrics dd { margin: 1.6mm 0 0; font-size: 8.2pt; color: var(--ink2); line-height: 1.4; }
+
+.step .shot { aspect-ratio: 16 / 8.3; }
+/* nada encolhe: o que não cabe aparece no contentBottom */
+.page > * { flex-shrink: 0; }
+/* estratégia */
+.gal3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4mm; }
+.gal3 .shot, .gal2 .shot { aspect-ratio: 16 / 10; }
+.gal2 { display: grid; grid-template-columns: 1fr 1fr; gap: 5mm; }
+.diffs { display: grid; gap: 2.2mm; }
+.diff { border: 0.3mm solid var(--line2); border-left: 0.8mm solid var(--green); background: var(--panel); border-radius: 1mm; padding: 2.4mm 3.4mm; display: grid; grid-template-columns: 1fr; gap: 1.2mm; align-items: baseline; }
+.diff.v { border-left-color: var(--amber); } .diff.s { border-left-color: var(--red); }
+.diff b { font: 800 8pt/1.2 var(--sans); letter-spacing: 1.6px; text-transform: uppercase; color: var(--green); }
+.diff.v b { color: var(--amber); } .diff.s b { color: var(--red); }
+.diff p { font-size: 8.4pt; color: var(--ink2); line-height: 1.4; }
+.timeline { list-style: none; margin: 0; padding: 0; border-left: 0.5mm solid var(--line2); display: grid; gap: 3.2mm; }
+.timeline li { position: relative; padding-left: 5.5mm; display: grid; gap: 0.8mm; }
+.timeline li::before { content: ""; position: absolute; left: -1.75mm; top: 0.9mm; width: 3mm; height: 3mm; border-radius: 50%; background: var(--green); }
+.timeline li.now::before { background: var(--amber); }
+.timeline .w { font: 700 6.4pt/1 var(--mono); letter-spacing: 1.4px; color: var(--muted); text-transform: uppercase; margin-right: 1.6mm; }
+.timeline b { font: 800 9.6pt/1.3 var(--display); color: #f0f6fb; }
+.timeline p { font-size: 8.2pt; color: var(--ink2); line-height: 1.42; }
+</style>
+</head>
+<body>
+
+<!-- 1 · Capa -->
+<section class="page cover">
+  <canvas id="sky"></canvas>
+  <div class="inner">
+    <div class="top"><span>X-COM · Dossiê <b>OVNI-1999</b></span><span class="stamp">Confidencial · Conselho</span></div>
+    <div class="title-ovni">OVNI</div>
+    <div class="title-sub">Inimigo Desconhecido</div>
+    <div class="title-line">Defesa da Terra — 1999</div>
+    <p class="lead">Estratégia em tempo real e combate tático por turnos contra uma invasão alienígena. A engenharia reversa de <b>UFO: Enemy Unknown</b> (1994), reconstruída de raiz para o browser e pensada para o Mac e o iPad.</p>
+    <div class="tags">
+      <span class="tag"><i></i>1 jogador</span>
+      <span class="tag"><i></i>Campanha completa · 2 a 4 horas</span>
+      <span class="tag"><i></i>Mac · iPad · browser</span>
+      <span class="tag"><i></i>Português europeu</span>
+    </div>
+    <div class="monitor"><img src="img/hero.jpg" alt=""></div>
+    <div class="cap" style="margin-top:2.4mm"><b>Battlescape</b> · OVNI despenhado, turno 6 · «Acerto ≈ 40 % · 12 UT»</div>
+  </div>
+</section>
+
+<!-- 2 · O jogo -->
+<section class="page">
+  <div class="runner"><span>OVNI: Inimigo Desconhecido</span><span><b>01</b> · O jogo</span></div>
+  <div>
+    <p class="eyebrow">O jogo</p>
+    <h2>Um clássico de 1994,<br>desmontado peça a peça</h2>
+  </div>
+  <div class="cols2">
+    <div class="prose">
+      <p>Em 1999 os OVNIs deixam de ser rumores. Dezassete países (os 16 do original e Portugal) financiam uma força secreta, a X-COM, para descobrir quem são os invasores, de onde vêm e como travá-los.</p>
+      <p>O jogador comanda essa força de janeiro de 1999 até à missão final em Marte, em duas frentes que se alimentam uma à outra: no <b>Geoscape</b>, o globo em tempo real, deteta e abate OVNIs, gere bases e investiga a tecnologia inimiga; no <b>Battlescape</b>, leva a equipa ao terreno em combates táticos por turnos.</p>
+    </div>
+    <div class="prose">
+      <p>Estudámos as regras do original e a documentação do projeto OpenXcom: fórmulas de precisão, unidades de tempo, fogo de reação, moral, luz e linha de visão, estatísticas de armas e alienígenas, financiamento e calendário das invasões.</p>
+      <p>Depois reconstruímos tudo em JavaScript, sem dependências, com arte procedimental desenhada pelo próprio jogo e som sintetizado pelo browser. Joga-se como o X-COM de que nos lembramos, com a clareza que hoje esperamos de um jogo.</p>
+    </div>
+  </div>
+  <dl class="facts">
+    <div><dt>8</dt><dd>Classes de OVNI</dd></div>
+    <div><dt>28</dt><dd>Tipos de alienígena</dd></div>
+    <div><dt>9</dt><dd>Terrenos de combate</dd></div>
+    <div><dt>78</dt><dd>Armas e objetos</dd></div>
+    <div><dt>45</dt><dd>Projetos de investigação</dd></div>
+    <div><dt>80</dt><dd>Artigos na Ufopédia</dd></div>
+  </dl>
+  <div class="cols2">
+    <div>
+      <h3>Fiel ao original</h3>
+      <ul class="ticks amber">
+        <li>Unidades de Tempo e fogo de reação com as fórmulas de 1994</li>
+        <li>Desvio real do tiro e armadura por face: frente, lado, trás e baixo</li>
+        <li>Moral, pânico, feridas fatais e atordoamento</li>
+        <li>Noite, sinalizadores, fumo, fogo e terreno destrutível</li>
+        <li>As cinco raças, os oito OVNIs e a árvore de investigação</li>
+        <li>Financiamento mensal país a país e pactos com os alienígenas</li>
+      </ul>
+    </div>
+    <div>
+      <h3>Pensado para hoje</h3>
+      <ul class="ticks">
+        <li>Caminho com o custo em UT antes de andar</li>
+        <li>Probabilidade de acerto no cursor</li>
+        <li>Área da explosão e risco para camaradas antes de lançar</li>
+        <li>Trackpad, teclado e toque no iPad</li>
+        <li>Campanha pensada para 2 a 4 horas</li>
+        <li>Tudo em português europeu, com gravação automática</li>
+      </ul>
+    </div>
+  </div>
+  <div>
+    <div class="shot" style="height:58mm"><img src="img/menu.jpg" alt="" style="object-position: 50% 66%"></div>
+    <div class="cap"><b>Menu principal</b> · Nova Campanha, Batalha Rápida, Ufopédia, Opções e «Como Jogar»</div>
+  </div>
+  <div class="folio"><span>Dossiê OVNI-1999</span><span><b>2</b></span></div>
+</section>
+
+<!-- 3 · Geoscape -->
+<section class="page alt">
+  <div class="runner"><span>OVNI: Inimigo Desconhecido</span><span><b>02</b> · Geoscape</span></div>
+  <div>
+    <p class="eyebrow">Frente estratégica</p>
+    <h2>O Geoscape: o planeta inteiro num ecrã</h2>
+  </div>
+  <div>
+    <div class="shot" style="aspect-ratio: 16 / 10"><img src="img/geo-globo.jpg" alt=""></div>
+    <div class="cap"><b>Geoscape</b> · 1 abr 1999, 15:00 · Intercetor-1 em perseguição do OVNI-51, três contactos no radar e a noite a cair sobre a Ásia</div>
+  </div>
+  <div class="cols2">
+    <div class="prose">
+      <p>O globo roda com dois dedos no trackpad e aproxima-se com uma pinça, do planeta inteiro ao nível das cidades. O dia e a noite percorrem o globo hora a hora.</p>
+      <p>O tempo corre em seis velocidades, de 5 segundos a 1 dia, e para sozinho quando algo exige uma decisão: um OVNI detetado, um local de terror, um projeto concluído, o relatório do mês.</p>
+    </div>
+    <div class="prose">
+      <p>Os radares das bases varrem o céu a cada meia hora. Quando um OVNI aparece, a decisão é do jogador: mandar um Intercetor, esperar que aterre, ou deixá-lo ir.</p>
+      <p>Um OVNI abatido sobre terra ou perto da costa deixa um local de queda para o Skyranger. Em alto mar, perde-se.</p>
+    </div>
+  </div>
+  <div>
+    <h3>O ciclo da campanha</h3>
+    <div class="loop">
+      <div><span class="n">01</span><b>Detetar</b><p>Radares, Descodificador Hiper-Onda e patrulhas encontram OVNIs, locais de terror e bases alienígenas.</p></div>
+      <div><span class="n">02</span><b>Intercetar</b><p>Stingray, Avalanche, canhões, lasers e plasma contra naves com até 3 000 pontos de casco.</p></div>
+      <div><span class="n">03</span><b>Recuperar</b><p>O Skyranger leva até 10 soldados ao local da queda, da aterragem ou do ataque.</p></div>
+      <div><span class="n">04</span><b>Investigar</b><p>Ligas, Elerium-115, cadáveres e prisioneiros abrem novas armas e respostas.</p></div>
+      <div><span class="n">05</span><b>Fabricar</b><p>Engenheiros produzem armas laser e de plasma, armaduras e naves como o Vingador.</p></div>
+      <div><span class="n">06</span><b>Prestar contas</b><p>No fim do mês, o conselho de 17 países avalia o desempenho e ajusta o financiamento.</p></div>
+    </div>
+  </div>
+  <div class="folio"><span>Dossiê OVNI-1999</span><span><b>3</b></span></div>
+</section>
+
+<!-- 4 · Interceção -->
+<section class="page">
+  <div class="runner"><span>OVNI: Inimigo Desconhecido</span><span><b>03</b> · Interceção</span></div>
+  <div>
+    <p class="eyebrow">Interceção e missões</p>
+    <h2>Do radar ao local da queda</h2>
+  </div>
+  <div>
+    <div class="shot" style="aspect-ratio: 16 / 10"><img src="img/intercecao.jpg" alt=""></div>
+    <div class="cap"><b>Interceção</b> · Intercetor-1 contra um Batedor Grande: Stingray e canhão ao alcance, −44 no casco, postura Normal</div>
+  </div>
+  <div class="cols2" style="align-items:start">
+    <div class="prose">
+      <h3>O duelo</h3>
+      <p>A interceção abre numa janela própria sobre o globo. Escolhe-se a postura (<b>Distância</b>, <b>Cauteloso</b>, <b>Normal</b>, <b>Agressivo</b> ou <b>Desengatar</b>) e liga-se ou desliga-se cada arma.</p>
+    </div>
+    <div class="prose" style="padding-top:5.2mm">
+      <p>A régua mostra o alcance de cada arma e o das armas do OVNI, para se saber quem pode disparar sobre quem. Um OVNI muito danificado cai; um destruído não deixa nada para recuperar.</p>
+    </div>
+  </div>
+  <div style="display:grid; grid-template-columns: 1.1fr 1fr; gap: 6mm; align-items: start">
+    <div>
+      <div class="shot" style="aspect-ratio: 16 / 10"><img src="img/geo-europa.jpg" alt=""></div>
+      <div class="cap"><b>Europa de noite</b> · quatro OVNIs detetados, um local de queda em Espanha e a ficha de um Batedor Grande</div>
+    </div>
+    <div>
+      <h3>As missões</h3>
+      <ul class="ticks amber">
+        <li>OVNI despenhado e OVNI aterrado</li>
+        <li>Locais de terror em cidades reais, com civis para salvar</li>
+        <li>Assalto a bases alienígenas descobertas no globo</li>
+        <li>Retaliações contra as bases X-COM, resolvidas pelas defesas, pelos intercetores e pela guarnição</li>
+        <li>Cidónia, em Marte: a missão final</li>
+      </ul>
+      <p class="prose" style="margin-top:3mm">De dia, ao crepúsculo ou de noite, consoante a hora local. Bases perto dos países que financiam detetam mais OVNIs onde mais importa.</p>
+    </div>
+  </div>
+  <div class="folio"><span>Dossiê OVNI-1999</span><span><b>4</b></span></div>
+</section>
+
+<!-- 5 · Bases -->
+<section class="page alt">
+  <div class="runner"><span>OVNI: Inimigo Desconhecido</span><span><b>04</b> · Bases</span></div>
+  <div>
+    <p class="eyebrow">Gestão</p>
+    <h2>Bases, cientistas e engenheiros</h2>
+  </div>
+  <div>
+    <div class="shot" style="aspect-ratio: 16 / 10"><img src="img/base.jpg" alt=""></div>
+    <div class="cap"><b>Base Lusitânia</b> · abril de 1999 · 21 instalações, defesas, quatro hangares e o Vingador pronto</div>
+  </div>
+  <div class="cols2">
+    <div class="prose">
+      <p>Cada base é uma grelha subterrânea de 6×6 casas. As 13 instalações constroem-se encostadas umas às outras e levam dias a ficar prontas: alojamentos, laboratórios, oficinas, armazéns, contenção alienígena, hangares, radares, defesas de mísseis, laser e plasma e o Descodificador Hiper-Onda.</p>
+    </div>
+    <div class="prose">
+      <p>Oito separadores tratam do resto: investigação, produção, pessoal, armazém, naves, soldados, mercado e contenção. Os cientistas trabalham em <b>45 projetos de investigação</b>; os engenheiros fabricam <b>25 produtos</b>, das espingardas laser ao Vingador. Tudo tem custo mensal e capacidade limitada.</p>
+    </div>
+  </div>
+  <div class="gal3">
+    <div><div class="shot"><img src="img/base-investigacao.jpg" alt=""></div><div class="cap"><b>Investigação</b> · 50 cientistas, quatro projetos</div></div>
+    <div><div class="shot"><img src="img/base-fabrico.jpg" alt=""></div><div class="cap"><b>Produção</b> · horas-engenheiro e prazos</div></div>
+    <div><div class="shot"><img src="img/base-mercado.jpg" alt=""></div><div class="cap"><b>Mercado</b> · entrega e espaço em armazém</div></div>
+  </div>
+  <div class="cols2">
+    <div class="prose">
+      <h3>Soldados</h3>
+      <p>Recrutas com nome, nacionalidade e atributos próprios, que melhoram a cada missão e sobem de patente. Os que caem ficam no memorial.</p>
+    </div>
+    <div class="prose">
+      <h3>Naves</h3>
+      <p>Skyranger, Intercetor, Tempestade de Fogo e Vingador, a única que chega a Marte. Reabastecer, rearmar e reparar levam tempo.</p>
+    </div>
+  </div>
+  <div class="folio"><span>Dossiê OVNI-1999</span><span><b>5</b></span></div>
+</section>
+
+<!-- 6 · Conselho -->
+<section class="page">
+  <div class="runner"><span>OVNI: Inimigo Desconhecido</span><span><b>05</b> · Conselho e campanha</span></div>
+  <div>
+    <p class="eyebrow">Campanha</p>
+    <h2>Um conselho a convencer,<br>um caminho até Marte</h2>
+  </div>
+  <div style="display:grid; grid-template-columns: 2.2fr 1fr; gap: 6mm; align-items: start">
+    <div>
+      <div class="shot" style="aspect-ratio: 16 / 10"><img src="img/relatorio-mensal.jpg" alt=""></div>
+      <div class="cap"><b>Relatório mensal</b> · março de 1999 · Excelente, +567 000 $ de financiamento</div>
+    </div>
+    <div class="prose">
+      <p>No fim de cada mês chega o relatório: pontuação da X-COM e dos alienígenas, contas do mês e financiamento país a país. O desempenho é classificado de <b>Terrível</b> a <b>Excelente</b>.</p>
+      <p>Países deixados à mercê dos alienígenas podem assinar um pacto e deixar de pagar. Dois meses maus seguidos, dívidas persistentes ou a perda da última base acabam com a X-COM.</p>
+    </div>
+  </div>
+  <div>
+    <h3>O caminho até Marte</h3>
+    <div class="path">
+      <div><span class="n">01</span><b>Armas Laser</b></div>
+      <div><span class="n">02</span><b>Ligas Alienígenas</b></div>
+      <div><span class="n">03</span><b>Navegação OVNI</b></div>
+      <div><span class="n">04</span><b>Interrogar um líder</b></div>
+      <div><span class="n">05</span><b>Origens Alienígenas</b></div>
+      <div><span class="n">06</span><b>A Solução Marciana</b></div>
+      <div><span class="n">07</span><b>Cidónia ou Desastre</b></div>
+    </div>
+    <p class="cap">Um percurso possível na árvore de investigação: a arma certa, a nave certa e um comandante alienígena vivo.</p>
+  </div>
+  <div style="display:grid; grid-template-columns: 1fr 1.75fr; gap: 6mm; align-items: start">
+    <div style="display:grid; gap:2.6mm">
+      <h3 style="margin:0">Começar uma campanha</h3>
+      <p class="prose">Escolhe-se a dificuldade e depois o local da primeira base, no próprio globo, com o alcance do radar e os países que cobre.</p>
+      <div class="diffs">
+        <div class="diff"><b>Recruta</b><p>Os alienígenas falham mais e o conselho é paciente.</p></div>
+        <div class="diff v"><b>Veterano</b><p>A campanha como foi pensada: cada baixa pesa.</p></div>
+        <div class="diff s"><b>Super-humano</b><p>Tripulações maiores, mais retaliações, pouca margem.</p></div>
+      </div>
+    </div>
+    <div>
+      <div class="shot" style="aspect-ratio: 16 / 10"><img src="img/campanha-nova.jpg" alt=""></div>
+      <div class="cap"><b>Nova campanha</b> · primeira base em Lisboa, radar sobre seis países</div>
+    </div>
+  </div>
+  <div class="folio"><span>Dossiê OVNI-1999</span><span><b>6</b></span></div>
+</section>
+
+<!-- 7 · Turno -->
+<section class="page alt">
+  <div class="runner"><span>OVNI: Inimigo Desconhecido</span><span><b>06</b> · Battlescape</span></div>
+  <div>
+    <p class="eyebrow">Frente tática</p>
+    <h2>Anatomia de um turno</h2>
+  </div>
+  <p class="lead" style="font-size:10pt">Quando o Skyranger aterra, o jogo passa para o Battlescape: combate por turnos num mapa isométrico com até três níveis, em que cada soldado tem um orçamento de Unidades de Tempo (UT).</p>
+  <div class="steps">
+    <div class="step"><div class="shot"><img src="img/t1-caminho.jpg" alt=""></div><div class="n">01</div><h4>Planear o movimento</h4><p>O caminho aparece com o custo de cada passo: verde se ainda sobra para o tiro reservado, amarelo se gasta a reserva, vermelho se não chega.</p></div>
+    <div class="step"><div class="shot"><img src="img/t2-apontar.jpg" alt=""></div><div class="n">02</div><h4>Apontar</h4><p>O cursor mostra «Acerto ≈ 40 %», calculado com o modelo real de desvio do tiro, o custo em UT e o que bloqueia a linha de tiro.</p></div>
+    <div class="step"><div class="shot"><img src="img/t3-granada.jpg" alt=""></div><div class="n">03</div><h4>Lançar</h4><p>Granadas e sinalizadores seguem um arco limitado pela força do soldado. A área da explosão e os camaradas em risco ficam à vista.</p></div>
+    <div class="step"><div class="shot"><img src="img/t4-noite.jpg" alt=""></div><div class="n">04</div><h4>Combater de noite</h4><p>No escuro os soldados veem 9 casas e os alienígenas 20. Os sinalizadores mudam o que cada lado consegue ver.</p></div>
+    <div class="step"><div class="shot"><img src="img/t5-oculto.jpg" alt=""></div><div class="n">05</div><h4>Movimento oculto</h4><p>No turno alienígena só se vê o que os soldados veem. Quem se expõe leva com o fogo de reação de quem guardou UT.</p></div>
+    <div class="step"><div class="shot"><img src="img/t6-relatorio.jpg" alt=""></div><div class="n">06</div><h4>Relatório da missão</h4><p>Pontuação, alienígenas abatidos e capturados, baixas, material recuperado e a evolução de cada soldado.</p></div>
+  </div>
+  <div class="folio"><span>Dossiê OVNI-1999</span><span><b>7</b></span></div>
+</section>
+
+<!-- 8 · Ficha técnica -->
+<section class="page">
+  <div class="runner"><span>OVNI: Inimigo Desconhecido</span><span><b>07</b> · Ficha técnica</span></div>
+  <div>
+    <p class="eyebrow">Ficha técnica</p>
+    <h2>As regras do combate, com os números à vista</h2>
+  </div>
+  <div class="cols2" style="align-items:start">
+    <div class="sheet">
+      <div class="sheet-h"><h3>Custos de ação</h3><span>Unidades de Tempo</span></div>
+      <table>
+        <tbody>
+          <tr><td>Andar uma casa</td><td class="r">4 UT · 6 na diagonal</td></tr>
+          <tr><td>Rodar 45°</td><td class="r">1 UT</td></tr>
+          <tr><td>Ajoelhar / levantar</td><td class="r">4 / 8 UT</td></tr>
+          <tr><td>Abrir uma porta</td><td class="r">4 UT</td></tr>
+          <tr><td>Recarregar · descarregar</td><td class="r">15 · 8 UT</td></tr>
+          <tr><td>Usar o kit médico</td><td class="r">10 UT</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="sheet">
+      <div class="sheet-h"><h3>Espingarda</h3><span>Dano 30 · Perfurante</span></div>
+      <table>
+        <thead><tr><th>Modo</th><th class="r">Precisão</th><th class="r">Custo</th></tr></thead>
+        <tbody>
+          <tr><td>Tiro rápido</td><td class="r">60</td><td class="r">25 % das UT</td></tr>
+          <tr><td>Tiro apontado</td><td class="r">110</td><td class="r">80 % das UT</td></tr>
+          <tr><td>Rajada · 3 tiros</td><td class="r">35</td><td class="r">35 % das UT</td></tr>
+        </tbody>
+      </table>
+      <p class="note">A precisão multiplica a Pontaria do soldado; ajoelhado ganha 15 %.</p>
+    </div>
+  </div>
+  <div class="rules">
+    <div class="rule"><h3>Fogo de reação</h3><p>UT por gastar ficam prontas para reagir. Quem se mexer à vista de um soldado atento leva um tiro rápido, e os alienígenas fazem o mesmo.</p><span class="fig">Reações × UT restantes</span></div>
+    <div class="rule"><h3>Luz e visão</h3><p>Cada unidade vê num cone de 90°. Fogo, sinalizadores e luzes do OVNI mudam o que se vê de noite.</p><span class="fig">20 casas de dia · 9 no escuro</span></div>
+    <div class="rule"><h3>Moral e pânico</h3><p>Ferimentos e baixas baixam a moral. Abaixo de 50, o soldado pode fugir ou disparar à toa.</p><span class="fig">Bravura define a perda</span></div>
+    <div class="rule"><h3>Feridas e atordoamento</h3><p>Feridas fatais tiram Saúde a cada turno. O atordoamento deixa inconsciente: é assim que se capturam alienígenas vivos.</p><span class="fig">Seis partes do corpo</span></div>
+    <div class="rule"><h3>Fumo, fogo e destruição</h3><p>Explosões abrem paredes e deitam pisos abaixo. O fumo tapa a visão; o fogo queima e alastra.</p><span class="fig">Granada: dano 50, raio 5</span></div>
+    <div class="rule"><h3>Psi</h3><p>Etéreos e líderes alienígenas provocam pânico à distância ou controlam um soldado durante um turno.</p><span class="fig">Força Psi decide a resistência</span></div>
+  </div>
+  <div class="cols2">
+    <div><div class="shot" style="aspect-ratio:16/10"><img src="img/inventario.jpg" alt=""></div><div class="cap"><b>Inventário</b> · custo de cada movimento antes de largar o objeto</div></div>
+    <div><div class="shot" style="aspect-ratio:16/10"><img src="img/kit-medico.jpg" alt=""></div><div class="cap"><b>Kit médico</b> · feridas por parte do corpo, estimulante e analgésico</div></div>
+  </div>
+  <div class="folio"><span>Dossiê OVNI-1999</span><span><b>8</b></span></div>
+</section>
+
+<!-- 9 · Inimigo -->
+<section class="page alt">
+  <div class="runner"><span>OVNI: Inimigo Desconhecido</span><span><b>08</b> · O inimigo</span></div>
+  <div>
+    <p class="eyebrow">O inimigo</p>
+    <h2>Cinco raças, oito naves,<br>uma origem por descobrir</h2>
+  </div>
+  <p class="lead" style="font-size:10pt">Cada raça tem soldados, navegadores, engenheiros, médicos, líderes e comandantes. Capturar as patentes mais altas com vida é o que abre o caminho até Marte.</p>
+  <div class="races">
+    <div class="race"><span>Primeiro contacto</span><b>Sectoide</b><p>Pequenos, frágeis e psíquicos. Os líderes atacam a mente.</p></div>
+    <div class="race"><span>Voo</span><b>Flutuante</b><p>Pairam sobre o terreno e atacam por cima das coberturas.</p></div>
+    <div class="race"><span>Terror</span><b>Homem-Serpente</b><p>Trazem as Crisálidas, que transformam civis em zombies.</p></div>
+    <div class="race"><span>Força bruta</span><b>Muton</b><p>Muita Saúde e armadura, pouca imaginação.</p></div>
+    <div class="race"><span>Mente</span><b>Etéreo</b><p>Os mestres psíquicos por trás da invasão.</p></div>
+  </div>
+  <div class="chips"><span class="lbl">Unidades de terror</span><span class="tag">Ciberdisco</span><span class="tag">Sectopode</span><span class="tag">Ceifador</span><span class="tag">Crisálida</span><span class="tag">Zombie</span></div>
+  <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 6mm; align-items: start">
+    <div class="sheet">
+      <div class="sheet-h"><h3>Classes de OVNI</h3><span>Casco · velocidade</span></div>
+      <table>
+        <tbody>
+          <tr><td><b>Batedor Pequeno</b></td><td class="r">50</td><td class="r">2 200 nós</td></tr>
+          <tr><td><b>Batedor Médio</b></td><td class="r">200</td><td class="r">2 400 nós</td></tr>
+          <tr><td><b>Batedor Grande</b></td><td class="r">250</td><td class="r">2 700 nós</td></tr>
+          <tr><td><b>Ceifeira</b></td><td class="r">500</td><td class="r">4 000 nós</td></tr>
+          <tr><td><b>Raptor</b></td><td class="r">500</td><td class="r">4 300 nós</td></tr>
+          <tr><td><b>Nave de Terror</b></td><td class="r">1 200</td><td class="r">4 800 nós</td></tr>
+          <tr><td><b>Nave de Abastecimento</b></td><td class="r">2 200</td><td class="r">3 200 nós</td></tr>
+          <tr><td><b>Couraçado</b></td><td class="r">3 000</td><td class="r">5 000 nós</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div><div class="shot" style="aspect-ratio:16/10"><img src="img/ovni.jpg" alt=""></div><div class="cap"><b>Batedor Médio despenhado</b> · reator de Elerium aceso, de noite</div></div>
+  </div>
+  <div>
+    <h3>A Ufopédia</h3>
+    <p class="prose" style="margin-bottom:3mm">80 artigos em 8 secções, desbloqueados à medida que a investigação avança, cada um com ilustração desenhada pelo jogo, ficha gerada a partir das regras reais e texto original no tom dos relatórios de 1999.</p>
+    <div class="gal2">
+      <div><div class="shot"><img src="img/ufopedia.jpg" alt=""></div><div class="cap"><b>Muton</b> · estatísticas por patente e dificuldade</div></div>
+      <div><div class="shot"><img src="img/ufopedia-ufo.jpg" alt=""></div><div class="cap"><b>Couraçado</b> · casco 3 000 e o que se recupera</div></div>
+    </div>
+  </div>
+  <div class="folio"><span>Dossiê OVNI-1999</span><span><b>9</b></span></div>
+</section>
+
+<!-- 10 · Terrenos -->
+<section class="page">
+  <div class="runner"><span>OVNI: Inimigo Desconhecido</span><span><b>09</b> · Campos de batalha</span></div>
+  <div>
+    <p class="eyebrow">Campos de batalha</p>
+    <h2>Nove terrenos, gerados a cada missão</h2>
+  </div>
+  <p class="lead" style="font-size:10pt">Cada mapa é montado a partir de blocos, como no original. O terreno depende do sítio do globo onde o OVNI caiu; os locais de terror acontecem em cidades reais, com civis para salvar.</p>
+  <div class="terrains">
+    <figure><img src="img/terreno-quinta.jpg" alt=""><figcaption>Quinta<small>Searas, celeiros, cercas</small></figcaption></figure>
+    <figure><img src="img/terreno-urbano.jpg" alt=""><figcaption>Urbano<small>Locais de terror com civis</small></figcaption></figure>
+    <figure><img src="img/terreno-floresta.jpg" alt=""><figcaption>Floresta<small>Pouca visão, muita cobertura</small></figcaption></figure>
+    <figure><img src="img/terreno-deserto.jpg" alt=""><figcaption>Deserto<small>Campo aberto, longo alcance</small></figcaption></figure>
+    <figure><img src="img/terreno-selva.jpg" alt=""><figcaption>Selva<small>Vegetação alta e água</small></figcaption></figure>
+    <figure><img src="img/terreno-montanha.jpg" alt=""><figcaption>Montanha<small>Rochedos e desníveis</small></figcaption></figure>
+    <figure><img src="img/terreno-polar.jpg" alt=""><figcaption>Polar<small>Gelo e neve</small></figcaption></figure>
+    <figure><img src="img/terreno-base.jpg" alt=""><figcaption>Base Alienígena<small>Corredores de resina</small></figcaption></figure>
+    <figure><img src="img/terreno-marte.jpg" alt=""><figcaption>Marte<small>Cidónia, a missão final</small></figcaption></figure>
+  </div>
+  <div class="cols2" style="align-items:start">
+    <div class="prose">
+      <h3>Missões</h3>
+      <p>OVNI despenhado, OVNI aterrado, local de terror, assalto a uma base alienígena e, no fim, Cidónia. De dia, ao crepúsculo ou de noite, consoante a hora local.</p>
+    </div>
+    <div class="prose">
+      <h3>Batalha Rápida</h3>
+      <p>Fora da campanha, qualquer missão pode ser jogada à medida: escolhe-se o OVNI, o terreno, a hora, a dificuldade, o mês do equipamento e o tamanho da equipa.</p>
+    </div>
+  </div>
+  <div>
+    <div class="shot" style="height:60mm"><img src="img/batalha-rapida.jpg" alt="" style="object-position: 50% 30%"></div>
+    <div class="cap"><b>Batalha Rápida</b> · missão, OVNI, terreno, hora, dificuldade, mês do equipamento e tamanho da equipa</div>
+  </div>
+  <div class="folio"><span>Dossiê OVNI-1999</span><span><b>10</b></span></div>
+</section>
+
+<!-- 11 · Mac -->
+<section class="page alt">
+  <div class="runner"><span>OVNI: Inimigo Desconhecido</span><span><b>10</b> · Feito para o Mac</span></div>
+  <div>
+    <p class="eyebrow">Feito para o Mac</p>
+    <h2>Trackpad, teclado e iPad</h2>
+  </div>
+<div class="controls">
+    <div class="sheet">
+      <div class="sheet-h"><h3>Trackpad</h3><span>Battlescape</span></div>
+      <table><tbody>
+        <tr><td>Clique numa casa</td><td>Mostrar o caminho; 2.º clique anda</td></tr>
+        <tr><td><kbd>Ctrl</kbd> + clique</td><td>Rodar para esse lado ou cancelar</td></tr>
+        <tr><td><kbd>⌥</kbd> + clique numa porta</td><td>Abrir sem entrar</td></tr>
+        <tr><td><kbd>⌘</kbd> + clique a apontar</td><td>Forçar o disparo</td></tr>
+        <tr><td>Dois dedos · pinça</td><td>Deslocar a câmara · zoom</td></tr>
+      </tbody></table>
+    </div>
+    <div class="sheet">
+      <div class="sheet-h"><h3>Teclado</h3><span>Battlescape</span></div>
+      <table><tbody>
+        <tr><td><kbd>Q</kbd> <kbd>E</kbd></td><td>Ação da mão esquerda / direita</td></tr>
+        <tr><td><kbd>Tab</kbd> · <kbd>K</kbd></td><td>Soldado seguinte · ajoelhar</td></tr>
+        <tr><td><kbd>G</kbd> · <kbd>L</kbd></td><td>Granada rápida · sinalizador</td></tr>
+        <tr><td><kbd>R</kbd> · <kbd>I</kbd></td><td>Recarregar · inventário</td></tr>
+        <tr><td><kbd>Enter</kbd></td><td>Terminar turno</td></tr>
+      </tbody></table>
+    </div>
+    <div class="sheet">
+      <div class="sheet-h"><h3>Teclado</h3><span>Geoscape</span></div>
+      <table><tbody>
+        <tr><td><kbd>1</kbd> … <kbd>6</kbd></td><td>Velocidade do tempo</td></tr>
+        <tr><td><kbd>Espaço</kbd> · <kbd>P</kbd></td><td>Pausa / retomar</td></tr>
+        <tr><td><kbd>I</kbd> · <kbd>B</kbd></td><td>Intercetar · bases</td></tr>
+        <tr><td><kbd>U</kbd> · <kbd>F</kbd></td><td>Ufopédia · financiamento</td></tr>
+        <tr><td><kbd>S</kbd> · <kbd>C</kbd></td><td>Gravar · centrar</td></tr>
+      </tbody></table>
+    </div>
+    <div class="sheet">
+      <div class="sheet-h"><h3>iPad</h3><span>Toque</span></div>
+      <table><tbody>
+        <tr><td>Toque</td><td>1.º mostra o caminho, 2.º confirma</td></tr>
+        <tr><td>Toque longo</td><td>Rodar ou cancelar</td></tr>
+        <tr><td>Dois dedos</td><td>Deslocar e zoom</td></tr>
+        <tr><td>Ecrã principal</td><td>Abre em ecrã inteiro, como app</td></tr>
+      </tbody></table>
+    </div>
+  </div>
+  <div style="display:grid; grid-template-columns: 0.8fr 1.2fr; gap: 6mm; align-items: start; margin-top: 1mm">
+    <div class="prose">
+      <p class="eyebrow" style="margin:0">Acessibilidade</p>
+      <h3 style="margin:0">Ninguém fica de fora</h3>
+      <p>Quatro ajustes em Opções › Acessibilidade valem para todo o jogo, do Geoscape ao combate. Foram afinados com um jogador que só usa o teclado, tem daltonismo e joga com o browser a 125 %.</p>
+      <p>As cores nunca são a única pista: aliados e inimigos distinguem-se também pela forma.</p>
+    </div>
+    <div class="sheet">
+      <div class="sheet-h"><h3>Opções › Acessibilidade</h3><span>Quatro ajustes</span></div>
+      <table><tbody>
+        <tr><td><b>Cores</b></td><td>Paleta para daltonismo: azul, laranja e magenta em vez de vermelho, verde e amarelo</td></tr>
+        <tr><td><b>Cursor de teclado</b></td><td>Uma casa marcada que as setas movem: andar, apontar e lançar sem rato</td></tr>
+        <tr><td><b>Reduzir movimento</b></td><td>Segue o sistema ou tira animações, tremores e rotações automáticas</td></tr>
+        <tr><td><b>Tamanho do texto</b></td><td>100, 115 ou 130 % nos menus e no painel de combate</td></tr>
+      </tbody></table>
+    </div>
+  </div>
+  <div class="sheet" style="margin-top:2mm">
+    <div class="sheet-h"><h3>Requisitos</h3><span>Sem instalação</span></div>
+    <table><tbody>
+      <tr><td><b>Mac</b></td><td>Safari ou Chrome; trackpad ou rato e teclado</td></tr>
+      <tr><td><b>iPad</b></td><td>Safari, em ecrã inteiro a partir de «Adicionar ao ecrã principal»</td></tr>
+      <tr><td><b>Outros</b></td><td>Qualquer browser moderno em Windows ou Linux</td></tr>
+      <tr><td><b>Gravações</b></td><td>Sete espaços no browser (automáticos, antes da missão, por turno e três manuais), com exportação para ficheiro</td></tr>
+    </tbody></table>
+  </div>
+  <div class="folio"><span>Dossiê OVNI-1999</span><span><b>11</b></span></div>
+</section>
+
+<!-- 12 · Jogar e estado -->
+<section class="page">
+  <div class="runner"><span>OVNI: Inimigo Desconhecido</span><span><b>11</b> · Jogar e estado do projeto</span></div>
+  <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 6mm; align-items: start;">
+    <div>
+      <p class="eyebrow">Jogar</p>
+      <h2 style="font-size:17pt">Do Terminal à primeira missão em dois minutos</h2>
+      <ol class="howto" style="margin-top:4mm">
+        <li><span>Abrir o Terminal e correr os comandos ao lado.</span></li>
+        <li><span>No Safari ou no Chrome, abrir <span class="mono">localhost:8001</span>.</span></li>
+        <li><span>Escolher <b>OVNI: Inimigo Desconhecido</b> na página «Jogos de Família».</span></li>
+        <li><span><b>Nova Campanha</b> para a guerra completa, ou <b>Batalha Rápida</b> para uma missão avulsa.</span></li>
+      </ol>
+    </div>
+    <div style="padding-top: 7mm">
+<div class="code"><span class="c"># uma vez</span>
+git clone https://github.com/
+  ricardomoey/helloworld.git HelloWorld
+cd HelloWorld
+git switch main
+
+<span class="c"># sempre que quiser jogar</span>
+python3 -m http.server 8001</div>
+      <p class="cap" style="margin-top:2.4mm">Ou duplo clique em <b>ovni-1999/serve.command</b>.</p>
+    </div>
+  </div>
+  <div style="display:grid; grid-template-columns: 1.05fr 1fr; gap: 7mm; align-items: start">
+    <div>
+      <p class="eyebrow">Estado do projeto</p>
+      <h2 style="font-size:17pt; margin-bottom:4mm">Campanha completa,<br>polimento contínuo</h2>
+      <ol class="timeline">
+        <li><div><span class="w">Onda 1</span><b>Regras, mundo e arte</b></div><p>Dados do original, mapa-mundo, 76 blocos de mapa, sprites procedimentais e mais de 50 sons sintetizados.</p></li>
+        <li><div><span class="w">Onda 2</span><b>Motor de combate</b></div><p>Caminhos, linha de visão, luz, tiro com desvio, explosões, moral, IA alienígena e renderizador isométrico.</p></li>
+        <li><div><span class="w">Onda 3</span><b>Batalha jogável</b></div><p>HUD, inventário, kit médico, menus, briefing e relatório, testados com batalhas completas pela interface.</p></li>
+        <li><div><span class="w">Onda 4</span><b>Geoscape e campanha</b></div><p>Globo, bases, investigação, fabrico, mercado, interceção, conselho, Ufopédia, gravações e Cidónia.</p></li>
+        <li><div><span class="w">Playtests</span><b>Quatro rondas, seis personas</b></div><p>Veterano do X-COM, casual no trackpad, criança de 11 anos, otimizador, só teclado com daltonismo a 125 % e iPad ao toque, com correções em cada ronda.</p></li>
+        <li class="now"><div><span class="w">A seguir</span><b>Polimento contínuo</b></div><p>Equilíbrio, textos e pequenos atritos, à medida que a família joga.</p></li>
+      </ol>
+    </div>
+    <div style="display:grid; gap:4mm">
+      <dl class="metrics" style="grid-template-columns: 1fr 1fr">
+        <div><dt>0</dt><dd>Dependências: abre num browser moderno</dd></div>
+        <div><dt>100 %</dt><dd>Arte procedimental, desenhada pelo jogo</dd></div>
+        <div><dt>779</dt><dd>Testes automáticos às regras e à campanha</dd></div>
+        <div><dt>36</dt><dd>Cenários no browser, jogados pela interface</dd></div>
+        <div><dt>10 / 12</dt><dd>Campanhas em Recruta vencidas pelo bot, por volta de meados de maio de 1999</dd></div>
+        <div><dt>1 semente</dt><dd>A mesma semente dá sempre o mesmo mundo e a mesma batalha</dd></div>
+      </dl>
+    </div>
+  </div>
+  <div style="margin-top:auto; display:grid; gap:2.4mm; border-top: 0.3mm solid var(--line); padding-top: 4mm; color: var(--muted); font-size: 8pt; line-height: 1.5">
+    <p><b style="color:var(--ink2)">OVNI: Inimigo Desconhecido</b> é uma engenharia reversa feita por fãs, sem fins comerciais, para jogar em família.</p>
+    <p>UFO: Enemy Unknown (X-COM: UFO Defense) © 1994 MicroProse e Mythos Games, criado por Julian Gollop. As regras seguem a documentação pública do projeto OpenXcom. Mapa-mundo de Natural Earth (domínio público). Arte, som, textos e código são originais deste projeto.</p>
+    <p class="mono" style="font-size:7pt; letter-spacing:1.4px; color: var(--dim)">CÓDIGO · GITHUB.COM/RICARDOMOEY/HELLOWORLD · DOSSIÊ OVNI-1999 · OUTUBRO DE 2026</p>
+  </div>
+  <div class="folio"><span>Dossiê OVNI-1999</span><span><b>12</b></span></div>
+</section>
+
+<script>
+(function () {
+  // céu da capa: estrelas e limbo da Terra com luzes de cidades (como o menu do jogo)
+  var cv = document.getElementById('sky');
+  var r = cv.getBoundingClientRect(), dpr = 2, W = r.width, H = r.height;
+  cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+  var ctx = cv.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  var seed = 11; function rnd() { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; }
+  var g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#05080c'); g.addColorStop(1, '#071019');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  for (var i = 0; i < 520; i++) { ctx.globalAlpha = rnd() * 0.6 + 0.2; ctx.fillStyle = '#dfe9f2'; var s = rnd() * 1.1 + 0.3; ctx.fillRect(rnd() * W, rnd() * H, s, s); }
+  ctx.globalAlpha = 1;
+  var R = W * 1.25, cx = W * 1.05, cy = H * 0.36 + R;
+  var halo = ctx.createRadialGradient(cx, cy, R * 0.98, cx, cy, R * 1.07);
+  halo.addColorStop(0, 'rgba(88,200,255,0.28)'); halo.addColorStop(1, 'rgba(88,200,255,0)');
+  ctx.fillStyle = halo; ctx.beginPath(); ctx.arc(cx, cy, R * 1.07, 0, Math.PI * 2); ctx.fill();
+  var body = ctx.createRadialGradient(cx - R * 0.35, cy - R * 0.92, R * 0.05, cx, cy, R);
+  body.addColorStop(0, '#18405f'); body.addColorStop(0.5, '#0b1d30'); body.addColorStop(1, '#061120');
+  ctx.fillStyle = body; ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = 'rgba(120,200,255,0.6)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(cx, cy, R, Math.PI * 1.1, Math.PI * 1.7); ctx.stroke();
+  for (var k = 0; k < 260; k++) {
+    var a = -Math.PI / 2 - 0.55 + rnd() * 0.55, d = Math.pow(rnd(), 0.6), rr = R * (1 - d * 0.18);
+    var x = cx + Math.cos(a) * rr, y = cy + Math.sin(a) * rr;
+    if (x < 0 || x > W || y > H) continue;
+    ctx.globalAlpha = 0.3 + 0.55 * rnd(); ctx.fillStyle = '#f3e2b4'; ctx.fillRect(x, y, 1.3, 1.3);
+  }
+  ctx.globalAlpha = 1;
+})();
+</script>
+</body>
+</html>

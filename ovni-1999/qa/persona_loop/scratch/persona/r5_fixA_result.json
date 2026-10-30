@@ -1,0 +1,93 @@
+{
+  "summary": "OVNI persona round 5 fixer: Battlescape, inventory and equip (keyboard cursor, colour-blind encodings, touch HUD)",
+  "agentCount": 1,
+  "logs": [],
+  "result": {
+    "fix": {
+      "files_written": [
+        "/home/user/HelloWorld/ovni-1999/js/ui/battle_ui.js",
+        "/home/user/HelloWorld/ovni-1999/js/ui/input.js",
+        "/home/user/HelloWorld/ovni-1999/js/ui/inventory_ui.js",
+        "/home/user/HelloWorld/ovni-1999/js/gfx/battle_render.js",
+        "/home/user/HelloWorld/ovni-1999/css/battle.css",
+        "/home/user/HelloWorld/ovni-1999/js/i18n/pt-PT.hud.js",
+        "/home/user/HelloWorld/ovni-1999/tools/tests/ui_persona_r5.test.js",
+        "/home/user/HelloWorld/ovni-1999/tools/tests/ui_persona_r4.test.js",
+        "/home/user/HelloWorld/ovni-1999/tools/tests/integration_r4.test.js",
+        "/home/user/HelloWorld/ovni-1999/qa/persona_r5_battle.mjs"
+      ],
+      "tests": {
+        "passed": 835,
+        "failed": 0
+      },
+      "api": "## Model functions in OV.BattleUI.model (pure, tested in Node)\n\nNew:\n- `blastLineRisk(B, shooter, tx, ty, tz, r, {seen?, exclude?})` returns `{near, hit, self}`:\n  - `near`: the allies `lineRisk` finds within 1 tile of the line of fire.\n  - `hit`: the allies, civilians and the shooter within radius `r` of any `near` ally.\n  - `self`: true when the shooter is in `hit`.\n- `blastWho({risk, civ, self, selfF})` returns text such as «o próprio atirador, 1 aliado e 2 civis»; with `selfF` it reads «a própria atiradora».\n\nChanged:\n- `logEntry(B, ev, ctx)` now also logs alien shots at our soldiers:\n  - Keys `hud.log.shotAt` and `hud.log.shotAt.burst`: kind `'warn'`, icon ○, `own: true`, `at` is the target's tile, `from` is the shooter's tile when it was seen.\n  - Later rounds of the same burst return null.\n  - If a `damage` event from that shooter then hits one of ours, the entry gets `gone = true`.\n  - `turnReportRows`, the log panel and `debug.log()` all leave out entries marked `gone`.\n- `blastPreview` (internal) returns `{x, y, z, r, smoke, risk, civ, self, selfF, ids}`.\n- `blastRiskText` uses the `.who` keys whenever civilians or the shooter are in the radius.\n\n## Other new or changed exports\n- `OV.BattleRender.avoidCols(F, x0, y0, w, h)` returns the corrected `x0` in device px.\n- `view.safe.avoid = [{x0, y0, x1, y1}]` (CSS px) lists the HUD columns. `battle_ui` measures the squad list and the right-hand column in `measureSafe`, and again whenever the alien list changes.\n- Map labels (`pill`) wrap onto several lines of at most `PILL_MAX` = 420 px and move away from the `avoid` rectangles. Second labels sit directly against the first (`subPill`).\n- `OV.BattleUI.debug.state()` gains `queued`: how many intents were queued during an animation.\n- `OV.Input.lastPointerType`:\n  - Starts as `'touch'` when `matchMedia('(hover: none) and (pointer: coarse)')` matches.\n  - Follows every `pointerdown` in the document (capture, passive), HUD buttons included.\n\n## Battlescape behaviour\n- **Turn report focus:** the turn report that opens by itself no longer focuses FECHAR. Enter ends the turn, Esc closes the panel, Tab enters it. The log opened with N still gives the keyboard player focus on Fechar.\n- **Battle ends after «Fim do turno»:** `finishBattle` reads the log since «Fim do turno» (`S.endMark`/`S.endNo`). If there were dead, wounded or panicked soldiers, it shows the turn report first with «Continuar para o relatório» (`hud.report.continue`). The button, Enter, Esc or Space then goes on to the mission report. `openReport(kind, list, titleKey, final)` and `closeReport` call `final()`.\n- **Squad list tooltips** open to the right of the row (`tipRight`).\n- **Explosives near allies:**\n  - `lineRiskConfirm` now asks for the 2nd click for explosive ammo whenever an ally is near the line, with the explosive settings, whatever the hit chance.\n  - Texts: `hud.target.nearLine.blast.*` and `hud.confirmLine.blast.{click,tap,key}.*`.\n  - The allies in the radius around that ally are marked as well.\n- **Explosive aimed at a unit:** the label is `hud.target.blast` «Acerto ≈ {pct} % · se acertar, explosão raio {r} · {tu} UT», and `hitPct` is kept. With hit preview off it uses `hud.target.blast.noPct`.\n- **Door with an unseen unit behind it:** `clickMove` calls `doorBlock(u, v.steps)`. When an unseen occupant sits right behind a closed swing door or UFO door, the soldier walks to the door (`walk` with a partial `path`) and opens it (`door` action). Otherwise the toast is `hud.door.someone{,.mac,.touch}`.\n- **Touch confirmation for explosives:** a risky explosive shot or grenade throw opens `askBlast` as a modal. It names everyone at risk, marks the shooter («— a própria atiradora/o próprio atirador»), and Cancelar has the focus. Keys: `hud.blastAsk.*`, `hud.blast.self{,.f}`, `hud.blast.and3`.\n- **Taps during animations:** an end-turn tap or a squad-list tap while an animation plays is queued (`queueIntent` / `runPending`). The End-turn button pulses (`.bs-end.queued`, static under reduced motion) and the action runs when the animation ends.\n- **UFO advice:** it is also written to the log (N), with its «Mostrar» button.\n- **Keyboard cursor:** a cursor placed under a HUD column pulls the camera so it stays visible.\n\n## Equip screen (inventory_ui + battle.css)\n- `.inv-hint` writes `.inv-hint-long` and `.inv-hint-short` (`hud.equip.hint.short{,.touch}`). At heights up to 640 px the short version shows in full on 2 lines; the long one stays in the `title`.\n- At heights up to 860 px, when the `eq` container is wider than 861 px, belt and backpack sit side by side (columns 4:9) and the hands row is at most 180 px tall.\n- At heights up to 640 px the hands row is 78 px.",
+      "summary": "I fixed all 13 findings in r5_fixA.json (Battlescape and equip screen) at the cause, and each has a regression check. `node tools/test.js --strict --i18n` is green: 835 passed, 0 failed. During the session the other two fixers' in-progress tests sometimes failed (`sim_persona_r5`, `campaign_pacing2`, `shell_persona_r5`, `campaign_ui_texts`); they were green by my last run.\n\nThe new QA script `qa/persona_r5_battle.mjs` finishes with 0 failures. It covers 1440×900, 1024×576 at 125 %, 1024×560, 1194×834, and iPad 1194×834 and 834×1194 with touch. These also re-ran green: `persona_r1`–`r4_battle`, `inventory_check`, `ux_regress`, `battle_play`, `integration_r3`, `full_battle` and `full_campaign` (whole campaign, no errors). I looked at the screenshots in `/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/ui4/persona_r5/`.\n\nPer finding (all fixed):\n- **#0** After the alien turn, the turn panel no longer takes keyboard focus, so Enter ends the turn and Esc closes the panel. The log opened with N still focuses Fechar for keyboard players, because `persona_r2_battle` requires that.\n- **#1** When the battle ends after «Fim do turno», the deaths from that last phase are shown first («Desde o fim do seu turno · 8 mortos»). «Continuar para o relatório» or Enter then goes to the mission report. Checked in the browser with grenades going off at the end of the turn.\n- **#2** The squad-row tooltip now opens to the right of the column instead of over the rows above.\n- **#3** A rocket with an ally next to the line of fire now asks for a second click in Recruta and Veterano (a double click doesn't count). The label reads «Clique outra vez — se falhar, pode rebentar em cima de X», and the allies around that ally are marked too.\n- **#4** A rocket aimed at an alien shows the real hit chance: «Acerto ≈ 42 % · se acertar, explosão raio 3 · 22 UT».\n- **#5** An unseen alien right behind a closed door no longer blocks the squad. The soldier walks to the door and opens it, and the alien is revealed. This is a UI-side fallback; the matching engine fix is in open issues.\n- **#6** Map labels now move clear of the squad list and the alien column, and long ones wrap onto two lines (max 420 px). A keyboard cursor placed under the squad list now moves the camera so it stays visible.\n- **#7** Alien shots that miss our soldiers now appear in the message log and the turn report («Sectoide disparou contra Ana — falhou») with a button to the shooter. If the shot hits, only the wound entry remains.\n- **#8** Equip screen at 1024×560: belt and backpack sit side by side, so hands, belt and backpack are all visible on open. Also true at 1366×768 and 1194×834, where they scrolled before. The help line uses a short version that fits in full on two lines. The two other cut-off texts on this screen are in `css/campaign.css`, which I don't own; patches are in open issues.\n- **#9** On iPad, a risky explosive shot or grenade now opens a separate «Disparar mesmo assim?» window. It names everyone at risk, marks the shooter herself, and has Cancelar focused; Cancelar does not fire.\n- **#10** Hints use the touch wording from the first tap on any HUD button, and on a touch-only screen from the start.\n- **#11** Tapping «Fim do turno» or a soldier in the list during an animation is now remembered and applied when it ends; the button pulses while waiting.\n- **#12** The «estão dentro do OVNI» advice now stays in the message log with its «Mostrar» button.\n\nI stopped every server I started; the three `http.server` processes still running belong to others.",
+      "screenshots": [
+        "/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/ui4/persona_r5/02_rocket_confirm_1440x900.png",
+        "/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/ui4/persona_r5/05_rocket_confirm_1024x576.png",
+        "/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/ui4/persona_r5/06_rocket_alien_pct_1024x576.png",
+        "/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/ui4/persona_r5/07_report_open_kb.png",
+        "/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/ui4/persona_r5/08_log_alien_shot.png",
+        "/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/ui4/persona_r5/09_squad_tip_right.png",
+        "/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/ui4/persona_r5/10_final_phase_report.png",
+        "/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/ui4/persona_r5/11_door_opened_alien.png",
+        "/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/ui4/persona_r5/12_flare_label_clear.png",
+        "/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/ui4/persona_r5/13_flare_kb_cursor_visible.png",
+        "/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/ui4/persona_r5/14_equip_1024x560.png",
+        "/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/ui4/persona_r5/15_equip_1440x900.png",
+        "/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/ui4/persona_r5/16_equip_1194x834.png",
+        "/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/ui4/persona_r5/17_ipad_flare_hint_1194x834.png",
+        "/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/ui4/persona_r5/18_ipad_end_queued_1194x834.png",
+        "/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/ui4/persona_r5/19_ipad_rocket_ask_1194x834.png",
+        "/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/ui4/persona_r5/22_ipad_rocket_ask_834x1194.png"
+      ],
+      "deviations": [
+        "tools/tests/integration_r4.test.js (written by the r4 integrator; none of the current fixers own it): I widened one source regex from `return { x, y, z, r, smoke, risk, civ };` to `civ[,; }]`, because `blastPreview` now also returns `self`, `selfF` and `ids`. The test's intent (civilians are counted and returned) is unchanged.",
+        "tools/tests/ui_persona_r4.test.js (mine): the assertion that alien shots never enter the log was reversed. That is now finding r5 #7: an alien shot at our soldiers creates a `hud.log.shotAt` entry.",
+        "#0: only the turn report that opens by itself stops taking focus. The log opened deliberately with N still gives keyboard players focus on Fechar, because `qa/persona_r2_battle.mjs` (Pedro, round 2) requires it.",
+        "#5 is a UI-side fallback (`doorBlock`/`walkToDoor` in `battle_ui`), because `js/sim/**` is not mine. The engine patch is in open_issues.",
+        "#9: the separate confirmation window appears only on touch (`isTouch()`). Mouse and keyboard keep the 2nd click or Enter, guarded by double-click detection and a 400 ms gap. The same window also covers risky grenade throws on touch, for consistency.",
+        "#11: queuing applies to the End-turn button and the squad-list rows, which is the touch report. Keyboard Enter during an animation still only speeds it up, as before.",
+        "#8: the parts in my area are fixed (doll layout and short help text). The «Ficaram em Base…» card and the footer hint are in `css/campaign.css`, which I don't own; patches are in open_issues."
+      ],
+      "open_issues": [
+        "css/campaign.css (campaign/shell owner), finding #8: at heights of 700 px or less, the equip screen's footer hint `.cp-eq > footer .scr-hint` is still cut with an ellipsis. Patch: in the @media (max-height: 700px) block, replace `white-space: nowrap; overflow: hidden; text-overflow: ellipsis;` with `display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; white-space: normal;`.",
+        "css/campaign.css, finding #8: at 1024×560, `.cp-eq-left` (line-clamp 2) shows a cut-off third line because of its padding. Patch: add `max-height: calc(2.7em + 10px);` inside the same @media (max-height: 700px) rule, or collapse it to one line below 620 px with a «mais» toggle in campaign_ui.js.",
+        "js/sim/battle/actions.js (sim owner), finding #5 at the engine level: in `P.walk`, when a step has `s.occupant !== null && (s.door || s.opensUfoDoor !== null && s.opensUfoDoor !== undefined)`, it currently yields `interrupt 'blocked'` without opening the door. Proposed behaviour, as in the original game: open the door (`OV.Env.openDoor(B, u, s.door ? s.door.i : s.opensUfoDoor, s.door ? s.door.part : 3)`), charge TU_DOOR when `!a.free`, `yield* refreshSightings(B, OV.LOS.refreshAll(B))`, then `yield interrupt(B, u, 'spotted'); return { ok: false, reason: 'spotted', moved }`. The AI and headless bots would then behave the same way; the UI fallback (`doorBlock`) can stay.",
+        "js/ui/screens.js (shell owner), optional for #1: the debrief memorial could carry each death's cause (e.g. «— granada alienígena»), and the tip could be chosen by the dominant cause (grenade → «Afaste os soldados do círculo vermelho e não os junte»). The Battlescape now shows the last phase's casualties, with causes, before the debrief, so this is polish only.",
+        "js/ui/screens.js «Como Jogar» (shell owner), optional for #5: add «⌥/Alt + clique (ou ⌥ + Enter) abre uma porta sem entrar». Walking into a door with someone behind it now opens it on its own."
+      ]
+    }
+  },
+  "workflowProgress": [
+    {
+      "type": "workflow_phase",
+      "index": 1,
+      "title": "Correção"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 1,
+      "label": "battle/inventory",
+      "phaseIndex": 1,
+      "phaseTitle": "Correção",
+      "agentId": "a07a1ee02eb018f1c",
+      "model": "claude-opus-5-5",
+      "state": "done",
+      "startedAt": 1793363597023,
+      "queuedAt": 1793363596982,
+      "attempt": 1,
+      "lastToolName": "StructuredOutput",
+      "lastToolSummary": "## Model functions in OV.BattleUI.model (pure, tested in No…",
+      "promptPreview": "You are a senior engineer on \"OVNI: Inimigo Desconhecido\" (repo /home/user/HelloWorld/ovni-1999), a faithful browser reverse-engineering of UFO: Enemy Unknown (1994) — vanilla JS classic-script IIFEs on global OV, Canvas 2D + DOM overlay, zero deps, no build, pt-PT European UI, Mac-first (trackpad + keyboard; also mouse and iPad touch). User brief: «capricha na jogabilidade» — gameplay feel and po…",
+      "promptFramed": true,
+      "lastProgressAt": 1793369170572,
+      "tokens": 460562,
+      "toolCalls": 163,
+      "durationMs": 5573548,
+      "resultPreview": "{\"files_written\":[\"/home/user/HelloWorld/ovni-1999/js/ui/battle_ui.js\",\"/home/user/HelloWorld/ovni-1999/js/ui/input.js\",\"/home/user/HelloWorld/ovni-1999/js/ui/inventory_ui.js\",\"/home/user/HelloWorld/ovni-1999/js/gfx/battle_render.js\",\"/home/user/HelloWorld/ovni-1999/css/battle.css\",\"/home/user/HelloWorld/ovni-1999/js/i18n/pt-PT.hud.js\",\"/home/user/HelloWorld/ovni-1999/tools/tests/ui_persona_r5.tes…"
+    }
+  ],
+  "totalTokens": 460562,
+  "totalToolCalls": 163
+}

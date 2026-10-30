@@ -1,0 +1,191 @@
+[
+ {
+  "file": "ovni-1999/js/ui/geo_ui.js",
+  "area": "ui",
+  "severity": "critical",
+  "claim": "A human player cannot win the campaign. No UI path launches the Cydonia mission. When 'Cidónia ou Desastre' completes, BaseUI shows 'A missão final está disponível: envie o Vingador para Cidónia.', but no button, card action, intercept target or popup ever calls CampaignUI.launchMission(G, {kind:'cydonia'}, craftId). The sim and campaign UI support it; only the entry point is missing.",
+  "evidence": "1) grep: outside screens.js (quick-battle), no UI file builds a {kind:'cydonia'} siteRef. GeoUI.targetsFor (geo_ui.js:234-251) lists only ufos, sites, discovered alienBases and 'home'. World.canOrder(G, avengerId, {kind:'cydonia'}) returns {ok:false, reason:'noTarget'} (world.js check()). 2) Playwright, real game on a random port: /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/review4/fidelidade/t_cydonia.mjs. Setup: G with flags.cydoniaUnlocked=true, research done, a 'Pronta' Avenger in the hangar with 8/12 soldiers. I scanned every button in the geoscape, the selected base card (shows 'Vingador-1 Pronta … 8/12 soldados' with only 'Lançar' → intercept list), the intercept dialog and Basescape tab 'Naves' with the Avenger selected (only 'Instalar arma', 'Equipar'). Zero buttons match /cid[oó]nia|marte|final/i. No console errors. 3) t_cyd2.mjs: calling OV.CampaignUI.launchMission(G,{kind:'cydonia'},avId) by hand returns true and opens the 'cbriefing' scene with G.activeMission.siteRef={kind:'cydonia'}. So only the button is missing. The campaign bot wins only because it calls startMission directly (campaign_bot.js:966).",
+  "fix": "Add a «Missão final: Cidónia» action: (a) in the GeoUI base card / craft card, shown for crafts with Data.crafts[type].spacecraft, status 'ready', in their hangar, at least one fit soldier, and G.flags.cydoniaUnlocked; (b) in the BaseUI 'Naves' tab for the same craft; (c) as a button on the researchDone popup when ev.flags includes 'cydoniaUnlocked'. Each one goes through a confirm dialog («Não há regresso…») and then OV.CampaignUI.launchMission(G, {kind:'cydonia'}, craftId). When disabled, explain why with the campaign.err.* reason (notReady / noSoldiers / craftType). Add a Playwright QA step that reaches the Cydonia briefing through the UI.",
+  "lens": "fidelidade"
+ },
+ {
+  "file": "ovni-1999/js/ui/geo_ui.js",
+  "area": "ui",
+  "severity": "critical",
+  "claim": "The campaign cannot be won from the UI. No screen offers the Cydonia mission. After research «Cidónia ou Desastre» completes, the only sign of it is the text hint in the base research tab: «A missão final está disponível: envie o Vingador para Cidónia.» No button, card action, intercept-dialog target, popup action or key ever calls CampaignUI.launchMission(G, {kind:'cydonia'}, craftId). World.canOrder/check also rejects ref.kind 'cydonia' (noTarget), so the intercept dialog could not list it even if it tried. Only tools/campaign_bot.js reaches Campaign.startMission({kind:'cydonia'}), which is why the bot sweeps report victories.",
+  "evidence": "Script: scratchpad/review4/bugs/t10_cydonia.mjs (real game over http, Playwright). It researches alien_origins and martian_solution, sets the leader/commander flags, puts an Avenger in the hangar with 8 soldiers, then runs BaseSim.completeResearch(G,b1,'cydonia') → flags.cydoniaUnlocked=true. Results: the researchDone popup has only [Ver Ufopédia, Novo projeto, OK]. Searching for /Cid[oó]nia|Marte/ finds nothing on the geoscape, nothing in the intercept dialog (I), nothing on the base card or the base crafts tab, and 0 buttons in the whole DOM. Only the research-tab hint matches. `grep -rn cydonia js/ui/*.js` shows no launch path, only end-screen texts and the screens.js quick battle.",
+  "fix": "Add a final-mission entry. When G.flags.cydoniaUnlocked, show «Missão a Cidónia» in two places: on the base card / the Avenger row in geo_ui.js cardSpec (craft ready in the hangar, ≥1 fit soldier, type avenger or def.spacecraft), and as a button in the cydonia researchDone popup. It calls OV.CampaignUI.launchMission(G, {kind:'cydonia'}, craftId). Campaign.checkStart already validates every requirement and the briefing already handles siteRef.kind 'cydonia'. Add a QA check in qa/campaign_flow_check.mjs that clicks it.",
+  "lens": "bugs"
+ },
+ {
+  "file": "ovni-1999/js/ui/geo_ui.js",
+  "area": "ui",
+  "severity": "major",
+  "claim": "The Geoscape side panel and selection card stay clickable while an interception is open. The dogfight overlay is the only overlay with pointer-events:none on its root (css/dogfight.css: `#hud > .df-root {pointer-events:none}`), and geoscape pause() only hides the panel when the scene on top is a full screen. So during a dogfight the player can click «Iniciar missão» on a transport card. That starts a ground battle on top of a frozen dogfight: every battle autosave is silently refused, and when the player returns the interception is silently disengaged. Interceptar/Bases/Gravar/speed buttons also work under the overlay (Interceptar opens an invisible intercept dialog behind the panel).",
+  "evidence": "Script: scratchpad/review4/bugs/t5_mission_during_df.mjs + t5b.mjs. Setup: the Skyranger waits over a crashed UFO and Intercetor-1 engages a second UFO, so the dogfight opens (stack geoscape>dogfight). Click «Skyranger-1» in «Naves no ar», then «Iniciar missão», then Enter. Results: the stack becomes ['geoscape','dogfight','cbriefing'] and then ['geoscape','dogfight','battlescape'], with activeMission set and G.dogfights.length 1. During the battle OV.Save.list() never shows 'autoTurn', and Save.save('3',G,B) → {ok:false, reason:'busy'}, so a reload loses the battle. Abort, then Continue: popToGeo pops the dogfight and its teardown calls Dogfight.finish → 'disengaged'. Final state: dfs 0, interceptor 'returning', no popup or toast. t2_df_clicks.mjs: elementFromPoint on Interceptar/Bases/Gravar/Opções under the open panel hits the geo buttons. Clicking Interceptar sets GeoUI.current().dialog='intercept' (hidden behind the panel). Bases pushes basescape over the dogfight. t14_overlays.mjs: options, saveload and monthReport all cover the panel correctly, so the dogfight is the only exception.",
+  "fix": "In geo_ui.js makeScene: in pause(), always set `S.root.inert = true` (or add a class with pointer-events:none on .geo side/card/layer), and clear it in resume(). Also guard the action handlers (launchMission, openIntercept, openBase, saveGame, setSpeed) with `if (!isTop()) return`. As a sim backstop, make Campaign.checkStart throw fail('busy') when G.dogfights.length > 0, so no battle can start while a dogfight exists.",
+  "lens": "bugs"
+ },
+ {
+  "file": "ovni-1999/js/ui/campaign_ui.js",
+  "area": "ui",
+  "severity": "major",
+  "claim": "Founding a new campaign silently overwrites the 'auto' slot, which holds the only autosave of the campaign in progress. newgame found() always calls autosave(G,{silent:true}) (line 408), and nothing warns first. A player who relies on autosaves (there are 3 a month plus one after each battle) and starts «Nova Campanha» loses the old campaign with no confirmation.",
+  "evidence": "Script: scratchpad/review4/bugs/t13_newgame_auto.mjs. A 40-day campaign is autosaved: Save.list() → [['auto','1999-02-10','Fevereiro 1999 — Base Lusitânia']]. Reload, then menu → «Nova Campanha» → Veterano → «Escolher local» → «Fundar base». No modal appears during the whole flow (modal count 0). Afterwards Save.list() → [['auto','1999-01-01','Janeiro 1999 — Base Lusitânia']]: the 40-day campaign is gone.",
+  "fix": "In newgame step 1 (or in found()), read Save.read('auto') and compare it with the new campaign (campaign.seed / base / t). If it holds a different campaign that is not finished (flags.won/lost false), either (a) show a confirmation «A gravação automática da campanha atual será substituída — gravar numa posição ou exportar primeiro?» with a direct «Exportar» button, or (b) move the old auto into a backup key (e.g. 'auto.prev', listed in the load dialog) before writing the new one. Also clear a stale 'autoTurn' from the old campaign so «Continuar» cannot reopen it later.",
+  "lens": "bugs"
+ },
+ {
+  "file": "ovni-1999/js/ui/geo_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "Losing a base produces popup spam before Game Over. Each craft destroyed with the base pushes its own stop-popup «Nave perdida» (craftLost is not in MERGE), so the player clicks through baseAttack, baseDefence and N× craftLost before reaching the game-over screen. The craftLost popups add nothing because the baseDefence popup already reports the loss.",
+  "evidence": "Script: scratchpad/review4/bugs/t8_baselost.mjs. The Skyranger is patrolling (no garrison) and a retaliation Battleship flies at b1. The popups shown are: «A base está a ser atacada!», «Defesa da base», «Nave perdida», «Nave perdida», «Nave perdida», then the gameOver scene.",
+  "fix": "Add craftLost to MERGE so the queued ones show as one popup. In handle(), drop craftLost events with reason 'base' (or demote them to the baseDefence popup's lines) when a baseDefence event with result 'lost' is in the same batch.",
+  "lens": "bugs"
+ },
+ {
+  "file": "ovni-1999/js/ui/geo_ui.js",
+  "area": "ui",
+  "severity": "major",
+  "claim": "«Enviar equipa» (the E key or button on a landed-UFO or terror-site popup, card or list row) opens the craft dialog with the interceptors listed first and the first one focused. The usual reflex E → Enter therefore launches Intercetor-1, which carries no soldiers, to the ground target. The Skyranger is listed last. craftsFor() (geo_ui.js:218-233) sorts only by ok and then ETA. World.canOrder accepts interceptors for ground targets, and they are always faster, so they always come first. The dialog also keeps the interception wording («INTERCEÇÃO · Que nave envia contra OVNI-1?»).",
+  "evidence": "Playwright script /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/review4/mac-ux/p17_send.mjs, 1280×800 @2x. Fresh campaign, landed UFO in France, detected by the radar, popup «OVNI detetado» with buttons [Enviar equipa E, Centrar C, OK ↵]. Pressing E opens the dialog with rows [Intercetor-1 18 min, Intercetor-2 18 min, Skyranger-1 49 min · 8/10 soldados], and focus is on Intercetor-1. Pressing Enter gives G.crafts = c2:interceptor:out:{kind:'ufo',id:'u1'} and c1:skyranger:ready. Screenshot: /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/review4/mac-ux/out/send_team_dialog.png. The interceptor arrives and gets no «Iniciar missão» (World.js:355: prompt 'mission' only for a transport with fit soldiers).",
+  "fix": "In craftsFor(G, baseId, target), when the target is a ground target (site, alienBase, or a UFO with status landed or crashed), sort transports with fitSoldiers > 0 first (then by ETA). Put non-transport crafts after them and dim them, with a note such as «não leva soldados». When the dialog is opened from sendBtn, use a send-team title and kicker (e.g. «Enviar equipa · Que nave leva a equipa a OVNI-1?») and focus the first transport. Add a geoui_model test: a landed UFO with 2 interceptors and 1 Skyranger must give the Skyranger at index 0.",
+  "lens": "mac-ux"
+ },
+ {
+  "file": "ovni-1999/js/ui/dogfight_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "While an interception is minimised (M or Esc), the visible Geoscape says time is running when it is not, and its keyboard is dead. The run dot stays «on» (pulsing), the button reads «Pausa» and the speed 3 button stays lit, but the clock is frozen. The lists are stale, because only the top scene thinks. Esc does nothing, so it cannot restore the panel. B/U/F/S/I/1–6 are swallowed, yet the same Geoscape buttons still respond to the mouse. The player sees a running world that does not move and does not answer the keyboard.",
+  "evidence": "Script /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/review4/mac-ux/p10_dfmin.mjs (1280×800). Launch Intercetor-1 at the UFO and wait for the dogfight, then press M. Panel at t0: {t:2180, clock:'12:36', run:'geo-run on', pauseLbl:'Pausa', speed index 2 checked}. Panel 3 s later: identical (t still 2180). Keys while minimised: Escape → stack [geoscape, dogfight], still minimised. 5/b/u/f/s/i → no scene change. Clicking the «1 dia» speed button with the mouse does change the selection. Screenshot: /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/review4/mac-ux/out/df_min_1280.png. Cause: Scenes.think only runs the top scene (scenes.js), and DogfightUI.onInput forwards only CAMERA_KEYS when nothing is focused (dogfight_ui.js:1542-1553).",
+  "fix": "In DogfightUI.onInput with no focused panel: Esc restores the most recent panel. Forward the Geoscape keys (B/U/F/S/1–6) to the scene below, or answer them with a short toast «Interceção em curso — M para abrir». In GeoUI.pause(), when the top scene is 'dogfight', switch the run dot off and show the existing .geo-banner with «Tempo parado: interceção em curso». Alternatively, let DogfightUI.think call the Geoscape's refresh (refreshTime/refreshLists) every 220 ms so the panel stays truthful.",
+  "lens": "mac-ux"
+ },
+ {
+  "file": "ovni-1999/js/ui/screens.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "Holding Esc slightly too long cascades through several stacked screens, because only the modals and the Geoscape ignore auto-repeat. From Equipar inside a mission briefing, held Esc closes Equipar and then cancels the briefing (C.cancelMission). Re-launching takes a new map seed. From a Basescape sheet or the Ufopédia opened from the base, held Esc throws the player out to the Geoscape. makeScreen.onInput (screens.js:518-523), the BaseUI onKey (base_ui.js:1735, the Esc branch runs before the `if (ev.repeat)` check at 1748) and the base sheet onKey (base_ui.js:1538) all act on repeat events.",
+  "evidence": "Script /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/review4/mac-ux/p13_brief.mjs. Skyranger arrives at a landed UFO → Enter → [geoscape, cbriefing] → E → [geoscape, cbriefing, equip]. Escape held for 1 keydown + 3 repeats (about 120 ms): stack [geoscape], G.activeMission = null. Script p18_escrep.mjs: Basescape research tab, N (sheet open), Esc held for 1 + 2 repeats: stack goes from [geoscape, basescape] to [geoscape]. Base → U: [geoscape, basescape, ufopaedia] → held Esc → [geoscape]. GeoUI already guards this (`if (ev.repeat && …) return true`) and so does OV.Dom.modal.",
+  "fix": "Ignore Escape (and Enter) events with ev.repeat / e.repeat in makeScreen.onInput, in the BaseUI onKey (move the repeat check above the Esc branch), in the base sheet's onKey and in the Ufopédia and inventory key handlers. Only a fresh key press should leave a screen. A Playwright regression could press Escape with repeats and assert that only one level was popped.",
+  "lens": "mac-ux"
+ },
+ {
+  "file": "ovni-1999/js/i18n/pt-PT.geoui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "The most-used Geoscape button and the popup action use the Brazilian / pre-AO90 spelling «Interceptar». Everything else in the game uses pt-PT AO90: «Intercetor-1», «INTERCEÇÃO», «interceta», «intercetam», «Intercetores abatem OVNIs», «OVNIS DETETADOS».",
+  "evidence": "pt-PT.geoui.js:27 'geo.btn.intercept': 'Interceptar' and :135 'geo.a.intercept': 'Interceptar'. Grep: these two are the only 'intercept*' forms in js/i18n. The others are intercetor/intercetores/interceta/intercetam/intercetar and interceção. Visible next to «INTERCEÇÃO» and «Intercetor-1» in /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/review4/mac-ux/out/c_1280x800_intercept.png. The geo_ui.js:18 header comment says «I interceptar» too.",
+  "fix": "Change both strings to 'Intercetar'. Add a check to tools/tests/campaign_ui_texts.test.js (or a new i18n test) that fails on /intercep/i, /detect/i and /\\bac[çc]ão/ in the OV.STR values.",
+  "lens": "mac-ux"
+ },
+ {
+  "file": "ovni-1999/js/ui/campaign_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "The new-campaign base-placement panel shows coordinates with a decimal point («40.0° N · 8.6° O»). The Geoscape shows the same data with the pt-PT decimal comma (geo.ll with dec1 → «38,7° N»), and so does every other number in the strategy layer («64,5/100»).",
+  "evidence": "campaign_ui.js:353: fmtLL uses Math.abs(p.lat).toFixed(1) directly. The innerText of the placement panel captured by /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/review4/mac-ux/p12_newgame.mjs reads «COORDENADAS 40.0° N · 8.6° O». Screenshot: /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/review4/mac-ux/out/ng3_chosen_1280.png. GeoUI's fmtLL (geo_ui.js:46-51) uses dec1 with .replace('.', ',').",
+  "fix": "Use .toFixed(1).replace('.', ',') in campaign_ui.js fmtLL, or better, reuse OV.GeoUI.model's lat/lon formatter (geo.ll), so the new-game screen and the Geoscape share one format.",
+  "lens": "mac-ux"
+ },
+ {
+  "file": "ovni-1999/js/ui/geo_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "In the Geoscape interception / send-team dialog, the arrow keys rotate the globe behind the dialog instead of moving between the craft rows. Only Tab moves the focus. The save/load dialog in the same flow uses ↑/↓ to pick a row, so the keyboard language is inconsistent, and a Mac player who presses ↓ to pick the second craft sees the world spin.",
+  "evidence": "Script /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/review4/mac-ux/p16_dlgkeys.mjs. I → focus on «Skyranger-1» row, lon −9.1. ArrowDown: focus unchanged. ArrowRight: lon −9.1 → 2.9 (globe rotated), focus unchanged. Tab: focus → «Intercetor-1». Cause: onKey (geo_ui.js:1951+) handles CAMERA_KEYS before the S.dlg branch.",
+  "fix": "In onKey, when S.dlg is open and the focus is inside it, let ArrowUp/ArrowDown move the focus between the dialog's row buttons (wrap around), with Enter choosing the row. Keep the arrows as camera keys only when no dialog or popup has focus.",
+  "lens": "mac-ux"
+ },
+ {
+  "file": "ovni-1999/js/i18n/pt-PT.base.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "On iPad (touch), the Basescape and new-campaign hints still give mouse and keyboard instructions: «Clique numa instalação…; duplo clique…», «Clique e escolha o sítio na grelha (Shift+clique constrói sem confirmar)», «Clique em terra firme…». The Geoscape already switches to a touch variant (geo.hint.touch when OV.Input.lastPointerType === 'touch').",
+  "evidence": "iPad emulation (1180×820, hasTouch) via /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/review4/mac-ux/p2_crawl.mjs 1180 820 touch. Basescape screenshot /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/review4/mac-ux/out/c_1180x820t_base6.png shows «Clique numa instalação para ver os detalhes; duplo clique abre o separador respetivo.» Keys involved: base.info.idleHint, base.build.clickToPlace (Shift+click is impossible on touch), base.build.validHere, base.crafts.crewHint, base.equip.hint, cp.ng.help. Touch itself works (p7_touch.mjs: tap selects, double-tap jumps to the tab, tap on a cell during a build gives the confirm or deny).",
+  "fix": "Add '.touch' variants of these keys («Toque numa instalação…; toque duplo abre…», «Toque no sítio da grelha para construir») and pick them as GeoUI does, using OV.Input.lastPointerType === 'touch'. Drop the Shift+clique sentence on touch.",
+  "lens": "mac-ux"
+ },
+ {
+  "file": "ovni-1999/css/geo.css",
+  "area": "gfx",
+  "severity": "minor",
+  "claim": "On iPad portrait (820×1180), Geoscape toasts are centred on the whole viewport rather than on the globe area, so they slide under or over the side panel's «GEOSCAPE» kicker and date. At 1180 and 1280 widths the same toasts clear the panel.",
+  "evidence": "Script /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/review4/mac-ux/p15_toast.mjs, toast «Intercetor-1 regressou à base (Base Lusitânia).». At 820×1180: toast box [239,10 → 581,41], side panel from x=554, 825 px² overlap. At 1180×820 and 1280×800: 0 overlap. The same clash is visible in the other reviewer's /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/review4/bugs/out/t9-geo-popup-820x1180.png (toast covers «GEOSCAPE»).",
+  "fix": "While the Geoscape is mounted, offset #toasts by the globe area: GeoUI already writes --geo-side on its root, so set a body class (e.g. body.geo-on #toasts { left: 0; right: var(--geo-side); }) or move the toast stack below the tools column. Alternatively cap the toast max-width at calc(100vw - var(--geo-side) - 32px).",
+  "lens": "mac-ux"
+ },
+ {
+  "file": "ovni-1999/js/ui/geo_ui.js",
+  "area": "ui",
+  "severity": "critical",
+  "claim": "The campaign still cannot be won from the UI: no screen launches the Cydonia mission. When «Cidónia ou Desastre» completes, the base research tab says «A missão final está disponível: envie o Vingador para Cidónia.», but the player has nowhere to send it. The sim side is ready: Campaign.startMission accepts {kind:'cydonia'}. Nothing in the UI calls CampaignUI.launchMission(G,{kind:'cydonia'},craftId). An earlier review (wave4_findings_ui_A) reported this and it is still open.",
+  "evidence": "Script review4/diversao/s3_cydonia.mjs (Playwright, real UI) sets G.researched to include cydonia and G.flags.cydoniaUnlocked=true, and puts a ready Avenger 'Vingador-1' in the hangar.\n- Geoscape «Interceptar» → Vingador-1 shows «Nenhum alvo conhecido. Escolha um ponto no globo para patrulhar.» There is no Cydonia target.\n- Base → Naves → Vingador-1 offers only weapons, crew and «Equipar».\n- Base → Investigação shows the hint «A missão final está disponível: envie o Vingador para Cidónia.»\n- No button in the whole DOM matches /cid|marte|final/.\n- Code: targetsFor() (geo_ui.js ~l.234) only lists UFOs, sites and discovered alien bases. grep finds no launchMission(…{kind:'cydonia'}) call anywhere under js/ui.\n- Effect: the victory screen, which looks good, is reachable only through the debug entry OV.CampaignUI.victory.",
+  "fix": "Cheap and high impact.\n- In targetsFor(G, craftId), when G.flags.cydoniaUnlocked is set and the craft is an Avenger (or a spacecraft) in the hangar with status 'ready', append a pseudo-target {ref:{kind:'cydonia'}, ok:true}. Label it «Cidónia (Marte) — missão final».\n- Picking it opens a confirm modal («Partir para Marte? Não há regresso se falhar»), then calls OV.CampaignUI.launchMission(G,{kind:'cydonia'},craftId), which already goes to the briefing.\n- Also add a primary «Lançar assalto a Cidónia» button on the Avenger card in Base → Naves, and on the researchDone popup for 'cydonia'.\n- Add a QA step to qa/full_campaign.mjs that reaches the victory screen through this button, not through the debug entry.",
+  "lens": "diversao"
+ },
+ {
+  "file": "ovni-1999/js/ui/dogfight_ui.js",
+  "area": "ui",
+  "severity": "major",
+  "claim": "A new player usually loses the first UFO. The interception window opens in «Distância» (no fire), and the UFO's escape countdown starts at the same moment. On Veterano a Small Scout's countdown is 140–340 ticks (4–10 s). Anyone who takes a few seconds to read the new window watches the UFO escape. The escape message («Perdeu-se o contacto») gives no reason. Separately, the default Stingray turns a «Muito pequeno» UFO into debris about 60 % of the time, so there is no crash site, and nothing on screen says so.",
+  "evidence": "Real UI (s2_dogfight.mjs: Veterano, first detected UFO, «Interceptar» → Intercetor-1):\n- No input: seeds 1, 3, 4 and 5 all ended «OVNI escapou», at 9.8 / 9.1 / 6.6 / 10.1 s after the window opened.\n- Pressing 3 (Normal) after 2 s: seed 1 crashed, seed 3 crashed, seeds 4 and 5 destroyed.\n- Pressing 3 after 4 s: seeds 1 and 4 escaped, seed 3 crashed, seed 5 destroyed.\n\nHeadless check (a3b_delay.js, 200 seeds each): escape rate on Veterano by reaction delay.\n\n| UFO | Mode | 0 s | 2 s | 3 s | 4 s | 6 s |\n|---|---|---|---|---|---|---|\n| Small scout | Normal | 6 % | 30 % | 42 % | 62 % | 90 % |\n| Medium scout | Normal | 11 % | 28 % | 40 % | 51 % | 80 % |\n\nWith all weapons on (a3_dogfight.js), a Small Scout ends destroyed 119/200 and crashed only 71/200. Cannon only: 100 escaped / 100 crashed.\n\nThe status line at open reads «Distância segura. Escolha Cauteloso, Normal ou Agressivo (2–4) para atacar.» It gives no sense of urgency.",
+  "fix": "Cheap and high impact. Respect the reading time (DESIGN pillar 6) without changing the rules.\n- Open the dogfight paused (S.paused=true with a quiet pause). Show the banner «Escolha a postura para começar (2–4)». The first mode key or click resumes the dogfight.\n- Alternative: open in 'standard' when the craft is armed.\n- df.sub.escaped: add «Escolha logo a postura de ataque: em Distância o OVNI ganha tempo para fugir.»\n- When the UFO is size 0 and Stingray/Avalanche are fitted, show the chip «Mísseis podem desintegrá-lo — desligue-os (Q) para abater só com o canhão e recuperar os destroços».\n- Optionally apply the playtest's data patch small_scout.breakOff 200→360 so that cannon-only is viable.",
+  "lens": "diversao"
+ },
+ {
+  "file": "ovni-1999/js/ui/geo_ui.js",
+  "area": "ui",
+  "severity": "major",
+  "claim": "The Geoscape never reminds the player that all scientists and engineers are idle. A parent who closes the welcome popup and presses «1 dia» can lose weeks of research. The «!» badges and the idle warnings exist only inside the base screen.",
+  "evidence": "s4_idle.mjs (real UI, Veterano seed 21): close the intro with Enter, press 6, and click OK on every popup.\n- After 12.5 game days: G.bases[0].research.length = 0, BaseSim.staff free scientists 10, engineers 10, researched [].\n- Popups seen in that time: ufoDetected ×4, ufoLanded ×3, terrorSite, terrorSiteExpired. None of them mentions the idle staff.\n- The «Bases B» button has no badge: no element matching [class*=badge] in .geo-acts.\n- base_ui.js l.405 does compute the idle-scientist badge, but only for the base tabs. The only Geoscape mention of idle staff is inside the researchDone popup (geo_ui.js l.1470), which never fires if nothing was started.",
+  "fix": "Cheap and high impact.\n- Show a warn badge «!» on the Geoscape «Bases» button with the tip «10 cientistas sem projeto · 10 engenheiros sem trabalho». Reuse the same rule as BaseUI's tab badges, computed from OV.BaseSim.staff(G, b.id) and C().availableResearch.\n- Add a one-shot popup on the first day tick when no research has started yet: «Os cientistas estão parados — abra a base (B) e escolha um projeto», with an «Ir para a base» button.",
+  "lens": "diversao"
+ },
+ {
+  "file": "ovni-1999/js/ui/geo_ui.js",
+  "area": "ui",
+  "severity": "major",
+  "claim": "After «Lançar» the clock stays at «5 seg», so the chase to the first UFO takes 25–40 s of real time with nothing to do. The intro mentions keys 1–6, but nothing at that moment suggests speeding up. The same happens after «Enviar equipa».",
+  "evidence": "Script s2b.mjs, real UI, no key pressed after launch.\n- Right after the click, GeoUI.current() reports {speed:0, paused:false}.\n- The dogfight opened 37.4 s later (seed 3) and 24.2 s later (seed 4); the chases lasted 28 and 25 game minutes.\n- At «5 seg» one 80 ms step is 5 game seconds, so a 35-min chase costs about 34 s. At «1 min» it is about 2.8 s.",
+  "fix": "Cheap.\n- When an intercept or transport order is accepted while speed index is 0, set the speed to index 1 («1 min»). The contact and arrival popups still stop the clock as they do now.\n- Alternatively, show a toast «Nave a caminho — acelere o tempo (2–3)».",
+  "lens": "diversao"
+ },
+ {
+  "file": "ovni-1999/js/ui/campaign_ui.js",
+  "area": "ui",
+  "severity": "major",
+  "claim": "The monthly report cannot be read correctly, which matters because it is the moment the council threatens to end the game.\n- The funding table footer puts last month's income ($6 000 000) under the «Agora» column, although the «Agora» rows add up to about $800 k less. Next month's income is shown nowhere.\n- «Atividade alienígena −1 086» is a single bar. A new player cannot tell that −1 000 of it is the one terror site they ignored.",
+  "evidence": "Screenshot fc314/029_month_report.png (January, seed 314, Veterano).\n- The «Antes» column adds up to $6 000 000; the «Agora» column adds up to $5 203 000.\n- The tfoot row still shows $6 000 000 in the «Agora» column.\n- Code at campaign_ui.js ~l.1076: tfoot = [label, empty, empty, money(R.income)]. R.income is the funding paid for the month that just ended (economy.js monthEnd: inc = Σ c.funding before the change).\n- The score section has only three bars: Atividade X-COM 0, Investigação +10, Atividade alienígena −1 086. The −1 000 came from «Ataque sem resposta» in Vancouver.",
+  "fix": "Cheap.\n- Make the tfoot show Σbefore | Σdelta | Σafter, with the label «Receita do próximo mês» on the after total.\n- Split the alien score.\n  - UI-only option: report G.stats.terrorIgnored for this month (stash the counter at month start in G.ui), as «Ataques terroristas sem resposta ×1: −1 000», plus «Atividade de OVNIs e bases: −86».\n  - Sim option: Economy.addScore takes a cause tag and the report carries alienCauses {terrorIgnored, ufoActivity, missions, alienBases}.\n- When badMonths === 1, also give the advice «Responda aos ataques terroristas e abata OVNIs para subir a avaliação».",
+  "lens": "diversao"
+ },
+ {
+  "file": "ovni-1999/js/ui/campaign_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "After a won crash mission the debrief and the Geoscape do not say that new research has opened. The recovered loot opens 5 research topics silently, so the rewarding «what next» moment is missed.",
+  "evidence": "- Node check: newCampaign Veterano, availableResearch is [laser_weapons, medikit, motion_scanner].\n- After adding the loot from the UI run's first debrief (fc314/044: 4 alloys, alien grenade, 5 Floater corpses, plasma pistols and rifle with clips), these become available: alien_alloys, plasma_pistol, plasma_rifle, alien_grenade, autopsy_floater.\n- The debrief (campaign_ui.js ~l.880–982) has no line about research.\n- The fc314 log shows no popup on return to the Geoscape.",
+  "fix": "Cheap.\n- In afterBattle, diff C().availableResearch(G, baseId) before and after finishMission.\n- In the debrief add a section «Novos projetos de investigação: Ligas Alienígenas, Pistola de Plasma, …» with a button «Abrir investigação» (BaseUI.open(G, baseId, 'research')).",
+  "lens": "diversao"
+ },
+ {
+  "file": "ovni-1999/js/ui/geo_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "The «OVNI aterrou» and «OVNI abatido» popups do not say whether the Skyranger can get there in time, or whether it will be night on arrival. The terror popup already gives the ETA. Night matters here: the player sees 9 tiles against the aliens' 20, and night terror wins drop from 83 % to 54 % with 10 soldiers.",
+  "evidence": "- geo_ui.js l.1375–1396: the ufoLanded and ufoCrashed popups have rows and buttons but no `lines`. The terrorSite popup (l.1512) adds terrorEtaLine(ref, s).\n- Screenshot fc314/027_popup_ufoLanded.png shows only Estado, Tipo, Tamanho, Altitude and Local.\n- In the same run the landed UFOs took off within 11–17 h. The player had no way to judge whether to send the team.",
+  "fix": "Cheap.\n- Reuse terrorEtaLine for ufoLanded and ufoCrashed: «Skyranger-1 chega em 2 h 10 min».\n- Add the light at arrival («— lá será noite»), computed from the same phase used by Campaign.briefingMeta.\n- For crashed UFOs, compare the ETA with crashLeftS.",
+  "lens": "diversao"
+ },
+ {
+  "file": "ovni-1999/js/i18n/pt-PT.geoui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "Some player-facing texts are inconsistent or unclear.\n- The main button and action say «Interceptar» (pre-AO90 spelling), while the rest of the game uses «Interceção / Intercetor / intercetar».\n- geo.end.cydonia and geo.end.victory.body say «Cydonia»; everything else says «Cidónia».\n- The research picker writes «Desbloqueia: Kit Médico» for the medikit topic, which mixes research topics with manufacture, so it reads as a tautology («I already have Kit Médicos»).",
+  "evidence": "- grep of js/i18n: 'geo.btn.intercept': 'Interceptar' and 'geo.a.intercept': 'Interceptar', against 'geo.int.kicker': 'Interceção', 'Intercetores' in the intro, and the dogfight 'interceção'.\n- 'geo.end.cydonia': '…Cydonia…' against 'research.cydonia': 'Cidónia ou Desastre'.\n- base_ui.js l.751 joins topic, manufacture and facility names under one 'base.research.unlocks' label.\n- Screenshot fc314/008: «Kit Médico — Desbloqueia: Kit Médico», «Detetor de Movimento — Desbloqueia: Detetor de Movimento».",
+  "fix": "Cheap text changes.\n- «Intercetar» in geo.btn.intercept and geo.a.intercept.\n- «Cidónia» in both geo.end strings.\n- In the picker, label manufacture leads «fabrico de X» and facility leads «construção de X». Example: «Desbloqueia: fabrico de Kit Médico».",
+  "lens": "diversao"
+ }
+]

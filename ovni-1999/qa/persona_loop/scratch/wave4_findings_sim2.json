@@ -1,0 +1,29 @@
+[
+ {
+  "file": "ovni-1999/data/geo.js (js/data/geo.js missionScripts.firstTerror) + js/sim/campaign.js newCampaign soldiers",
+  "area": "data",
+  "severity": "major",
+  "claim": "The first terror site is not fair to a new player. It arrives on days 5–10 of January, often at night and often before the first ordinary battle. On Veterano the starting 8 rookies win it only about half the time and lose 5–6 soldiers. Leaving it unanswered costs −1 000 points, which alone makes January «Terrível» and starts the countdown to shutdown. DESIGN §14 schedules the first terror in the escalation phase (from Jan 20), after a tutorial-like scout crash.",
+  "evidence": "Bot timelines (a1_timeline.js, Veterano, 12 seeds × 60 days):\n- First terror on days 4.8–10.5 (median 6.6) in every seed; 6 of 11 fought were at night.\n- Month-0 terror: 8 of 11 won, 3 squad wipes (10/10 dead).\n\n`tools/sim.js battle --kind terror --diff 1 --month 0`, 24 seeds per row:\n\n| Squad | Light | Wins | Soldiers lost per battle |\n|---|---|---|---|\n| 8 | day | 46 % | 5.25 |\n| 8 | night | 54 % | 6.04 |\n| 10 | day | 83 % | 5.13 |\n| 10 | night | 54 % | 6.96 |\n\nThe tool's own target is 70 % wins and ≤ 3 losses.\n\nUI run of qa/full_campaign.mjs (seed 314):\n- Terror at Vancouver on 6 Jan, 11 h to respond.\n- It expired, and the January report read «TERRÍVEL −1 076», «um segundo mês assim encerra o projeto».\n\nKnob test (a2_variant.js, FT_DELAY=14400, i.e. firstTerror startDelay 3 d → 10 d, same 12 seeds):\n- First terror median moves to day 13.8.\n- Month-0 terror wins go from 8/11 to 10/12.\n- Median January rating goes from 216 to 524.\n- In no seed is the first battle a terror site (1 seed before the change).",
+  "fix": "Cheap data changes.\n- In js/data/geo.js set firstTerror.startDelay from 3*24*60 to 10*24*60. This puts the first terror at about day 13–17, after the scout crashes, as DESIGN §14 intends.\n- Also either start with 10 soldiers on Recruta/Veterano (the Skyranger UI seats 10; 8→10 lifts day terror from 46 % to 83 %), or add to the intro and the terror popup: «Skyranger-1 leva 8 de 10 soldados — contrate mais no Pessoal (tecla 4), chegam em 48 h».\n- Re-run campaign_pacing.test.js afterwards.",
+  "lens": "diversao"
+ },
+ {
+  "file": "ovni-1999/js/data/geo.js",
+  "area": "sim",
+  "severity": "minor",
+  "claim": "Late January is dead time: in most seeds no UFO is detected and no battle happens from about day 12 to about day 32. After the opening burst (gameStart scouts and firstTerror), month 0 has no further missions. DESIGN §14 expects 4–6 battles from Jan 20 to March.",
+  "evidence": "- a1_timeline.js, Veterano, 12 seeds: the longest stretch with neither a detected UFO nor a battle has a median of 20 days (max 24.6), starting around day 11–15.\n- 10 of 12 seeds have at most one detection between days 15 and 31.\n- Moving only firstTerror to day 10 (FT_DELAY=14400) leaves the gap at 20.2 days.\n- Also running the 'recon' table script in month 0 with startDelay 14 d (RECON0=20160) cuts it to 15.2 days and raises month-0 battles to a median of 5.\n- At «1 dia» the gap is only about 8 s of real time, and research popups land in it, so the impact is moderate.",
+  "fix": "Data only.\n- Add a month-0 table mission (recon: firstMonth 0, startDelay about 14 d), or a second gameStart-like alien_research script around day 15. This puts a scout or two into late January.\n- Combine with the firstTerror delay above, so the terror site falls in the same window and does not land in week 1.",
+  "lens": "diversao"
+ },
+ {
+  "file": "ovni-1999/tools/campaign_bot.js",
+  "area": "qa",
+  "severity": "major",
+  "claim": "With today's code a Veterano campaign rarely reaches a satisfying ending, and the results in CAMPAIGN_API §11.4 are now stale.\n- Out of 16 bot campaigns, 3 were won, 5 were lost at Cydonia (3 wins in 8 attempts), and 7 had no ending by day 200–240.\n- In several runs the Avenger is starved of alloys long after Cydonia research is done.\n- From month 4 on, terror sites are near-certain squad wipes.",
+  "evidence": "- Runs: `node tools/sim.js campaign --seeds 10 --seed0 1 --diff 1 --days 240 --json` and seeds 101–106 at 200 days (out/vet10.json, out/vet6.json).\n- Endings: {victory 3, cydonia 5, timeout 7, council 1}. Victories on days 121.5, 144.5 and 151.5.\n- §11.4 states 40 % victories and a 67 % Cydonia win rate.\n- Terror sites by month, as [fought, won, soldiers lost]:\n  - m0 [15, 11, 70]\n  - m1 [16, 16, 41]\n  - m2 [10, 5, 70]\n  - m3 [11, 8, 67]\n  - m4+ [21, 3, 202]\n- Seed 9 (a4_avenger.js): Cydonia researched on day 114.5, funds $9–13 M. Stores stay at alloys 16/40, power sources 3, navigation 2 from day 90 to day 225; production is empty and no Avenger is built.\n- Seeds 104 and 105 also research Cydonia (days 114.5 and 103.5) and have no Avenger by day 200.",
+  "fix": "Re-run and refresh §11.4 and DESIGN §14 with the current code.\n- Make the bot hunt crash sites while the Avenger is waiting on alloys (it sits idle with $12 M).\n- Consider data knobs:\n  - Avenger materials 40 → 25 alloys (manufacture.avenger), the main ending gate for a human too;\n  - cap terror crews for months 4+ (Snakeman / Muton).\n- On Cydonia defeat, offer «Carregar a última gravação automática» as a button, next to the existing «L» hint on the game-over screen, so a family can retry the finale.",
+  "lens": "diversao"
+ }
+]

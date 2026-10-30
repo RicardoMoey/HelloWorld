@@ -1,0 +1,12 @@
+= small_scout   vitórias 100 %  turnos (mediana) 6     baixas X-COM/batalha 0.70  derrotas 0   limite 0  21.5 ms/turno  meta 95 % / ≤ 1 baixas
+= medium_scout  vitórias 95 %   turnos (mediana) 8     baixas X-COM/batalha 1.82  derrotas 2   limite 0  21.5 ms/turno  meta 95 % / ≤ 1 baixas
+= large_scout   vitórias 100 %  turnos (mediana) 12    baixas X-COM/batalha 0.65  derrotas 0   limite 0  24.6 ms/turno  meta 95 % / ≤ 1 baixas
+= harvester     vitórias 100 %  turnos (mediana) 13    baixas X-COM/batalha 0.95  derrotas 0   limite 0  21.8 ms/turno
+= abductor      vitórias 100 %  turnos (mediana) 12    baixas X-COM/batalha 1.10  derrotas 0   limite 0  23.2 ms/turno  meta 80 % / ≤ 2 baixas
+= supply_ship   vitórias 98 %   turnos (mediana) 13    baixas X-COM/batalha 1.82  derrotas 1   limite 0  25.2 ms/turno
+= terror_ship   vitórias 90 %   turnos (mediana) 13    baixas X-COM/batalha 1.85  derrotas 2   limite 2  28.6 ms/turno
+= battleship    vitórias 95 %   turnos (mediana) 14    baixas X-COM/batalha 2.95  derrotas 2   limite 0  38.4 ms/turno  meta 70 %
+= terror        vitórias 100 %  turnos (mediana) 16    baixas X-COM/batalha 1.88  derrotas 0   limite 0  31.1 ms/turno  meta 70 % / ≤ 3 baixas
+= alienBase     vitórias 95 %   turnos (mediana) 10    baixas X-COM/batalha 3.75  derrotas 2   limite 0  15.3 ms/turno  meta 50 %
+= cydonia       vitórias 95 %   turnos (mediana) 11    baixas X-COM/batalha 5.40  derrotas 2   limite 0  59.7 ms/turno  meta 60 %
+total: 440 batalhas em 154.3 s

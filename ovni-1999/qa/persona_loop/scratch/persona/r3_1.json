@@ -1,0 +1,143 @@
+{
+ "round": 3,
+ "results": [
+  {
+   "persona": "Rui",
+   "rating": 7,
+   "wouldContinue": true,
+   "summary": "Joguei cerca de 62 minutos reais. Primeiro uma Batalha Rápida de Base Alienígena (Veterano, mês 3), em que destruí a base. Depois um Raptor de noite em Super-humano, mês 4: abandonei-o no turno 4, com 5 mortos. Fiz um Batedor Grande de dia (Veterano, mês 1) para testar portas e captura e saí a meio, depois de capturar o Engenheiro. Por fim, a primeira missão de uma campanha em Veterano: um Batedor Médio aterrado de noite em Espanha, ganha com 5 mortos. Quase tudo o que reportei nas rondas anteriores está corrigido. A reserva para ajoelhar já funciona a partir de joelhos: o soldado para com «Tiro rápido + ajoelhar» e volta a ajoelhar. Com ⌥ sobre a porta do OVNI aparece «Abrir a porta sem entrar · 6 UT», e a porta abre por 6 UT sem o soldado entrar; sem estar ao lado já não promete «0 UT». A Base Alienígena é «Penumbra» e já não traz a nota noturna. O «Efetivo estimado» do mês 0 bate certo (3–4, com 4 no terreno). O kit médico já não transborda. O ⌫ funciona com o rato. Os sinalizadores vão no cinto e a Batalha Rápida tem ecrã Equipar com bastões atordoadores e granadas de fumo. Capturei um Flutuante Engenheiro com o bastão («Golpe ≈ 100 %»), como em 1994. O Lançador Blaster seguiu a rota guiada. O fogo de reação, o pânico psiónico do Comandante e o fogo amigo sobre um inconsciente soam ao original. O painel «Durante o turno alienígena» com «Atacante» é uma melhoria clara. Continua a irritar-me o planeamento do equipamento. O carregador «NA ARMA» ocupa uma casa do cinto e o ecrã recusa uma granada de fumo («Não cabe aí») que em combate caberia. Na Batalha Rápida do mês 4, metade da equipa começa com excesso de peso e menos UT. Os destruidores de imersão são pequenos: dois «Richard Moore» na mesma equipa, uma base alienígena sem artefactos e as dicas «F1» num Mac. Continuaria, sobretudo pela campanha em Super-humano.",
+   "findings": [
+    {
+     "file": "ovni-1999/js/ui/inventory_ui.js",
+     "area": "ui",
+     "severity": "major",
+     "claim": "Regressão (correção da ronda 2): o ecrã «Equipar» mostra o carregador que vai dentro da arma como uma casa «NA ARMA» no CINTO e conta-o na lotação. O cinto aparece cheio (4/4) e recusa outra granada com «Não cabe aí». Em combate esse carregador está na arma e o cinto fica 3/4. Não se consegue planear o cinto clássico: arma carregada, 2 carregadores, granada e fumo.",
+     "evidence": "Batalha Rápida, Base Alienígena, mês 3: Richard Jackson tem no cinto «NA ARMA», «28», granada e «28», 4/4. Ao largar uma Granada de Fumo no cinto aparece «Não cabe aí» (/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r3/veterano/shots/008_smoke_belt.png). Em combate o inventário do mesmo soldado é «CINTO 3/4», com uma casa vazia, e o estado diz items.belt=[10,11,12] (011_inv_richard.png). Na campanha acontece o mesmo: Kagiso fica com o cinto 4/4, «NA ARMA», 20, granada e sinalizador (101_cequip.png). O Auto-equipar da Leonor também dá 4/4, com «NA ARMA» a ocupar uma casa.",
+     "fix": "Mostrar o carregador «Na arma» como insígnia na mão (o «28/28» já lá está), e não numa casa do cinto. Excluí-lo da contagem e da validação de espaço do cinto (eqCommit/fits), simulando o autoLoad como o combate faz. O cinto do Equipar fica igual ao do inventário em combate.",
+     "verdict": "CONFIRMED"
+    },
+    {
+     "file": "ovni-1999/js/ui/screens.js",
+     "area": "data",
+     "severity": "major",
+     "claim": "Ainda presente (ronda 2), noutra forma: na Batalha Rápida do mês 4, o equipamento inicial (Plasma Pesado, 2 carregadores, 2 sinalizadores e explosivo na mochila) ignora a Força. 5 dos 10 soldados começam com excesso de peso e menos UT, apesar de o botão «Auto-equipar» do mesmo ecrã já respeitar a Força.",
+     "evidence": "OVNI Aterrado, Raptor, Noite, Super-humano, mês 4. Estado inicial no ecrã Equipar: Carlos Ramos 37/34, Leonor Rodrigues 26/20, Jean Richard 26/23, John Smith 26/20 e Matteo Costa 26/20, todos a vermelho com «Excesso de peso: começa a missão com menos UT» (/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r3/veterano/shots/057_leonor.png, 058_carlos.png). No turno 1 tinham John 39 UT, Matteo 41 e Jean 44. «AUTO-EQUIPAR» na Leonor passa a 20/20, «Dentro da Força» (059_leonor_auto.png).",
+     "fix": "Em loadoutFor, aplicar a todos os soldados a mesma regra do Auto-equipar: depois de montar o kit, retirar por ordem os extras (explosivo, 2.º sinalizador, carregador extra) até o peso ≤ Força e deixá-los no armazém da nave. Ou gerar o kit inicial chamando o próprio autoLoadout de cada soldado.",
+     "verdict": "CONFIRMED"
+    },
+    {
+     "file": "ovni-1999/js/ui/screens.js",
+     "area": "ui",
+     "severity": "minor",
+     "claim": "Ainda presente (ronda 2), em parte: na Batalha Rápida, depois de clicar em «ALEATÓRIA» (semente), Enter volta a sortear a semente em vez de começar, apesar de o rodapé dizer «Enter começa». O deslizador e os botões de opção já foram corrigidos.",
+     "evidence": "Clique em ALEATÓRIA e depois Enter: activeElement=<button class=\"btn small ghost\">Aleatória</button>, a semente passa de 10 para 57550 (a raça também mudou de Flutuantes para Homens-Serpente) e a cena continua «quickbattle» (/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r3/veterano/shots/055_enter_on_random.png). Clicar em «Noite» e depois Enter já abre o briefing.",
+     "fix": "Em keys() da Batalha Rápida, tratar Enter também quando o foco está no botão Aleatória (ou em qualquer botão que não seja VOLTAR) como «começar», ou tirar o foco desse botão (blur) depois do clique.",
+     "verdict": "CONFIRMED"
+    },
+    {
+     "file": "ovni-1999/js/sim/geo/soldiers.js",
+     "area": "data",
+     "severity": "minor",
+     "claim": "O recrutamento não evita nomes repetidos. A equipa inicial da campanha tem dois «Richard Moore» (EUA), e o relatório mostra ambos na progressão, um promovido e o outro não. No combate e nos avisos («Richard Moore reage!», «foi morto») não se sabe qual é qual.",
+     "evidence": "Campanha Veterano, 3 jan 1999: o briefing mostra dois cartões «REC. Richard Moore · EUA», com UT 53/SAÚ 29 e UT 57/SAÚ 35 (/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r3/veterano/shots/100_cbrief.png). No relatório aparece «SOLD. Richard Moore · 1 abate PROMOVIDO» e «REC. Richard Moore Sem progressos» (111_cdebrief.png). generate() chama Data.soldierName sem verificar duplicados, e o grupo EUA tem só 12×15 nomes masculinos.",
+     "fix": "Em generate(), voltar a sortear o nome (até N tentativas) enquanto coincidir com o de um soldado vivo em G.soldiers. Em alternativa, acrescentar uma inicial ou um número («Richard Moore II»).",
+     "verdict": "CONFIRMED"
+    },
+    {
+     "file": "ovni-1999/js/sim/battle/battle.js",
+     "area": "data",
+     "severity": "minor",
+     "claim": "Destruir uma base alienígena não dá nenhum artefacto (Cirurgia, Sala de Exames, Comida, Entretenimento, Reprodução), apesar de os blocos ALIENBASE_LAB e COMMAND terem dispositivos alienígenas («mesas de cirurgia»). No original, as bases eram a fonte clássica desses componentes. A recuperação de artefactos só existe para OVNIs (ufos.js artefacts).",
+     "evidence": "Batalha Rápida, Base Alienígena, Veterano, mês 3, vitória: o material recuperado é só Granada Alienígena, Destroços de Ciberdisco, Pistolas e Espingardas de Plasma, carregadores e cadáveres (/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r3/veterano/shots/052_end.png). blocks_alien.js tem 'u' (dispositivo) em ALIENBASE_LAB/COMMAND. A recolha em battle.js (~l.816) só conta componentes de «OVNI tomado».",
+     "fix": "Dar ao dep_alien_base uma tabela de artefactos (por exemplo alien_food, alien_surgery, examination_room, alien_entertainment, alien_reproduction, um ou dois de cada) e recuperar os dispositivos 'u' intactos da base como faz o OVNI, com os pontos de artefacto não investigado.",
+     "verdict": "PLAUSIBLE"
+    },
+    {
+     "file": "ovni-1999/js/i18n/pt-PT.hud.js",
+     "area": "ui",
+     "severity": "minor",
+     "claim": "Os avisos de reserva no combate dizem «F1 = sem reserva». Num Mac (o alvo principal), F1 baixa o brilho, a não ser que se use fn. O atalho Mac documentado no «Como Jogar» é ⇧1, mas os avisos que aparecem a toda a hora nunca o referem.",
+     "evidence": "Toast «Parou para guardar as UT reservadas — para ir mais longe, mude a reserva (F1 = sem reserva)» depois de cada movimento cortado pela reserva (/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r3/veterano/shots/012_kneel_reserve.png). As chaves hud.stop.reserved, hud.path.reserve.fix e hud.path.reserve.deny (pt-PT.hud.js:140–144) dizem só F1. scr.howto.key.14 dá «⇧1 … ⇧4 (F1–F4)».",
+     "fix": "Mudar os três textos para «⇧1 = sem reserva» (ou «⇧1 / F1»), na mesma ordem de prioridade do «Como Jogar».",
+     "verdict": "CONFIRMED"
+    }
+   ],
+   "delights": [
+    "A reserva para ajoelhar funciona a partir de joelhos: «Custa 46 UT · ficam 9 — o soldado para antes, para guardar 21 UT (Tiro rápido + ajoelhar)» e depois volta a ajoelhar. O ciclo clássico funciona.",
+    "Porta do OVNI com ⌥: «Abrir a porta sem entrar · 6 UT», abre por 6 UT e o soldado fica cá fora. Abrir e recuar finalmente funciona.",
+    "A captura com o Bastão Atordoador: «Golpe ≈ 100 % · 18 UT», e o Flutuante Engenheiro fica atordoado (stun 79/35) ao primeiro golpe, como em 1994.",
+    "A bomba do Lançador Blaster com «Bomba guiada · rota 17 casas» matou um Homem-Serpente atrás de cobertura.",
+    "O painel «Durante o turno alienígena» mostra quem matou quem, incluindo fogo amigo («tiro de Chukwuemeka Chukwu»), com o botão «Atacante».",
+    "Os sinalizadores no cinto iluminam bem o trigo de noite. O «Esperar pelo dia» na chegada da nave é uma boa adição.",
+    "O Comandante Sectoide pôs um recruta em pânico com um ataque psiónico, e o fogo de reação de um soldado ajoelhado acabou com ele. Soube ao original.",
+    "O painel do kit médico por partes do corpo, com cargas e UT, e o motivo «Não há feridas nessa parte do corpo» por baixo do título.",
+    "O fogo de reação parece autêntico: no turno 1 da base, um soldado reagiu e matou o Sectoide Médico que o tinha alvejado.",
+    "A Batalha Rápida agora tem ecrã Equipar com bastões atordoadores, granadas de fumo e o Lançador Pequeno com bombas atordoantes."
+   ]
+  },
+  {
+   "persona": "Sofia, 40 anos, MacBook Air só com trackpad, nunca jogou X-COM, campanha em Recruta",
+   "rating": 7,
+   "wouldContinue": true,
+   "summary": "Ronda 3 (instantâneo f107bf9), Recruta, base em Lisboa. Joguei cerca de 100 min de tempo real, de 1 jan a 1 fev 1999: 8 missões, com 7 vitórias e 1 derrota (Skyranger perdido), e o relatório mensal de janeiro. O jogo leva a Sofia pela mão muito melhor do que nas rondas anteriores. Tem a lista «Próximos passos», o aviso «10 cientistas parados → INVESTIGAR», que abre logo a escolha de projeto, e o «Só 2 soldados aptos → CONTRATAR SOLDADOS». O «Comprar munição» abre o Mercado com a linha certa destacada. O pop-up de nave perdida explica, passo a passo, como recuperar. Tempos (ritmo do script, com a Sofia a seguir só o ecrã): primeiro OVNI abatido ao fim de 5,4 min (3 jan, 23:22); primeira missão ganha aos 12 min, com um Batedor Médio despenhado, de dia, e 3 mortos. Uma pessoa real levaria talvez o dobro. Os gestos de trackpad funcionaram todos: pinça e ⌃+roda no globo e no combate, deslizar com dois dedos para mover a câmara, Ctrl+clique a cancelar a pontaria e a rodar o soldado, ⌘+clique para o tiro forçado. Das descobertas antigas da Sofia, confirmei corrigidas: a 1.ª missão é um OVNI despenhado e não aterrado; há relatório do turno alienígena; o «Repetir a missão»; o texto «Custa X UT · ficam Y»; o «Auto-equipar» já não sai do botão e o cabeçalho de bordo está certo; tipo e eco do OVNI são coerentes; as encomendas aparecem somadas; os recrutas e o Skyranger novo embarcam e recebem armas sozinhos; a legenda UT/SAÚ/PON/REA/BRA; os toasts já não tapam o relatório; o texto do Ctrl+clique no Mac; o tratamento por «você»; a ocupação por unidade no Mercado. Onde ficou confusa: três soldados morreram «do nada» numa missão. Perdeu Budapeste (−500 pontos) depois de o jogo a deixar desviar o Skyranger, que ia a caminho do ataque terrorista, sem aviso nenhum. O aviso de munição do intercetor volta depois de cada combate. E a missão ao crepúsculo, sem qualquer aviso, custou a equipa toda. Ao fim de 30 min queria continuar: as vitórias, as promoções e a investigação dão vontade de mais. A desconfiança vem dos momentos em que perdeu coisas sem perceber porquê.",
+   "findings": [
+    {
+     "file": "ovni-1999/js/ui/battle_ui.js",
+     "area": "ui",
+     "severity": "major",
+     "claim": "Os soldados mortos ou feridos por explosões no fim do turno X-COM nunca aparecem no painel «Durante o turno alienígena». São sobretudo as granadas alienígenas com espoleta, que em Recruta rebentam no fim do nosso turno. A causa é o filtro `e.side !== 'xcom'` na linha 1242. No início do turno seguinte a Sofia vê só nomes riscados, sem explicação, e o registo arquiva-os em «TURNO N — FORÇAS X-COM».",
+     "evidence": "Campanha, missão 2 (Batedor Grande, polar, 9 jan): no fim do T9, Liu Yan, Hendrik Mthembu e Pieter Molefe morreram juntos, ao lado de uma cratera. O T10 abriu sem qualquer painel (run2/shots/030-noreport_T10.png), e o debrief só lista os mortos. Reproduzido em Batalha Rápida (Recruta): uma Granada Alienígena ativada com espoleta 0 junto de 2 soldados afastados do grupo, seguida de «Fim do turno» pela interface. Os dois morreram, o T2 abriu com report=null (run2/shots/R2-grenade_endturn_noreport.png), e o registo (📄) mostra-os só como «TURNO 1 — FORÇAS X-COM: … foi morto em combate — explosão (atacante não visto)». Causa no código: endTurn() calcula `hurt = S.log.slice(mark).filter((e) => e.side !== 'xcom' && e.own)`. Os eventos de sideEnd(B,'xcom') em Battle.endPlayerTurn ficam com e.side = 'xcom' (noteEvent, linha 1369).",
+     "fix": "Em endTurn(), incluir no relatório todas as entradas `own` desde `mark`, sem filtrar o lado: tudo o que acontece depois de carregar em «Fim do turno» é novidade para a jogadora. Em alternativa, marcar as entradas registadas durante o playGen(endPlayerTurn) com um campo `afterEnd` e filtrar por ele. Juntar ao texto a causa clara: «granada alienígena rebentou».",
+     "persona": "Sofia"
+    },
+    {
+     "file": "ovni-1999/js/ui/geo_ui.js",
+     "area": "ui",
+     "severity": "major",
+     "claim": "O diálogo «Enviar equipa» e o pop-up «OVNI aterrou» oferecem o Skyranger que já vai a caminho de um ataque terrorista, sem dizer para onde vai nem avisar que o terror fica sem resposta. A Sofia carregou em «Enviar equipa» para o OVNI e Budapeste expirou: «Ninguém respondeu… Os alienígenas ganharam 500 pontos». Foi a maior perda do mês, numa campanha em que ela tinha respondido ao ataque.",
+     "evidence": "15 jan 04:16, ATAQUE TERRORISTA em Budapeste (≈11 h): a Sofia envia o Skyranger-1. Às 05:22 surge o pop-up «OVNI ATERROU», que diz só «Skyranger-1 chega em 54 min, ainda de dia» (run2/shots/046-pop_ufoLanded.png; o painel lateral mostra «Skyranger-1 · Em voo · Ataque em Budapeste»). O diálogo seguinte lista «Skyranger-1 · Em voo · Combustível 97 % · Casco 100 % · 9/10 soldados · 54 min», sem destino nem aviso (log run2/log.txt, 05:55:04). Às 15:00 vem «ATAQUE SEM RESPOSTA… −500» (run2/shots/053-pop_terrorSiteExpired.png), e o relatório de janeiro mostra «Ataque terrorista sem resposta −500» (run2/shots/079-stop_other.png). No código, as linhas de nave em renderIntercept (~l.1265) usam só craftStatusKey e não mostram c.dest. commitOrder redireciona com um simples toast «redirected».",
+     "fix": "Nas linhas de nave do diálogo (e no texto de ETA do pop-up), quando c.dest não é a base, acrescentar «· a caminho de {targetName}». Se o destino atual for um local de terror ou um OVNI com equipa, pedir confirmação antes de redirecionar: «Skyranger-1 vai para o ataque em Budapeste (−500 se ninguém responder). Desviar mesmo assim?». Em alternativa, pôr essa nave no fim da lista com uma nota a vermelho.",
+     "persona": "Sofia"
+    },
+    {
+     "file": "ovni-1999/js/ui/geo_ui.js",
+     "area": "ui",
+     "severity": "minor",
+     "claim": "Quando a equipa chega a um OVNI ao crepúsculo, o pop-up «EQUIPA NO LOCAL» não traz aviso nenhum nem o botão «Esperar pelo dia», porque nightAt() só considera 'night'. O briefing a seguir diz «HORA Crepúsculo» e o combate é escuro. A Sofia já tinha esperado pelo dia nessa mesma missão e perdeu a equipa toda e o Skyranger.",
+     "evidence": "28 jan, OVNI-10 (Batedor Grande aterrado, polar). Às 00:42 «Lá é noite… Esperar pelo dia (cerca de 5 h)», e a Sofia espera. Às 06:29 «OVNI ATERROU… Skyranger-1 chega em 1 min, ao crepúsculo». Às 06:30 o pop-up «EQUIPA NO LOCAL» sai com tom «good», sem linhas de aviso e só com «Esperar» (log run2/log.txt). O briefing mostra HORA Crepúsculo (run2/shots/066-brief_auto.png), e o resultado foi DERROTA, −378, nave perdida (run2/shots/075-now4.png). No código, nightAt(): `if (GM().dayPhase(...) !== 'night') return null;`.",
+     "fix": "Em nightAt(), tratar também 'dusk' (sem dia pleno) e devolver {h, dusk:true}. O pop-up de chegada passa a mostrar «Lá é crepúsculo: mais escuro longe das luzes; o dia pleno chega dentro de ~N h» e oferece «Esperar pelo dia», como já faz para a noite.",
+     "persona": "Sofia"
+    },
+    {
+     "file": "ovni-1999/js/i18n/pt-PT.screens.js",
+     "area": "data",
+     "severity": "minor",
+     "claim": "Ainda presente (ronda 1), em parte: alguns textos continuam sem concordância de género. No debrief, as soldadas são «PROMOVIDO A SARGENTO» e «PROMOVIDO A SOLDADO». O fabrico diz «10 × Pistola Laser prontos», e o separador Pessoal mostra «1 aptos».",
+     "evidence": "Debrief da missão 1: «SARG. Liu Yan … PROMOVIDO A SARGENTO», com G.soldiers a dar Liu Yan:F. Debrief da missão 2: «SOLD. Zhao Xiu … PROMOVIDO A SOLDADO», com Zhao Xiu:F. Pop-up de 11 jan 21:00: «FABRICO CONCLUÍDO ¦ 10 × Pistola Laser prontos (Base Lusitânia)» (run2/shots/044-pop_productionDone.png). Pessoal depois da derrota: «1 aptos · 1 feridos». Chaves: 'scr.db.promoted': 'Promovido a {rank}' (pt-PT.screens.js:151), usada sem gk() em campaign_ui.js:1484 e screens.js:1632; 'geo.ev.productionDone.body': '{qty} × {item} prontos ({base}).' (pt-PT.geoui.js:290).",
+     "fix": "Criar 'scr.db.promoted.f' («Promovida a {rank}») e chamar T(gk('scr.db.promoted', s), …) nos dois sítios. Reformular o fabrico de forma neutra: «Fabrico concluído: {qty} × {item} ({base}).». Usar Tn() no plural de «aptos/feridos».",
+     "persona": "Sofia"
+    },
+    {
+     "file": "ovni-1999/js/ui/geo_ui.js",
+     "area": "ui",
+     "severity": "minor",
+     "claim": "O botão «Comprar munição» do aviso «INTERCETOR SEM MUNIÇÃO» abre o Mercado com quantidade 1. Cada rearme gasta uma caixa inteira de «Munição de Canhão (×50)», mesmo que faltem só 6 balas. Por isso o mesmo aviso volta depois de cada combate aéreo, e a Sofia acha que comprou mal ou que o jogo tem um erro.",
+     "evidence": "9 jan 10:01, primeiro aviso (Canhão 194/200): a Sofia segue o botão e compra 1 caixa (run2/shots/037-pop_craftRearmShort.png, 039-buy_ammo.png). A caixa chega a 11 jan 11:00 e é logo gasta a rearmar 6 balas. Depois do combate seguinte (176/200), às 11 jan 18:08, o mesmo aviso volta (run2/shots/042-stop_popup_craftRearmShort.png). Antes, as provisões tinham cannon_rounds 0. O código de base.js rearm() gasta carregadores inteiros (fiel ao original), mas nada o explica.",
+     "fix": "Abrir o Mercado com uma quantidade sugerida (por exemplo 5 caixas, ou as necessárias para encher todas as naves 2 vezes). Acrescentar ao pop-up uma linha: «Cada rearme gasta uma caixa inteira de 50 balas; compre várias para não ficar sem.» Em alternativa, mostrar «na base: N caixas» no próprio aviso.",
+     "persona": "Sofia"
+    }
+   ],
+   "delights": [
+    "O início é amigável: a lista «Próximos passos» vai sendo riscada e o aviso «10 cientistas parados → INVESTIGAR» abre logo a lista de projetos.",
+    "O primeiro OVNI caiu poucos minutos depois de começar. O pop-up explica que lá será noite, que há 4 sinalizadores a bordo e que se pode esperar pelo dia.",
+    "Os três conselhos da primeira missão, e a pré-visualização do caminho com «Custa 20 UT · ficam 37 · En 35», que se percebe à primeira.",
+    "O relatório do turno alienígena, com botões «ATACANTE» para ver de onde veio o tiro, e os toasts que já não tapam nada.",
+    "O debrief: as promoções, o «EM MEMÓRIA» e o «Repetir a missão» dão vontade de tentar outra vez.",
+    "Depois de perder o Skyranger, o pop-up «NAVE PERDIDA» diz exatamente o que fazer. Os recrutas novos embarcam sozinhos e já armados com as Pistolas Laser que ela fabricou.",
+    "«Comprar munição» leva ao Mercado com a linha certa destacada a dourado.",
+    "Os gestos de trackpad funcionam como no Mac: pinça para aproximar, dois dedos para mover a câmara, Ctrl+clique para cancelar ou rodar, ⌘+clique para o tiro forçado.",
+    "O relatório mensal é claro e bonito: «RAZOÁVEL», a mensagem do Conselho e as contas do mês fáceis de ler."
+   ]
+  }
+ ]
+}

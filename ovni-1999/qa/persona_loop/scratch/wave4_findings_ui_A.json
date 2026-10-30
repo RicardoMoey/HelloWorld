@@ -1,0 +1,47 @@
+[
+ {
+  "file": "ovni-1999/js/ui/geo_ui.js",
+  "area": "ui",
+  "severity": "critical",
+  "claim": "A human player cannot win the campaign. No UI path launches the Cydonia mission. When 'Cidónia ou Desastre' completes, BaseUI shows 'A missão final está disponível: envie o Vingador para Cidónia.', but no button, card action, intercept target or popup ever calls CampaignUI.launchMission(G, {kind:'cydonia'}, craftId). The sim and campaign UI support it; only the entry point is missing.",
+  "evidence": "1) grep: outside screens.js (quick-battle), no UI file builds a {kind:'cydonia'} siteRef. GeoUI.targetsFor (geo_ui.js:234-251) lists only ufos, sites, discovered alienBases and 'home'. World.canOrder(G, avengerId, {kind:'cydonia'}) returns {ok:false, reason:'noTarget'} (world.js check()). 2) Playwright, real game on a random port: /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/review4/fidelidade/t_cydonia.mjs. Setup: G with flags.cydoniaUnlocked=true, research done, a 'Pronta' Avenger in the hangar with 8/12 soldiers. I scanned every button in the geoscape, the selected base card (shows 'Vingador-1 Pronta … 8/12 soldados' with only 'Lançar' → intercept list), the intercept dialog and Basescape tab 'Naves' with the Avenger selected (only 'Instalar arma', 'Equipar'). Zero buttons match /cid[oó]nia|marte|final/i. No console errors. 3) t_cyd2.mjs: calling OV.CampaignUI.launchMission(G,{kind:'cydonia'},avId) by hand returns true and opens the 'cbriefing' scene with G.activeMission.siteRef={kind:'cydonia'}. So only the button is missing. The campaign bot wins only because it calls startMission directly (campaign_bot.js:966).",
+  "fix": "Add a «Missão final: Cidónia» action: (a) in the GeoUI base card / craft card, shown for crafts with Data.crafts[type].spacecraft, status 'ready', in their hangar, at least one fit soldier, and G.flags.cydoniaUnlocked; (b) in the BaseUI 'Naves' tab for the same craft; (c) as a button on the researchDone popup when ev.flags includes 'cydoniaUnlocked'. Each one goes through a confirm dialog («Não há regresso…») and then OV.CampaignUI.launchMission(G, {kind:'cydonia'}, craftId). When disabled, explain why with the campaign.err.* reason (notReady / noSoldiers / craftType). Add a Playwright QA step that reaches the Cydonia briefing through the UI.",
+  "lens": "fidelidade"
+ },
+ {
+  "file": "ovni-1999/js/ui/geo_ui.js",
+  "area": "ui",
+  "severity": "critical",
+  "claim": "The campaign cannot be won from the UI. No screen offers the Cydonia mission. After research «Cidónia ou Desastre» completes, the only sign of it is the text hint in the base research tab: «A missão final está disponível: envie o Vingador para Cidónia.» No button, card action, intercept-dialog target, popup action or key ever calls CampaignUI.launchMission(G, {kind:'cydonia'}, craftId). World.canOrder/check also rejects ref.kind 'cydonia' (noTarget), so the intercept dialog could not list it even if it tried. Only tools/campaign_bot.js reaches Campaign.startMission({kind:'cydonia'}), which is why the bot sweeps report victories.",
+  "evidence": "Script: scratchpad/review4/bugs/t10_cydonia.mjs (real game over http, Playwright). It researches alien_origins and martian_solution, sets the leader/commander flags, puts an Avenger in the hangar with 8 soldiers, then runs BaseSim.completeResearch(G,b1,'cydonia') → flags.cydoniaUnlocked=true. Results: the researchDone popup has only [Ver Ufopédia, Novo projeto, OK]. Searching for /Cid[oó]nia|Marte/ finds nothing on the geoscape, nothing in the intercept dialog (I), nothing on the base card or the base crafts tab, and 0 buttons in the whole DOM. Only the research-tab hint matches. `grep -rn cydonia js/ui/*.js` shows no launch path, only end-screen texts and the screens.js quick battle.",
+  "fix": "Add a final-mission entry. When G.flags.cydoniaUnlocked, show «Missão a Cidónia» in two places: on the base card / the Avenger row in geo_ui.js cardSpec (craft ready in the hangar, ≥1 fit soldier, type avenger or def.spacecraft), and as a button in the cydonia researchDone popup. It calls OV.CampaignUI.launchMission(G, {kind:'cydonia'}, craftId). Campaign.checkStart already validates every requirement and the briefing already handles siteRef.kind 'cydonia'. Add a QA check in qa/campaign_flow_check.mjs that clicks it.",
+  "lens": "bugs"
+ },
+ {
+  "file": "ovni-1999/js/ui/geo_ui.js",
+  "area": "ui",
+  "severity": "major",
+  "claim": "The Geoscape side panel and selection card stay clickable while an interception is open. The dogfight overlay is the only overlay with pointer-events:none on its root (css/dogfight.css: `#hud > .df-root {pointer-events:none}`), and geoscape pause() only hides the panel when the scene on top is a full screen. So during a dogfight the player can click «Iniciar missão» on a transport card. That starts a ground battle on top of a frozen dogfight: every battle autosave is silently refused, and when the player returns the interception is silently disengaged. Interceptar/Bases/Gravar/speed buttons also work under the overlay (Interceptar opens an invisible intercept dialog behind the panel).",
+  "evidence": "Script: scratchpad/review4/bugs/t5_mission_during_df.mjs + t5b.mjs. Setup: the Skyranger waits over a crashed UFO and Intercetor-1 engages a second UFO, so the dogfight opens (stack geoscape>dogfight). Click «Skyranger-1» in «Naves no ar», then «Iniciar missão», then Enter. Results: the stack becomes ['geoscape','dogfight','cbriefing'] and then ['geoscape','dogfight','battlescape'], with activeMission set and G.dogfights.length 1. During the battle OV.Save.list() never shows 'autoTurn', and Save.save('3',G,B) → {ok:false, reason:'busy'}, so a reload loses the battle. Abort, then Continue: popToGeo pops the dogfight and its teardown calls Dogfight.finish → 'disengaged'. Final state: dfs 0, interceptor 'returning', no popup or toast. t2_df_clicks.mjs: elementFromPoint on Interceptar/Bases/Gravar/Opções under the open panel hits the geo buttons. Clicking Interceptar sets GeoUI.current().dialog='intercept' (hidden behind the panel). Bases pushes basescape over the dogfight. t14_overlays.mjs: options, saveload and monthReport all cover the panel correctly, so the dogfight is the only exception.",
+  "fix": "In geo_ui.js makeScene: in pause(), always set `S.root.inert = true` (or add a class with pointer-events:none on .geo side/card/layer), and clear it in resume(). Also guard the action handlers (launchMission, openIntercept, openBase, saveGame, setSpeed) with `if (!isTop()) return`. As a sim backstop, make Campaign.checkStart throw fail('busy') when G.dogfights.length > 0, so no battle can start while a dogfight exists.",
+  "lens": "bugs"
+ },
+ {
+  "file": "ovni-1999/js/ui/campaign_ui.js",
+  "area": "ui",
+  "severity": "major",
+  "claim": "Founding a new campaign silently overwrites the 'auto' slot, which holds the only autosave of the campaign in progress. newgame found() always calls autosave(G,{silent:true}) (line 408), and nothing warns first. A player who relies on autosaves (there are 3 a month plus one after each battle) and starts «Nova Campanha» loses the old campaign with no confirmation.",
+  "evidence": "Script: scratchpad/review4/bugs/t13_newgame_auto.mjs. A 40-day campaign is autosaved: Save.list() → [['auto','1999-02-10','Fevereiro 1999 — Base Lusitânia']]. Reload, then menu → «Nova Campanha» → Veterano → «Escolher local» → «Fundar base». No modal appears during the whole flow (modal count 0). Afterwards Save.list() → [['auto','1999-01-01','Janeiro 1999 — Base Lusitânia']]: the 40-day campaign is gone.",
+  "fix": "In newgame step 1 (or in found()), read Save.read('auto') and compare it with the new campaign (campaign.seed / base / t). If it holds a different campaign that is not finished (flags.won/lost false), either (a) show a confirmation «A gravação automática da campanha atual será substituída — gravar numa posição ou exportar primeiro?» with a direct «Exportar» button, or (b) move the old auto into a backup key (e.g. 'auto.prev', listed in the load dialog) before writing the new one. Also clear a stale 'autoTurn' from the old campaign so «Continuar» cannot reopen it later.",
+  "lens": "bugs"
+ },
+ {
+  "file": "ovni-1999/js/ui/geo_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "Losing a base produces popup spam before Game Over. Each craft destroyed with the base pushes its own stop-popup «Nave perdida» (craftLost is not in MERGE), so the player clicks through baseAttack, baseDefence and N× craftLost before reaching the game-over screen. The craftLost popups add nothing because the baseDefence popup already reports the loss.",
+  "evidence": "Script: scratchpad/review4/bugs/t8_baselost.mjs. The Skyranger is patrolling (no garrison) and a retaliation Battleship flies at b1. The popups shown are: «A base está a ser atacada!», «Defesa da base», «Nave perdida», «Nave perdida», «Nave perdida», then the gameOver scene.",
+  "fix": "Add craftLost to MERGE so the queued ones show as one popup. In handle(), drop craftLost events with reason 'base' (or demote them to the baseDefence popup's lines) when a baseDefence event with result 'lost' is in the same batch.",
+  "lens": "bugs"
+ }
+]

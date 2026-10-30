@@ -1,0 +1,110 @@
+[
+ {
+  "file": "ovni-1999/js/sim/battle/actions.js",
+  "area": "sim",
+  "severity": "major",
+  "claim": "A reserva de UT para ajoelhar (J / Shift+5) é ignorada quando o soldado começa o movimento ajoelhado. Ele caminha até à reserva de tiro apenas e depois não consegue ajoelhar («UT reservadas para disparar»). O ciclo clássico ajoelhar → avançar → ajoelhar fica partido.",
+  "evidence": "Batalha Rápida de dia, Veterano, mês 1. Kenta (55 UT) ajoelha (K), ficando com 51 UT. Shift+2 (reserva de tiro rápido) e J (reserva para ajoelhar), os dois botões acesos. Clique num tile distante: o caminho é cortado e ele fica com 13 UT, que é exatamente a reserva do tiro rápido. K é recusado com «UT reservadas para disparar» e ele fica de pé e exposto. Lido do estado: OV.Act.reserveTU dá 13 com u.kneel=true e 17 com o mesmo soldado de pé. O mesmo aconteceu a Tiago, Hendrik, Youssef e Élodie no turno 4 da Ceifeira, todos ajoelhados no início do movimento. Captura: /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r1/veterano/shots/097_repro_kneel_refused_8.png. Causa: em reserveTU (actions.js, cerca da linha 248), `!u.kneel` é avaliado antes de o passo pôr o soldado de pé.",
+  "fix": "Em reserveFor/reserveTU, para a.type === 'walk' (e para qualquer ação que levante a unidade), somar TU_KNEEL sempre que B.reserveKneel estiver ligado, independentemente de u.kneel: o soldado vai acabar de pé. Também walkPreview deve usar a mesma regra, para os pontos verdes e amarelos coincidirem.",
+  "persona": "Rui"
+ },
+ {
+  "file": "ovni-1999/js/ui/screens.js",
+  "area": "data",
+  "severity": "major",
+  "claim": "O equipamento automático da Batalha Rápida dá a arma pesada pela posição na equipa (k = 3 e 7) e não pela Força. Os soldados com Força 20 ficam sobrecarregados e perdem 40 % das UT. Não há maneira de mudar o equipamento antes da missão (o chão da nave está vazio) e no mês 3 não há granadas de fumo nem armas de atordoamento.",
+  "evidence": "Ceifeira, mês 3: Michael Wilson e Rodrigo Cavalcanti, ambos com Força 20, levam Laser Pesado, 2 granadas, granada de proximidade e sinalizadores, e começam com 32/54 UT (BUnits.turnTU com peso > Força). Mês 1, de dia: os mesmos dois têm 36/54 UT com o Canhão Pesado. O inventário mostra CHÃO 0, sem nada para trocar. loadoutFor(tier,k) em screens.js (cerca da linha 710) usa `heavy = k === 3 || k === 7`. As granadas de fumo só existem no nível 2 e não há bastão de atordoamento nem lança-bombas atordoantes em nenhum nível, por isso não dá para treinar capturas nem cortinas de fumo. Dados no log do turno 1 da Ceifeira.",
+  "fix": "Dar a arma pesada aos dois soldados com mais Força (squad.sort por stats.str) e pôr a munição extra no chão da nave. Melhor ainda: abrir o ecrã «Equipar» (InventoryUI.equipScreen, que já existe na campanha) também na Batalha Rápida, com um armazém por mês que inclua fumo, bastão de atordoamento (mês 1 em diante) e lança-bombas pequeno com bombas atordoantes (mês 3 em diante).",
+  "persona": "Rui"
+ },
+ {
+  "file": "ovni-1999/js/ui/screens.js",
+  "area": "data",
+  "severity": "minor",
+  "claim": "Na Batalha Rápida noturna, os sinalizadores vão na mochila, o que custa 21–23 UT por lançamento contra 13 a partir do cinto. Com a reserva de tiro ligada, o primeiro sinalizador do turno 1 nem é possível («Precisa de 21 UT (tem 20)»).",
+  "evidence": "Ceifeira, noite, turno 1: Davide com 20 UT, L → «Precisa de 21 UT (tem 20)». Os outros lançamentos custaram «Lançar · 23 UT» e «22 UT». loadoutFor faz lo.pack.push('electro_flare','electro_flare'). A campanha põe o sinalizador no cinto. Captura: /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r1/veterano/shots/011_flare_aim.png",
+  "fix": "De noite, pôr um sinalizador no cinto (trocando um carregador para a mochila, se o cinto estiver cheio) e o segundo na mochila, como faz o «Auto-equipar» da campanha.",
+  "persona": "Rui"
+ },
+ {
+  "file": "ovni-1999/js/sim/geo/missions.js",
+  "area": "sim",
+  "severity": "major",
+  "claim": "Em Recruta, a primeira missão da campanha é um OVNI pousado com a tripulação completa. Duas campanhas em Recruta terminaram com a equipa inteira morta e o Skyranger perdido logo na primeira missão. Isto contraria o DESIGN §14, que pede como abertura a queda de um batedor pequeno ou médio, de dia, ao estilo de tutorial.",
+  "evidence": "Campanha 1: 6 jan, «OVNI Aterrado — Batedor Grande», Noite, 4–5 alienígenas (shots/023_briefing.png); 10/10 mortos e nave perdida, −368 (shots/062_debrief.png). Campanha 2: 3 jan, «OVNI Aterrado — Batedor Médio», Dia (shots/102_briefing_c2.png); 7 soldados mortos num só turno alienígena (shots/109_turn4_start.png); DERROTA, −390 (shots/122_c2_debrief.png). Nas duas, o primeiro OVNI aparece já pousado no Reino Unido e o pop-up só oferece «Enviar equipa». A jogadora fez o que um novato faz: avançou com o grupo junto, sem se ajoelhar e sem guardar UT. Em ai.js, as granadas contra grupos estão sempre ligadas (grenades:true, grenadeSingle:40), seja qual for a dificuldade.",
+  "fix": "Em Recruta (e talvez em Veterano), tornar o primeiro OVNI do guião um batedor pequeno ou médio, abatível pelos intercetores, que cai de dia perto da base. Ou, se for um OVNI pousado de noite, sugerir no pop-up «Equipa no local» a opção «Esperar pelo dia». No mês 0 em Recruta, desligar ou reduzir as granadas alienígenas contra grupos. Mostrar 2 ou 3 dicas na primeira batalha: «afaste os soldados uns dos outros», «ajoelhe-se atrás de cobertura», «deixe UT para reagir».",
+  "persona": "Sofia"
+ },
+ {
+  "file": "ovni-1999/js/i18n/pt-PT.battle.js",
+  "area": "data",
+  "severity": "minor",
+  "claim": "Os textos de pt-PT não concordam em género com as soldadas, apesar de cada soldado ter o campo «female».",
+  "evidence": "Avisos vistos: «Teresa Carvalho ficou paralisado de medo.», «Anjali Menon ficou paralisado de medo.», «Amaka Balogun ficou ferido mortalmente». No relatório: «Teresa Carvalho — Morto em combate», «Anjali Menon — Desaparecido em combate» (shots/062_debrief.png). As chaves bs.morale.freeze, bs.ev.wounded, bs.ev.kia, scr.db.kia/mia, base.mem.cause.* e cp.cause.* não têm variante feminina.",
+  "fix": "Criar variantes .f (paralisada, ferida, morta, desaparecida) e escolhê-las com u.female / s.female em presenter.js, battle_ui.js, screens.js e no memorial.",
+  "persona": "Sofia"
+ },
+ {
+  "file": "ovni-1999/js/sim/battle/actions.js",
+  "area": "sim",
+  "severity": "major",
+  "claim": "O Lançador Blaster (arma guiada) é recusado com «Sem linha de tiro — obstáculo no caminho» sempre que não há linha direta. Isto contraria o DESIGN.md (tabela de armas: «auto-routed (fly-path A* to target)») e esconde a única vantagem da arma.",
+  "evidence": "Terror no Cairo, mês 4, Recruta, turno 1. Selecionar o soldado com Lançador Blaster, clicar na mão E, «1 Tiro apontado», passar o rato sobre o Muton visível em (3,23): aparece «Sem linha de tiro — obstáculo no caminho» (shots/044_blaster_hover.png). OV.Path.flyRoute encontrava uma rota de 30 casas até ao alvo. Com Ctrl+clique (tiro forçado) a bomba seguiu a rota e matou o Muton (shots/046–051_blaster_fly*.png). Causa: actions.js:658 aplica `if (!a.force && !tg.voxel && !OV.LOS.targetVoxel(...)) return fail('noLOF')` também a armas cuja munição tem `def.guided`; combat.js guidedPath só é usado depois de passar a validação.",
+  "fix": "Em V.shoot, quando a arma é guiada (def.guided), trocar a verificação noLOF por `OV.Path.flyRoute(B, from, to)`: só falha («Bomba sem rota até ao alvo») quando não há rota. Em previewTarget, mostrar «Bomba guiada · rota N casas · Acerto ≈ X %» e desenhar a rota a tracejado em vez da linha reta bloqueada.",
+  "persona": "Tiago"
+ },
+ {
+  "file": "ovni-1999/js/data/research.js",
+  "area": "data",
+  "severity": "major",
+  "claim": "Fabricar para vender dá cerca de 5 vezes o lucro por hora de engenheiro do original. Com o Detetor de Movimento, disponível ao dia 5 sem pré-requisitos, o dinheiro fica praticamente infinito.",
+  "evidence": "Tabela headless (lucro = venda − custo − materiais a preço de venda): canhão laser 483 $/h-eng (original 97), detetor de movimento 258 (53), kit médico 231 (44), espingarda laser 211. Teste /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r1/minmaxer/econ.js: só com os 10 engenheiros iniciais em detetores, os fundos passam de 6 M$ a 20,6 M$ em 90 dias; baseline.js sem fazer nada chega a 14,6 M$. No browser, com 30 engenheiros: 60 detetores em cerca de 3,8 dias, vendidos por +2,74 M$ (lucro ≈ 183 k$/dia). Capturas shots/041_prod_running.png e shots/062_sold_scanners.png.",
+  "fix": "Repor a rentabilidade original por hora de engenheiro nos itens fabricáveis: sell = cost + (sellOrig − cost) × hours / hoursOrig, ou subir o custo na mesma proporção. Em alternativa, um mercado que satura (o preço desce, por exemplo 2 % por unidade vendida no mês). Juntar ao bot de campanha um teste de que nenhum fabrico rende mais do que cerca de 100 $/h-eng.",
+  "persona": "Inês"
+ },
+ {
+  "file": "ovni-1999/js/data/tuning.js",
+  "area": "sim",
+  "severity": "major",
+  "claim": "Pico de dificuldade nas missões noturnas do mês 0: um Batedor Grande ou Médio à noite mata metade a toda a equipa de recrutas, muito longe das metas de DESIGN (95 % de vitórias, ≤ 1 baixa).",
+  "evidence": "node tools/sim.js battle --ufo large_scout --month 0 --seeds 12: de dia 100 % e 1,08 baixas (Veterano) e 83 % e 3,75 (Super-humano); com --night 1, 75 % e 4,25 (Veterano) e 42 % e 6,17 (Super-humano). medium_scout à noite em Veterano: 83 % e 4,33 baixas. No browser, um Batedor Grande despenhado à noite em Itália (destroços com 10 h, impossível esperar pelo dia) eliminou os 10 recrutas sem alienígenas visíveis até ao turno 13 (shots/094_camp_t13.png, shots/096_state_now.png).",
+  "fix": "Dar margem nas missões noturnas do início: crashSite com pelo menos 12 h quando o local está de noite (para se poder «Esperar» pelo dia), ou visão noturna alienígena reduzida no mês 0–1, ou mais sinalizadores no kit inicial e um aviso no briefing «Recomendado: esperar pelo dia (W)» quando o OVNI for médio ou maior.",
+  "persona": "Inês"
+ },
+ {
+  "file": "ovni-1999/js/sim/geo/economy.js",
+  "area": "sim",
+  "severity": "minor",
+  "claim": "O aluguer das naves cobra o mês inteiro a quem as tiver no fecho do mês. Vender os intercetores pouco antes do fim do mês e voltar a comprá-los depois poupa cerca de 450 k$ por intercetor e por mês.",
+  "evidence": "craftcycle.js (headless): sem ciclo, o aluguer é de 1 700 000 $ por mês e os fundos chegam a 14,58 M$ ao dia 95. Com o ciclo (sellCraft a 2 h do fim do mês, buy logo a seguir), o aluguer passa a 500 000 $ por mês e os fundos a 17,28 M$, mantendo os 2 intercetores. As armas voltam ao armazém e reequipam-se de graça. Só verificado no simulador; não fiz a venda pela interface.",
+  "fix": "Cobrar o aluguer proporcionalmente aos dias de posse no mês: guardar boughtT e soldT por nave e somar no fecho do mês. Em alternativa, não reembolsar a venda de naves alugadas no mesmo mês da compra.",
+  "persona": "Inês"
+ },
+ {
+  "file": "ovni-1999/js/i18n/pt-PT.geoui.js",
+  "area": "data",
+  "severity": "minor",
+  "claim": "Os textos dizem que um ataque terrorista ignorado custa −1 000 pontos, mas nos meses 0–1 o custo real é −500.",
+  "evidence": "geo.ev.terrorSite.stakes: «−1 000 pontos quando o ataque terminar» (alerta de Berlim, 19 jan). data/geo.js tem terrorSiteExpiredByMonth: [500, 500] e o alerta real diz «Os alienígenas ganharam 500 pontos». O relatório mensal mostra «Ataque terrorista sem resposta −500» e, no mesmo ecrã, «cada um ignorado custa 1 000 pontos» (shots/099_month_report.png).",
+  "fix": "Pôr o valor de Missions (terrorPenalty(G, month)) no texto como parâmetro {points}, tanto no alerta como na nota do relatório mensal.",
+  "persona": "Inês"
+ },
+ {
+  "file": "ovni-1999/js/sim/battle/battle.js",
+  "area": "sim",
+  "severity": "minor",
+  "claim": "Os alienígenas mortos pela explosão das fontes de energia no início da batalha contam como «Alienígenas abatidos», com pontos para a X-COM, enquanto os mortos na queda (crashDead) são excluídos.",
+  "evidence": "repro_crash.js com a gravação da posição 1: no beginBattle, «damage cause:powerSource» mata os alienígenas 57 e 65 sem crashDead. O relatório mostra «Alienígenas abatidos ×3 +32» quando o jogador só disparou uma vez (vitória ao turno 2). debrief(): killed = dead && !crashDead.",
+  "fix": "Marcar como crashDead (ou killedByCrash) as mortes com cause 'powerSource' antes do turno 1 e excluí-las da linha de abates, como as da queda.",
+  "persona": "Inês"
+ },
+ {
+  "file": "ovni-1999/js/sim/geo/base.js",
+  "area": "sim",
+  "severity": "minor",
+  "claim": "O fabrico continua a entregar produtos acima da capacidade do armazém; só a compra é bloqueada.",
+  "evidence": "storage.js: 10 engenheiros em Laser Pesado durante 60 dias deixam o armazém em 72/50 (101 lasers) com a produção sem stalled. BS.buy devolve reason 'storage'.",
+  "fix": "Em produce()/tryPay, parar com stalled 'storage' quando a unidade seguinte não couber (como os fundos), com o aviso «Fabrico parado: armazém cheio».",
+  "persona": "Inês"
+ }
+]

@@ -1,0 +1,56 @@
+[
+ {
+  "file": "ovni-1999/js/ui/screens.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "A Batalha Rápida deixa escolher Cidónia (e Base Alienígena) com o «Mês 0 · Espingardas» que vem por omissão, sem nenhum aviso. Com espingardas e Fato de Combate contra Etéreos, uma Crisálida e um Sectópode de blindagem 72, a missão é quase impossível. Só o relatório de derrota diz para escolher um mês mais alto.",
+  "evidence": "Menu → Batalha Rápida → «Cidónia» (o mês fica em 0, «Espingardas»). O resumo mostra só «Forças mistas · 7 alienígenas» (/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/crianca/shots/p2_qb_cydonia.png).\n- Alienígenas: ethereal_commander, ethereal_leader, 2 ethereal_soldier, chryssalid, sectopod (armadura 72/65/65/50/45) e muton_soldier.\n- X-COM: 6 espingardas e 2 lança-foguetes.\n- Resultado: 7 mortos em 5 turnos e 1 abate. DERROTA −541 com «Dica: As armas da equipa são fracas contra Forças mistas… Escolha um «Mês» mais alto».",
+  "fix": "No ecrã da Batalha Rápida, ao escolher Cidónia passar o Mês para 4 automaticamente (e ≥ 2 para Base Alienígena), como já se faz com o terreno e a hora («determinados pela missão»). Em alternativa, mostrar no RESUMO uma linha vermelha: «Com espingardas, esta missão é quase impossível — escolha o Mês 3 ou 4».",
+  "persona": "Tiago, 11 anos (Recruta + Batalhas Rápidas, rato e teclado, clica depressa, não lê textos longos)"
+ },
+ {
+  "file": "ovni-1999/js/ui/screens.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "Numa VITÓRIA classificada FRACO por causa de civis mortos pelos explosivos da X-COM (−200), o relatório não diz porque é que a nota é má. Além disso, o aviso dos explosivos («atinge 8 aliados») conta civis como «aliados», por isso o Tiago não percebe que vai matar civis.",
+  "evidence": "Batalha Rápida, Terror de noite, mês 4, Blaster. Relatório: «VITÓRIA… Civis mortos pela X-COM ×4 −200 … TOTAL −49 AVALIAÇÃO FRACO», sem linha de causa nem dica (/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/crianca/shots/038_night_now.png). lossNotes/lossCauses só olham para soldados X-COM (u.type === 'soldier'). blastPreview (battle_ui.js ~l.808) conta como risco qualquer unidade não alienígena, e o rótulo diz «Clique outra vez para disparar — atinge 8 aliados» (/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/crianca/shots/024_blaster_after_dbl.png).",
+  "fix": "Em lossNotes, quando houver civis mortos pela X-COM, acrescentar «N civis mortos pelas tuas armas (−X pontos)» e, em vitória, a dica «Num ataque terrorista, cada civil morto por ti tira 50 pontos: não uses o Blaster perto deles». Em blastPreview, separar a contagem em soldados e civis, e no rótulo dizer «atinge 3 soldados e 5 civis».",
+  "persona": "Tiago, 11 anos (Recruta + Batalhas Rápidas, rato e teclado, clica depressa, não lê textos longos)"
+ },
+ {
+  "file": "ovni-1999/js/ui/screens.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "O relatório diz «X ← tiro de Y» para uma morte por foguete quando o atirador também morreu antes do fim, enquanto o registo da batalha diz «explosão (Y)». friendlyHow decide pela arma que o atirador tem na mão no fim, e um soldado morto já largou tudo.",
+  "evidence": "Batalha Rápida Cidónia. Registo: «3x: Julie Gauthier foi morta em combate — explosão (Daniel Gauthier)». Relatório: «1 soldado morto por fogo amigo: Julie Gauthier ← tiro de Daniel Gauthier». Daniel morreu mais tarde, e killUnit → dropAll esvazia k.items, por isso friendlyHow não vê o lança-foguetes e devolve 'shot' (deathCause do foguete = 'shot'). A dica escolhida para fogo amigo também pode ficar errada (tip.friendly.shot em vez da dos explosivos).",
+  "fix": "Guardar a causa no momento da morte: em combat.killUnit (ou no impacto), registar u.deathBlast = true / u.deathWeapon = tipo da munição quando o dano vem de uma explosão. friendlyHow passa a usar esse campo em vez das mãos do atirador no fim da batalha.",
+  "persona": "Tiago, 11 anos (Recruta + Batalhas Rápidas, rato e teclado, clica depressa, não lê textos longos)"
+ },
+ {
+  "file": "ovni-1999/js/i18n/pt-PT.screens.js",
+  "area": "data",
+  "severity": "minor",
+  "claim": "O briefing de um OVNI aterrado diz «Uma nave capturada inteira vale mais pontos e mais material», mas no debriefing não há linha para o OVNI intacto. Os componentes recuperados (fontes de energia, navegação, ligas) só dão pontos enquanto não forem investigados, por isso a meio da campanha um OVNI aterrado dá os mesmos pontos que um despenhado: só os abates.",
+  "evidence": "Batedor Grande aterrado, 8 mar 1999 (gravação importada do bot). O relatório mostra só Alienígenas abatidos +48, capturados +20 e Soldados mortos −85, apesar de entregar 10 Ligas, 1 Fonte de Energia, 2 Navegação OVNI e 50 Elerium. Captura /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/minmaxer/shots/118_debrief_mid.png. No código, battle.js debrief: «artefactos ainda não investigados dão pontos» (`if (!rp || (topic && listHas(researched, topic))) continue`). Texto em scr.br.obj.landed.2.",
+  "fix": "Mudar o texto para «Uma nave capturada inteira dá mais material (fontes de energia intactas, ligas a 100 %)», ou acrescentar ao debriefing uma linha «OVNI capturado intacto» com pontos (por exemplo o score do OVNI, ×1 como no abate).",
+  "persona": "Inês, otimizadora. Joga em Veterano com trackpad e teclado, procura exploits e usa a simulação headless. Ronda 4, cerca de 63 min de jogo real no browser (log em /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/minmaxer/mylog.txt), mais scripts Node na mesma pasta. Campanha própria (semente 4242) de 1 a 10 jan. Para chegar a conteúdo mais avançado, importei pelo ecrã Carregar uma gravação do bot de campanha a 4 mar 1999 (semente 5, Veterano) e joguei a partir daí até 1 abr: 2 OVNIs aterrados, relatório de março e início do assalto a uma base alienígena."
+ },
+ {
+  "file": "ovni-1999/js/ui/screens.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "The mission briefing has a scrolling list (the soldier cards, 244 px hidden at 1024×560), but ↓/PageDown/End do nothing while focus is on «INICIAR MISSÃO», where it starts. The only way to scroll is to find the scroll area with Tab. The debrief and the monthly report already scroll with these keys.",
+  "evidence": "Briefing of OVNI-2: .scr-brief-body scrollTop stays 0/244 after ArrowDown, PageDown and End. After one Tab (focus on the DIV), ArrowDown goes to 40, 80 and PageDown to 244. Shots: shots/021-brief.png and 022-brief-focusdiv.png.",
+  "fix": "In the briefing's keys(), call OV.Screens.ui.scrollKeys(ev, body), as the debrief and the monthly report do. Add «↑ ↓ PageDown deslocam» to the footer.",
+  "persona": "Pedro: keyboard only, deuteranopia (CDP deuteranopia emulation), 125% zoom on 1280×800 (1024×560 CSS, DSF 2.5), prefers-reduced-motion"
+ },
+ {
+  "file": "ovni-1999/js/ui/battle_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "Partly still present (rounds 1–3). On the iPad the Options screen still shows mouse-only settings, «Deslocar nas margens do ecrã» and «Roda do rato: Nível/Zoom», and the text «Pede um 2.º clique…». The long-press tooltips on HUD buttons show the keyboard key («Ajoelhar / levantar [K]»).",
+  "evidence": "Geoscape → Opções in landscape: the CONTROLOS section shows «Deslocar nas margens do ecrã» and «Roda do rato», and JOGO says «Pede um 2.º clique antes de disparar…». Long press on the kneel button in combat: tooltip «Ajoelhar / levantar K». Shots: persona/r4/ipad/shots/118_options.png, 045_longpress_kneel.png.",
+  "fix": "With isTouch() / matchMedia('(hover:none)'), hide the edge-scrolling and mouse-wheel rows (hud.opt.wheel around line 1651) and use a '.touch' variant: «Pede um 2.º toque…». In the tooltip, hide the .key element under @media (hover:none), as is already done for .btn .key.",
+  "persona": "Marta, a touch-only player on an iPad Pro 11\" in Safari, emulated with Playwright (hasTouch, isMobile, DPR 2, 1194×834 landscape and 834×1194 portrait). Session lasted about 75 minutes in real time. She played a Recruta campaign: base Sintra (Lisbon); base management in portrait (build, hire, Market Buy/Sell, rename by virtual keyboard, Ufopédia, Financiamento, Gravar); Medium Scout mission (day, landscape); Large Scout mission (night → «Esperar pelo dia», played in portrait). To reach the 1 Feb month report she skipped ahead by OK-ing the remaining January events. She then played one Quick Battle at an Alien Base (10 soldiers, Recruta), in landscape and portrait, and aborted it at turn 8."
+ }
+]

@@ -1,0 +1,209 @@
+[
+ {
+  "file": "ovni-1999/js/ui/inventory_ui.js",
+  "area": "ui",
+  "severity": "major",
+  "claim": "Os ecrãs «Equipar» (campanha e Batalha Rápida) mostram a arma sem carregador e 2 carregadores no cinto. Em combate um deles já está dentro da arma, por isso o soldado leva só 1 carregador de reserva, não os 2 que o ecrã e a ajuda («2 carregadores») dão a entender.",
+  "evidence": "Campanha, Skyranger-1: Adriana mostra a Espingarda sem indicador de munição e o cinto «20» «20» (/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r2/veterano/shots/079_cequip.png). Em combate o inventário real é «rifle[20], rifle_clip» (1 carregador de reserva). Na Batalha Rápida mês 3 acontece o mesmo: o ecrã mostra 2 «28» no cinto (007_qequip.png) e o inventário em combate mostra o cinto 3/4 com um só «28» (015_inv_manoj.png). O peso é igual nos dois ecrãs (28/34), o que prova que um carregador foi metido na arma: BUnits.fromSoldier → autoLoad.",
+  "fix": "No ecrã «Equipar», mostrar a arma já carregada (indicador «20/20» na mão) e pôr no cinto só os carregadores de reserva, simulando o autoLoad na pré-visualização. Em alternativa, fazer o autoLoadout/loadoutFor dar a arma carregada + 2 carregadores de reserva, como a dica diz, e mudar o texto para «arma carregada + N carregadores de reserva».",
+  "persona": "Rui"
+ },
+ {
+  "file": "ovni-1999/js/ui/battle_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "Ainda presente (ronda 1), em parte: sobre uma porta de OVNI que não está ao lado do soldado (por exemplo, na diagonal), a pré-visualização sem ⌥ promete «Alt + clique: abrir a porta sem entrar (0 UT)». Ao premir ⌥ aparece a recusa «Porta: fique ao lado dela…». O custo «0 UT» é falso: ao lado da porta o custo real é 6 UT.",
+  "evidence": "Soldado em (8,21) e porta em (9,20): sem Alt o sub-rótulo é «Alt + clique: abrir a porta sem entrar (0 UT)» (/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r2/veterano/shots/047_door_hover.png). Com Alt aparece «Porta: fique ao lado dela para a abrir sem entrar» (048_door_alt_hover.png). Já em (8,20), ao lado da porta, mostra «(6 UT)» e a porta abre por 6 UT (antes 20, depois 14). Em battle_ui.js, linha ≈575: `const sub = door && !out ? …` não verifica door.ok.",
+  "fix": "Mostrar o sub-rótulo só quando door.ok (ou door.reason === 'noTU'). Quando door.reason === 'tooFar', mostrar «⌥ + clique abre a porta ao lado do soldado», sem número de UT.",
+  "persona": "Rui"
+ },
+ {
+  "file": "ovni-1999/css/screens.css",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "No ecrã «Equipar» a 1440×900, quando o soldado está sobrecarregado, os botões COPIAR e AUTO-EQUIPAR tapam o número do peso e o aviso: lê-se «Peso :» e «Excesso de peso: começa a missão com me…».",
+  "evidence": "/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r2/veterano/shots/009_alejandro.png: «Peso 25/24» fica escondido atrás de COPIAR e o aviso vermelho é cortado por AUTO-EQUIPAR.",
+  "fix": "Dar ao bloco da carga (.inv-meters) uma largura mínima e fazer a grelha .eq-btns passar para a linha de baixo quando não houver espaço (flex-wrap, ou a grelha em @container eq). Em alternativa, pôr o aviso de excesso numa linha própria por baixo da barra.",
+  "persona": "Rui"
+ },
+ {
+  "file": "ovni-1999/js/ui/inventory_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "No ecrã «Equipar», a ajuda diz «⌫ devolve ao armazém», mas um objeto escolhido com o rato (clique no cinto ou na mochila) não volta ao armazém com ⌫. Só funciona com o foco de teclado no objeto.",
+  "evidence": "Cliquei no Kit Médico da mochila de Alejandro (fica realçado, «Kit Médico: escolha o destino») e premi Backspace: a mochila continua [«Kit Médico», «Sinalizador»] e o peso continua 25/24 (/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r2/veterano/shots/011_picked.png). O código (inventory_ui.js ≈1938) exige E.focusEl com dataset.src 'lo:'.",
+  "fix": "Quando há um objeto escolhido com o rato (E.clip/seleção pendente com origem 'lo:'), tratar ⌫/Delete como eqCommit(origem, 'slot:stores').",
+  "persona": "Rui"
+ },
+ {
+  "file": "ovni-1999/js/ui/battle_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "No início do turno, o toast «Alienígena avistado!» fica por cima da 1.ª linha do painel «Durante o turno alienígena» e esconde a causa da morte, que aqui era fogo amigo.",
+  "evidence": "Terror de Novosibirsk, turno 7 (shots/070-report_T7.png): o toast vermelho tapa «Davide Rossi foi morto em combate — tiro de Vikram Kumar». Só se lê «Davide Rossi foi morto em … Kumar».",
+  "fix": "Enquanto o painel de resumo do turno estiver aberto, pôr os toasts por baixo dele (ou no canto) ou adiá-los até o fechar. Também se pode juntar «Alienígena avistado» como uma linha do próprio painel.",
+  "persona": "Sofia"
+ },
+ {
+  "file": "ovni-1999/js/ui/battle_ui.js",
+  "area": "ui",
+  "severity": "major",
+  "claim": "Ainda presente (ronda 1), contornável: a 2.ª confirmação dos explosivos com aliados no raio (clickTarget ~l.989, clickThrow ~l.1012) é satisfeita pelo 2.º clique de um duplo clique. Uma criança que clica depressa dispara o Blaster ou lança a granada sem nunca ver o aviso «Clique outra vez para disparar».",
+  "evidence": "Terror mês 4 (seed 35698), turno 5, Meera Chopra com Lançador Blaster, «Tiro apontado» contra o Homem-Serpente Líder a 6 casas.\n- Com um clique simples a confirmação funciona: aparece «Clique outra vez para disparar — atinge 2 aliados» (shots/036_blaster_click1.png).\n- Esc e repetir com page.mouse.dblclick no alvo dispara logo: a Palesa Steyn morre («5 bad Palesa Steyn foi morta em combate — explosão (Meera Chopra)», shots/038_blaster_dbl_after.png).\n- O mesmo com a granada rápida (G) a 3 casas da equipa: aparece «Risco: 5 aliados no raio da explosão» (shots/145_grenade_hover.png), e o duplo clique lança-a e gasta 43 UT (shots/146_grenade_dbl_after.png).\n- Causa: a condição `S.tapLock !== i` só exige que o 2.º clique caia na mesma casa; não exige tempo nem um gesto separado.\nPastas: shots/ = /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r2/crianca/shots/",
+  "fix": "Guardar S.tapLockT = performance.now() quando a confirmação arma. Aceitar o disparo só se o clique seguinte chegar ≥ 400 ms depois e com event.detail === 1, ignorando o 2.º clique de um dblclick. Em alternativa, em Recruta (confirmBlast 'auto'), trocar a confirmação por um diálogo curto («Vais atingir N soldados teus. Disparar? [Não] [Sim]»), com «Não» como botão por omissão e Enter a cancelar.",
+  "persona": "Tiago"
+ },
+ {
+  "file": "ovni-1999/js/ui/presenter.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "Quando um soldado morto se transforma em zombie, o aviso diz «Zombie transformou-se num zombie!» e o registo de mensagens (N) não regista nada. A criança vê um Zombie a aparecer onde morreu a Palesa sem perceber que era ela.",
+  "evidence": "Terror mês 4:\n- No turno 2 a Palesa foi atacada por uma Crisálida (spawnOnDeath = 'zombie') e no turno 5 morreu na explosão do Blaster. Na casa dela nasceu o Zombie id 87.\n- O registo mostra só «5 good François Dubois abateu: Zombie».\n- O evento é {t:'zombify', unitId: <zombie novo>, fromId: <soldado>} (combat.js:614). H.zombify (presenter.js:519) usa name(unit(ev.unitId)), e no navegador OV.T('bs.ev.zombify',{name:'Zombie'}) dá «Zombie transformou-se num zombie!».\n- logEntry (battle_ui.js:1296) faz find(ev.unitId) → unidade alienígena → mine() falso → null. Confirmado com OV.BattleUI.model.logEntry(B,{t:'zombify',unitId:87,fromId:<Palesa>}) → null.",
+  "fix": "Em H.zombify e em logEntry usar `ev.fromId` (o soldado de origem) para o nome e para mine(), mantendo `at` no tile do zombie. Por exemplo, «Palesa Steyn transformou-se num zombie!» com kind 'bad'.",
+  "persona": "Tiago"
+ },
+ {
+  "file": "ovni-1999/js/ui/inventory_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "No ecrã «Equipar» (Batalha Rápida ou briefing), largar uma munição em cima da arma na mão não a carrega: devolve a munição ao armazém e apanha a arma. O soldado vai para a batalha com o lançador vazio e nada o avisa até carregar no gatilho.",
+  "evidence": "Equipar → Liu Bo:\n- Lançador Pequeno do armazém para a mão esquerda, depois Bomba Atordoante largada em cima do lançador. O resultado é «Lançador Pequeno: escolha o destino» (a arma fica apanhada), com as Bombas ×4 ainda no armazém (shots/007_holding_bomb.png, shots/008_after_bomb_on_launcher.png). A mão mostra «Ocupada» a vermelho quando se tem a bomba na mão (shots/009_bomb_hover_launcher.png).\n- O briefing não avisa (shots/010_briefing_after_equip.png).\n- Em combate o lançador tem ammo null. O menu mostra as opções a cinzento e o clique dá «Sem munições» (shots/013_liu_launcher_click.png).\n- DESIGN §15.4 diz «reload by dropping a clip on a weapon».",
+  "fix": "No equipScreen, aceitar uma munição compatível largada sobre uma arma (mãos): pô-la no cinto ou na mochila (o loadout já carrega a arma a partir daí) com o rótulo «Carregar» no alvo. No briefing, acrescentar a linha «N soldados levam armas sem munição» com o botão «Equipar automaticamente».",
+  "persona": "Tiago"
+ },
+ {
+  "file": "ovni-1999/js/ui/battle_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "A dica da porta diz «Alt/⌥ + clique: abrir a porta sem entrar (0 UT)» quando o soldado não está ao lado da porta. Parece que abrir portas é grátis (custa 4 UT mais a rotação), e o Alt+clique ali só responde «fique ao lado dela».",
+  "evidence": "Batedor Grande aterrado, turno 2, com o soldado a cerca de 7 casas da porta da quinta: a etiqueta do caminho mostra «Alt + clique: abrir a porta sem entrar (0 UT)». Captura /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r2/minmaxer/shots/080_next_turn.png.\n\nNo código, doorAt() (battle_ui.js:942–954) devolve {ok:false, reason:'tooFar', tu: v.tu|0}, e V.door falha com tooFar sem tu, por isso tu = 0. A linha 575 usa door.tu na dica sem olhar para door.ok.",
+  "fix": "Na linha 575, mostrar a dica só se door.ok. Com reason 'tooFar', usar 'hud.door.far' ou omitir o custo. Em alternativa, calcular o custo como TUNE.TU_DOOR (4) mais a rotação.",
+  "persona": "Inês"
+ },
+ {
+  "file": "ovni-1999/js/ui/battle_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "Com rato ou trackpad, a tecla T («Rodar o soldado para o cursor», segundo a folha de teclas) não roda o soldado para a casa por baixo do ponteiro. Só mostra «Mova o cursor (setas) para onde o soldado deve virar-se e prima T». Quem joga com trackpad tem de descobrir o clique secundário.",
+  "evidence": "Turno 1 do primeiro combate: ponteiro sobre a casa (24,20), T premido → toast «Mova o cursor (setas)…» e o soldado continua com dir 2. Com clique direito na mesma casa, roda e vê o sectoide. Capturas /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r2/minmaxer/shots/029_turned.png e 030_turned_rc.png. No código, kbTurn() (battle_ui.js:2584) exige S.kcur.armed e ignora S.hover.",
+  "fix": "Em kbTurn(), quando o cursor de teclado não está armado e há S.hover, usar idxOf(hover) como toI. Na folha de teclas, acrescentar «ou clique secundário / ⌃+clique» à linha T.",
+  "persona": "Inês"
+ },
+ {
+  "file": "ovni-1999/js/ui/battle_ui.js",
+  "area": "ui",
+  "severity": "major",
+  "claim": "No combate, alternar duas setas para seguir um eixo da grelha (por exemplo ↓ ← ↓ ← para descer «na diagonal do ecrã») faz o cursor de teclado saltar sempre entre as mesmas duas casas. Não avança, e a única maneira de andar ao longo das filas é carregar duas vezes em cada seta.",
+  "evidence": "Missão 1, cursor em (3,7): ArrowLeft→(2,7), ArrowDown→(3,7), ArrowLeft→(2,7), ArrowDown→(3,7)… (6 teclas sem sair do sítio). Com pares (← ← ↓ ↓) avança: (2,7)→(2,8)→(3,8)→(3,9)… A causa é kbStep (l.341–364): a âncora d/s e o «flip» alternam em sincronia e cada direção volta a puxar o cursor para a linha da outra. Capturas: /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r2/acessivel/shots/061-cursor-probe.png e 062-path-3-14.png (o cursor ficou em (3,7) quando o alvo era (3,12)).",
+  "fix": "Quando a tecla muda de eixo (vertical ↔ horizontal), reiniciar a âncora (anchor=null) em vez de reutilizar d/s, ou guardar a âncora só por direção. Em alternativa, mapear as teclas diretamente para os eixos da grelha (↑=y−1, →=x+1…) e deixar as setas de ecrã como opção. Acrescentar um teste: ↓,← repetidos 6× deve dar (x, y+6).",
+  "persona": "Pedro"
+ },
+ {
+  "file": "ovni-1999/js/ui/battle_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "Os botões «Mostrar» / «Mostrar atacante» do Registo de mensagens (N) e do resumo do início do turno não se usam por teclado. Ao abrir, o foco fica no BODY e o Tab muda de soldado em vez de entrar no painel.",
+  "evidence": "Missão 1, turno 8: o soldado Manuel Almeida morreu no turno alienígena 4. N abre «REGISTO DE MENSAGENS» com «Manuel Almeida foi morto em combate — tiro de atacante não visto [MOSTRAR]». activeElement = BODY. Tab mudou o soldado selecionado (21→32) e o painel continuou aberto, sem forma de chegar ao botão (openReport, l.1323–1380, não dá foco nem trata teclas). Captura: /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r2/acessivel/shots/073-log.png",
+  "fix": "Com o registo ou o relatório aberto, Tab/⇧Tab (ou ↑/↓) percorre as linhas e Enter ativa «Mostrar» da linha com foco. Em alternativa, numerar as linhas (1–9 = mostrar). Dar foco ao botão Fechar ao abrir e devolvê-lo ao fechar.",
+  "persona": "Pedro"
+ },
+ {
+  "file": "ovni-1999/js/ui/battle_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "Quando o destino come as UT de reserva, a etiqueta do caminho é igual à de um movimento normal («Custa 8 UT · ficam 5 · En 29»). A única pista é a cor (amarelo em vez de azul), e Enter é recusado com o toast «UT reservadas para disparar».",
+  "evidence": "Missão 1, turno 1, Thandiwe com reserva Tiro rápido (⇧2). O cursor numa casa com pathStates terminando em 'reserve' mostra «Custa 8 UT · ficam 5 · En 29» com moldura amarela. Enter dá o toast «UT reservadas para disparar» (duas vezes). previewMove l.572 usa sempre 'hud.path' e não distingue o estado 'reserve'. Captura: /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r2/acessivel/shots/066-t1-end.png",
+  "fix": "Se algum passo tiver state 'reserve', acrescentar à etiqueta «· come a reserva (Tiro rápido)» ou usar uma chave hud.path.reserve («Custa 8 UT · ficam 5 — abaixo da reserva de 9»), e mostrar o mesmo texto no toast de recusa.",
+  "persona": "Pedro"
+ },
+ {
+  "file": "ovni-1999/js/ui/base_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "Ainda presente (ronda 1), em parte: o foco cai para o BODY e o anel de foco desaparece depois de ativar um separador da base com Enter, depois de iniciar uma investigação a partir da tecla N e depois de fechar o Equipar com Esc. Com o botão «Novo projeto», Contratar e Gravar já está corrigido.",
+  "evidence": "Foco em «INVESTIGAÇÃO» + Enter deu activeElement=BODY. N, «Iniciar: Armas Laser» e Enter deram BODY (pelo botão NOVO PROJETO o foco volta bem). Equipar (E) e Esc deram BODY em vez do botão «Equipar» da aba Naves. Capturas: /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r2/acessivel/shots/029-research.png e 031-research-started.png",
+  "fix": "setTab: depois de renderContent, focar o role=tab ativo. Num diálogo aberto por atalho, guardar como returnTo o botão equivalente (data-act=newResearch). closeEquip: devolver o foco ao [data-act=equip] com OV.Dom.refocus.",
+  "persona": "Pedro"
+ },
+ {
+  "file": "ovni-1999/js/ui/inventory_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "No Equipar e no Inventário por teclado, a navegação espacial tem saltos inesperados. Depois de largar um objeto com Enter, o cursor salta para o botão COPIAR (o Enter seguinte copia). ↓ a partir da mão direita salta o cinto e vai para «Ativar…». Com um objeto apanhado, Enter numa casa ocupada troca a escolha sem aviso.",
+  "evidence": "Base › Equipar: Pistola do armazém, ← ←, mão esquerda, Enter. O objeto foi largado e a seguir «Enter -> btn small kfocus | COPIAR». Inventário de combate: «ArrowLeft -> Espingarda», «ArrowDown -> Ativar… Precisa de uma mão livre». Com Granada apanhada, Enter numa casa do cinto com um carregador deu «picked | 20» (a granada deixou de estar na mão). Capturas: /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r2/acessivel/shots/043-equip-pistol-ok.png e 100-inv-hold.png",
+  "fix": "Depois de largar, manter .kfocus na casa de destino. No navMove, preferir o vizinho mais próximo na direção pedida dentro da zona boneco/cinto/mochila antes de saltar para as ações. Com um objeto apanhado, Enter numa casa ocupada deve trocar os objetos ou recusar com um som e um texto («Ocupada»), nunca largar a escolha em silêncio.",
+  "persona": "Pedro"
+ },
+ {
+  "file": "ovni-1999/css/battle.css",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "Ainda presente (ronda 1): no inventário de combate, a lista do chão mostra duas linhas iguais, «Canhão Pesado: m…» e «Canhão Pesado: m…» (explosiva e perfurante). Só um ícone pequeno as distingue.",
+  "evidence": "Missão 2, I: o CHÃO lista «Canhão Pesado: m… 6» duas vezes, e o nome é cortado antes de «explosiva»/«perfurante». Captura: /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r2/acessivel/shots/099-inv.png",
+  "fix": "Usar line-clamp:2 nos nomes do chão, ou mostrar primeiro o sufixo («Mun. explosiva — Canhão Pesado»), ou uma etiqueta textual «EXP»/«PERF» ao lado da contagem.",
+  "persona": "Pedro"
+ },
+ {
+  "file": "ovni-1999/js/ui/battle_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "A lista de teclas do combate (?) abre deslocada até ao fundo, porque o foco vai para RETOMAR: o título e as primeiras linhas (Setas, Enter — as mais importantes para quem usa o teclado) ficam escondidos a 560 px de altura.",
+  "evidence": "? abre o .modal.wide com scrollTop=124/124. Só se vê a partir de «⇧ + setas · W A S D» (cortado no topo). PageUp volta ao início. Captura: /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r2/acessivel/shots/114-keysheet.png",
+  "fix": "Focar com {preventScroll:true} e repor scrollTop=0 ao abrir, ou fixar o rodapé do modal (position:sticky) para que o botão não obrigue a deslocar a lista.",
+  "persona": "Pedro"
+ },
+ {
+  "file": "ovni-1999/css/screens.css",
+  "area": "gfx",
+  "severity": "minor",
+  "claim": "No Equipar do briefing a 1024×560, o texto do cartão de informação vê-se por trás do boneco e entre os painéis das mãos («o armazém e o soldado», «Alcanc…»). O rodapé desse ecrã não diz que as setas e o Enter funcionam (o da base diz).",
+  "evidence": "Briefing da missão 2, E: o texto de ajuda «Clique ou arraste…» está em y=416, por baixo dos painéis das mãos (283–451), e vê-se nas folgas. Rodapé: «Arraste ou clique num objeto e depois no destino · Tab ou 1–9 muda de soldado · Esc conclui». Capturas: /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r2/acessivel/shots/094-brief-equip.png e 095-brief-equip-pack.png",
+  "fix": "Dar ao cartão de informação o seu próprio lugar na grelha (ou um background opaco e z-index abaixo dos painéis sem sobreposição) e acrescentar «· setas e Enter movem objetos» ao rodapé do Equipar do briefing.",
+  "persona": "Pedro"
+ },
+ {
+  "file": "ovni-1999/js/ui/inventory_ui.js",
+  "area": "ui",
+  "severity": "major",
+  "claim": "No Equipar (toque no objeto e depois no destino), quem tem um objeto escolhido e toca numa linha do painel Armazém não guarda esse objeto. A seleção passa para o objeto da linha tocada, apesar de o painel mostrar o chip verde «Guardar». Só os poucos píxeis do título ou dos espaços entre linhas aceitam o «guardar».",
+  "evidence": "Passos: Base → Naves → Equipar, tocar na Pistola da mão esquerda e depois na linha «Espingarda ×2» do Armazém. A mão continua com «Pistola Ocupada» e o rodapé passa a dizer «Espingarda: escolha o destino». Tocar no título «ARMAZÉM» (905,100) guarda a pistola.\n\nCausa: clickTarget(), nas linhas 284–294, trata qualquer [data-src] que se possa apanhar como novo objeto, e as linhas do armazém não têm data-drop. Por isso activate() faz select() em vez de guardar no destino slot:stores.\n\nScreenshots: /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r2/ipad/shots/023_eq_sel_hand.png (chip «Guardar») e /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r2/ipad/shots/024_eq_tap_store_row.png.",
+  "fix": "Em clickTarget/activate, quando P.sel vem do soldado (mão, cinto ou mochila) e o toque cai dentro de [data-drop=\"slot:stores\"], mesmo em cima de uma linha, resolver para slot:stores (guardar). Só trocar a seleção quando o objeto escolhido já vem do armazém.",
+  "persona": "Marta"
+ },
+ {
+  "file": "ovni-1999/css/battle.css",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "Regressão da correção «AUTO-EQUIPÆSVAZIAR» (ronda 1). No Equipar da base em paisagem (1194 px), a nova grelha 2×2 de botões (Copiar/Colar/Auto-equipar/Esvaziar) sobrepõe-se ao medidor de carga. O valor «Peso 25/21» fica escondido por baixo de COPIAR e a nota «Excesso de peso: começa a missão co…» fica cortada. O nome do soldado também aparece truncado («Tunde Abub…», «Recruta · Fato de Co…»).",
+  "evidence": "Medições:\n- .inv-meter .val «Peso 25/21» em x 641–719;\n- botão COPIAR em 655–768 (e AUTO-EQUIPAR 655–768 × 128–164);\n- elementFromPoint(690..710, 111) devolve «btn small: COPIAR».\n\nCausa: battle.css:622 define o cabeçalho com «minmax(170px,240px)» para os medidores e a coluna «auto» dos botões, com min-width:max-content (627), por isso os botões transbordam para a esquerda.\n\nScreenshots: /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r2/ipad/shots/022b_weight_crop.png e /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r2/ipad/shots/021_equip_land2.png.",
+  "fix": "No cabeçalho .inv-head.eq com largura de contentor até cerca de 1200 px, passar os botões para uma linha própria por baixo dos medidores (grid-row: 3; grid-column: 1/-1; grid-template-columns: repeat(4,max-content)), como já se faz no @container ≤ 860 px. Em alternativa, usar grid-template-columns: 56px minmax(0,1fr) auto e pôr os medidores em grid-row 2 a toda a largura.",
+  "persona": "Marta"
+ },
+ {
+  "file": "ovni-1999/css/battle.css",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "Em retrato no combate, a dica de pontaria ou lançamento («Toque no alvo e toque outra vez para disparar · Tiro rápido · toque longo cancela») fica por trás do painel de ações. Só se lê «Toque no alvo e», e é aí que a jogadora aprende a cancelar com toque longo.",
+  "evidence": "Batalha em 834×1194: escolher um modo de tiro na mão. .bs-hint fica em 160,1017 (514×27), mas o painel de baixo em retrato tem cerca de 180 px (reservas numa 2.ª linha). elementFromPoint nos 3 pontos da dica devolve «bs-bottom passthru», «bs-hand aiming» e «bs-grid».\n\nCausa: battle.css:349 fixa bottom: calc(150px + safe-area) com (hover:none).\n\nScreenshot: /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r2/ipad/shots/091b_hint_crop.png. Em paisagem a dica fica visível (y 657).",
+  "fix": "Calcular a posição a partir da altura real do HUD inferior (variável CSS --bs-bottom-h medida em JS) ou, em @media (hover:none) and (max-width:960px), usar bottom: calc(200px + env(safe-area-inset-bottom)). Em alternativa, pôr a dica no topo, por baixo da barra de turno.",
+  "persona": "Marta"
+ },
+ {
+  "file": "ovni-1999/js/i18n/pt-PT.hud.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "Ainda presente (ronda 1), em parte. O Geoscape já fala em toque, mas no combate, no briefing, no relatório e nas Opções continuam textos só de teclado ou rato no iPad.",
+  "evidence": "Exemplos (todos vistos no iPad, só com toque):\n- Tocar num alienígena dá o aviso «Escolha um modo de tiro (Q/E) para disparar» (battle_ui.js:2371 usa sempre 'hud.hint.aim', sem variante de toque). Screenshot /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r2/ipad/shots/041_tap_alien.png.\n- O briefing noturno diz «Sugestão: «Esperar pelo dia» (W)…» (/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r2/ipad/shots/073_briefing2_portrait.png).\n- A dica do relatório de derrota diz «ajoelha (K)».\n- Nas Opções aparece «Durante a animação, Espaço ou clique acelera ×8» e «Granadas instantâneas… (G)» (/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r2/ipad/shots/103_options.png).\n- O menu tem «Como Jogar — Controlos no Mac e regras essenciais» (scr.menu.howto.hint).\n- Os emblemas de tecla «Esc», «↵», «Q», «E» continuam visíveis nos botões com toque («Entendido Esc», «Fechar Esc», «Fim do turno ↵»).",
+  "fix": "Dar variantes '.tap' a estas chaves e escolhê-las com isTouch(), como já se faz em hud.confirmMove.tap e nos textos do Geoscape:\n- «Toque na arma (mão) para escolher o tiro»;\n- «botão Esperar pelo dia»;\n- «ajoelhe (botão do soldado)»;\n- «Toque acelera ×8»;\n- «Controlos e regras essenciais».\n\nCom @media (hover:none), esconder os emblemas de tecla (.kbd) nos botões.",
+  "persona": "Marta"
+ },
+ {
+  "file": "ovni-1999/css/battle.css",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "Em retrato, o painel «Durante o turno alienígena» tapa a ponta da lista de soldados. Os avisos que chegam ao mesmo tempo («X foi morta em combate», «Alienígena avistado!») aparecem por cima do título do painel, e o texto fica sobreposto e ilegível.",
+  "evidence": "Batalha Rápida em 834×1194, início do turno 3 depois de baixas. .bs-report fica em x 137–697 e y 52–155, e .bs-squad em x 10–160, por isso há 23 px de sobreposição sobre os nomes («Ahmed Mah», «James Whit»). Os toasts aparecem centrados sobre «DURANTE O TURNO ALIENÍGENA · 1 morto». Screenshot: /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r2/ipad/shots/109_qb_t3.png.",
+  "fix": "Em retrato, pôr o relatório à largura útil à direita da lista (left: calc(160px + 16px); right: 16px) ou abaixo dela. Enquanto o relatório estiver aberto, suprimir ou deslocar os toasts da mesma informação (já estão no relatório).",
+  "persona": "Marta"
+ }
+]

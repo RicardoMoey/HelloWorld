@@ -1,0 +1,92 @@
+[
+ {
+  "file": "ovni-1999/js/data/research.js",
+  "area": "sim",
+  "severity": "major",
+  "claim": "Win-path trap in the interrogation chain. The alien-base surrender (TUNE.ALIEN_BASE_SURRENDER) hands over exactly 1 commander and 2 leaders. A commander interrogated before 'A Solução Marciana' is consumed without setting commanderInterrogated. Cydonia then needs another live commander, which only Battleships or another non-Muton alien base can provide. The UI does not warn; the hint shown at that point even recommends the commander.",
+  "evidence": "/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/review4/fidelidade/p2_interrog.js, containment {sectoid_commander:1, sectoid_leader:2}. (a) Commander first: flags {leader:true, commander:false}, no interrogation topics left, 'cydonia' never becomes available. (b) Leader → Origins → leader → Martian → commander: cydonia ok. That is the only order that works. (c) Typical case: an earlier interrogation already done and Origins researched. The hint on screen is base.research.hint.leader 'Só um líder ou comandante interrogado depois de «Origens Alienígenas»…'. Following it with the commander gives flags {l:true, c:false}, aliens {sectoid_leader:2}, 'cydonia possível: false'. base_ui.js storyHints shows the commander hint only after martian_solution, which is too late. cancelResearch also never returns the consumed alien (base.js), so a mis-click loses the commander too. The campaign bot avoids this only through special code (campaign_bot.js interrogationScore: 'comandante depois da Solução Marciana').",
+  "fix": "Keep the orig sequence but remove the trap. In BaseSim.completeResearch, record which ranks were interrogated (e.g. G.alien or flags.interrogatedRanks). When alien_origins or martian_solution completes, grant leaderInterrogated / commanderInterrogated retroactively if such a rank was interrogated earlier. Document this as an 'ours' rule in CAMPAIGN_API §11 and Data.researchEffects. If that is unwanted, the minimum fix is: (1) BaseUI marks the interrogate_*_commander topic «guardar até à Solução Marciana» and asks for confirmation; (2) change 'base.research.hint.leader' to recommend a leader and warn to keep the commander; (3) confirm before cancelResearch on an interrogation.",
+  "lens": "fidelidade"
+ },
+ {
+  "file": "ovni-1999/js/sim/geo/missions.js",
+  "area": "sim",
+  "severity": "major",
+  "claim": "A lost or aborted terror battle keeps the terror site alive (onSiteCleared does nothing for 'loss'/'abort'). The site then expires for another +1000 alien points, on top of the negative battle score. OpenXcom deletes the mission site after any battle. This one rule is enough to fail the council in month 0 on Veterano.",
+  "evidence": "/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/review4/fidelidade/p4_misc.js (a): after Missions.onSiteCleared(G,{kind:'site'},'loss') the site is still there, then expires with terrorSiteExpired, alien score +1002. Campaign bot, `node ovni-1999/tools/sim.js campaign --seeds 3 --seed0 101 --diff 1 --days 240 --json` (output in review4/fidelidade/camp_vet.json). Seeds 101 and 103: night Floater terror lost in January (battle score −548 / −654), then the site expired (+1000 alien). Month-0 ratings −1149 / −1045, past the Veterano threshold −700, so January already counts as a bad month. Both runs ended in council defeat (days 150 / 180). Seed 101: terror fought 5, won 2, expired 3, so every lost terror was punished twice. CAMPAIGN_API §11.3 lists this as an unapplied proposal; it is not a deliberate compression.",
+  "fix": "In Missions.onSiteCleared, remove a 'site' (terror) on any result ('win', 'loss', 'abort'): Camp().removeById(G.sites,id) + dropTarget, with no terrorSiteExpired and no −1000 (the battle score already holds the civilian losses). Keep a lost crash or landed UFO (it still has a timer). Update CAMPAIGN_API §5.4/§11.3 and the campaign_flow.test.js assertion that pins the old behaviour.",
+  "lens": "fidelidade"
+ },
+ {
+  "file": "ovni-1999/js/sim/campaign.js",
+  "area": "sim",
+  "severity": "major",
+  "claim": "Retaliation can end a Veterano campaign with no warning and no counterplay. The starting garrison (8 rookies, strength 1105–1198) is below the Veterano requirement (1500) without defences. The assault Battleship cannot realistically be detected in time or intercepted. With one base in the MVP, the loss is an immediate game over ('baseLost'), even when all 8 soldiers are at home.",
+  "evidence": "/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/review4/fidelidade/p3_retal.js: one alien_retaliation in the base region, starting base, Veterano, Skyranger and all 8 soldiers in the hangar. In 5 of 6 seeds the base was found 0.23–5.56 days later. baseDefence result 'lost', so flags.lost and lostReason 'baseLost' within 1.2–6.5 days. p3b_garrison.js: 8-rookie strength over 20 seeds is min 1105, median 1143, max 1198 vs need 1000+250·2=1500 (2000 on Super-humano). The assault spawns 25–35° (1500–2100 nm) from the base at 5000 kn and arrives in 18–25 min, so it gets at most one 30-min radar roll. engageRequiresSpeed blocks the Interceptor (2100 kn) and the Firestorm (4200 kn). The 'retaliation' event is hidden (stop:false). There is no event when scan10m sets mission.targetBaseId. A garrison is also empty whenever the Skyranger is out, because newCampaign seats all 8 soldiers. Retaliation can start from month 2 (shoot-down roll, 12% on Veterano, 62% aimed at the home region) and is scheduled every month from month 3.",
+  "fix": "Give the player a window. (1) When Missions.scan10m sets m.targetBaseId, push a new stop:true event (e.g. 'baseSpotted' {baseId, missionId}). GeoUI shows «Os alienígenas localizaram a base — ataque iminente», with time to recall the squad, keep soldiers home or start a Missile Defence. Add it to Campaign.EVENTS and contract §4. (2) Spawn the assault Battleship at the mission region's zone-5 ring (orig) or ≥ 45° away, so at least two detection rolls happen and an Avenger can engage. (3) Optionally, on Veterano let a garrison of ≥ 8 soldiers repel at heavy cost instead of losing the only base: lower BASE_DEFENCE_PER_COEF, or count rookies plus the base's own security. Re-run the bot sweeps after the change.",
+  "lens": "fidelidade"
+ },
+ {
+  "file": "ovni-1999/js/sim/geo/base.js",
+  "area": "sim",
+  "severity": "major",
+  "claim": "Crafts can never be sold or scrapped, so the monthly rent of bought crafts is permanent (Interceptors $600k each, Skyranger $500k). The orig/OpenXcom sell screen lists crafts, and selling one stops its rent and frees its hangar. This is also the only way to free a hangar in the starting base: all 3 are occupied, and the Avenger and Firestorm production refuses with 'hangar' until a 4th hangar is built.",
+  "evidence": "/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/review4/fidelidade/p4_misc.js (b): BaseSim.sell(G,b,'interceptor',1) and sell(G,b,<craftId>,1) both return {ok:false, reason:'unsellable'}. No BaseSim function sells, scraps or disposes of a craft. Economy.upkeep(G).crafts = 1,700,000/month from day 0. In the bot campaigns that rent stays in upkeep (4.26–4.45 M/month) while pacts cut income to 3.97 M (seed 101 funds went negative in month 4). BaseSim.startProduction(…, 'avenger') fails 'hangar' while the 3 starting hangars hold Skyranger + 2 Interceptors (freeHangars = 3 − 3).",
+  "fix": "Add BaseSim.sellCraft(G, craftId) → {ok, reason}, allowed only for crafts in their hangar and not in a dogfight. It unseats the soldiers (assignSoldier null), moves craft.equipment and fitted weapons (with their ammo items) into base.stores, refunds Data.crafts[type].sell (orig sell value, e.g. 75% of buy; 0 or a fixed value for manufactured craft), and removes the craft from G.crafts and base.crafts (no score penalty). Add a «Vender nave» button with confirmation to the BaseUI 'Naves' tab and the market's sell list. Document it in CAMPAIGN_API §5.6.",
+  "lens": "fidelidade"
+ },
+ {
+  "file": "ovni-1999/js/sim/geo/economy.js",
+  "area": "sim",
+  "severity": "minor",
+  "claim": "Month end mishandles an infiltration pact. Missions.monthEnd (step 17) sets country.pact before Economy.monthEnd (step 18) computes income, so the country's funding for the month that just ended is never paid. Its +150 alien points also go into that month's rating. OpenXcom pays monthlyFunding with the old funding and adds pactScore after the council totals are computed.",
+  "evidence": "/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/review4/fidelidade/p4c.js: with a pending USA pact, the January report has income 4,986,000 while the countries funded 6,000,000 that month, so the USA's 1,014,000 is missing. The report's alien total includes the 150 pact points, which lowers the January rating.",
+  "fix": "In Economy.monthEnd, compute inc = Σ funding of countries that are not pacted OR were pacted this month (newPacts from eventsNow 'pactSigned'). Either add the pact's +150 to score.month.alien only after `r`, xcomTotal and alienTotal are computed (orig), or document the stricter rule in CAMPAIGN_API §5.7.",
+  "lens": "fidelidade"
+ },
+ {
+  "file": "ovni-1999/js/sim/geo/base.js",
+  "area": "sim",
+  "severity": "minor",
+  "claim": "Craft rearm spams craftRearmShort every game hour. When one weapon has no ammo in stores and another weapon is still rearming, the empty weapon is retried and re-notified each hour. Orig (Craft::rearm) notifies once and stops rearming that weapon.",
+  "evidence": "/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/review4/fidelidade/p1_rearm.js: Interceptor at Stingray 0/6 (25 missiles in stores) and Cannon 0/200 (no cannon_rounds). 8 calls to BaseSim.hourly → 6 'craftRearmShort' events, i.e. 6 toasts. The craft ends 'ready' at [6, 0].",
+  "fix": "In rearm(), notify a weapon with no stock only once per service cycle (e.g. a non-saved per-craft set in G._, or mark it skipped for this cycle) and don't retry it until a craft_ammo delivery arrives. arrive() already sets 'rearm' again when ammo is delivered.",
+  "lens": "fidelidade"
+ },
+ {
+  "file": "ovni-1999/docs/CAMPAIGN_API.md",
+  "area": "data",
+  "severity": "minor",
+  "claim": "The binding contract and the shipped values disagree. (1) §5.9 and the §8 table say base defences add 50% of their power (BASE_DEFENCE_FACILITY_PCT 50); §11.2 and js/data/tuning.js use 100. (2) DESIGN §3.13 / REA give the dogfight approach as −2 per tick; js/data/crafts.js ships approach 4. That change is documented only in a code comment, not in DESIGN §22 or CAMPAIGN_API §11.",
+  "evidence": "p4_misc.js (d): OV.TUNE.BASE_DEFENCE_FACILITY_PCT = 100. CAMPAIGN_API.md:750 'defences at 50 % of their power (§11)', :895 '1000, 250, 50 (§11)', :989 '… → 1 000, 250, 100'. crafts.js: 'approach: 4, // ours: −4 por tick ao aproximar (orig 2)'. Engineers who tune from the contract will get base-defence outcomes off by a whole Missile Defence (+250 strength).",
+  "fix": "Change §5.9 and the §8 row to 100 (the measured value). Add the dogfight approach change (2 → 4, with its reason) to CAMPAIGN_API §11.2 and DESIGN §22.",
+  "lens": "fidelidade"
+ },
+ {
+  "file": "ovni-1999/js/sim/geo/base.js",
+  "area": "sim",
+  "severity": "minor",
+  "claim": "canDismantle ignores the hangar that a paid craft-production order has reserved. A free hangar can be dismantled while a Firestorm/Avenger is being built for it, and the finished craft is then delivered into a base with more crafts than hangars. freeHangars() counts paid craft production, but canDismantle only compares crafts.used = base.crafts + craft deliveries.",
+  "evidence": "Script: scratchpad/review4/bugs/h4_hangar.js (Node, real BaseSim). Build a 4th hangar (cap 4, used 3). startProduction(firestorm, 10 eng, qty 1) → ok, paid=true. canDismantle(hangar) → null and dismantle → {ok:true}. After the hours elapse: productionDone, capacities.crafts = {cap:3, used:4}. base_render.hangarSlots maps craft i to the i-th hangar, so the 4th craft has no hangar to be drawn in.",
+  "fix": "In canDismantle, when the facility is built and adds hangar capacity, add the reserved count (production orders with Data.manufacture[item].produces.craft && p.paid, as in freeHangars) to crafts.used before comparing. Add a geo_base test for it.",
+  "lens": "bugs"
+ },
+ {
+  "file": "ovni-1999/js/sim/geo/base.js",
+  "area": "sim",
+  "severity": "minor",
+  "claim": "canDismantle refuses every built facility with 'inUse' once the stores are over capacity, even when the facility gives no storage. finishMission is allowed to overfill the stores (the debrief shows a storage-over warning). From then on, dismantling an unused laboratory or workshop says «em uso», which misleads the player.",
+  "evidence": "Script: scratchpad/review4/bugs/h6_dismantle.js. With an empty laboratory and storage 41.7/50, canDismantle → null. After +600 alien_alloys (a mission recovery; storage 101.7/50), canDismantle on the same empty lab → 'inUse'.",
+  "fix": "Only check a capacity key the facility actually provides (Data.facilities[f.type][key] > 0), or compare against the use before dismantling: refuse when c[key].cap < c[key].used and the cap went down. That is, `if (def[key] > 0 && c[key].used > c[key].cap)`.",
+  "lens": "bugs"
+ },
+ {
+  "file": "ovni-1999/js/sim/save.js",
+  "area": "sim",
+  "severity": "minor",
+  "claim": "Save.fromJSON checks only the top-level types, so an edited or partly corrupt imported file loads and then crashes the main loop on the first hour tick. main.js fatal() then covers the game with «Erro ao arrancar», and only a page reload recovers. The contract promises save.err.parse for corrupt content.",
+  "evidence": "Script: scratchpad/review4/bugs/t11_import.mjs. Export a fresh campaign, delete campaign.bases[0].deliveries, then menu → Carregar → Importar (real filechooser). The Geoscape opens; after a few seconds at speed 5: pageerror «TypeError: Cannot read properties of undefined (reading 'slice') at deliveries (base.js:766) … geo_ui.js runClock», and #boot shows «Erro ao arrancar». Headless sweep h2_corrupt.js: the same crash for a base missing research or crafts, score.month missing, a null country entry and ids {}. All of these pass fromJSON.",
+  "fix": "Extend checkCampaign: every base needs arrays grid/soldiers/crafts/research/production/deliveries (transfers defaults to []) and object stores/aliens; score.month.xcom/alien/research and score.all; countries entries need id/funding; ids.seq/ids.craftNum objects; every craft needs a weapons array, soldiers array and equipment object. Throw save.err.parse otherwise, or default missing arrays. Optionally run one World.step on a clone inside a try, so a broken file is rejected before resume().",
+  "lens": "bugs"
+ }
+]

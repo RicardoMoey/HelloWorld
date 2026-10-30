@@ -1,0 +1,158 @@
+{
+ "round": 4,
+ "results": [
+  {
+   "persona": "Tiago, 11 anos (Recruta + Batalhas Rápidas, rato e teclado, clica depressa, não lê textos longos)",
+   "rating": 6,
+   "wouldContinue": true,
+   "summary": "Sessão de cerca de 85 minutos com o driver Playwright: 3 Batalhas Rápidas (Terror de dia no mês 2, Terror de noite no mês 4 com Blaster, e Cidónia) e uma campanha em Recruta de 1 jan a 1 fev 1999 com 7 batalhas, contando com 2 «Repetir a missão». Re-testei as correções das rondas anteriores e estão todas a funcionar. O duplo clique em «Começar» já não salta o briefing. O duplo clique no Blaster com aliados no raio já não dispara. «Contratar +5» e «Iniciar» com duplo clique só contam uma vez. A semente da Batalha Rápida muda a cada abertura. Os sinalizadores já respeitam a Força. A equipa pequena demais tem confirmação, com «Embarcar 4 e enviar» por omissão. «Ficaram na base…» aparece no Equipar. «Vitória cara — dica» aparece em vitórias com muitas baixas. «ficou ferido: … a sangrar» já não diz «mortalmente». O aviso de intercetor sem munição tem «Comprar munição». O objetivo aparece no menu Esc. Os botões do Geoscape já não aparecem cortados. Em vez disso, o Tiago irritou-se com as mortes. Em Recruta, a 1.ª missão (Batedor Médio, de dia) acabou com os 10 soldados mortos, 3 deles por tiros dos colegas sem nenhum aviso. A 2.ª acabou também com 10 mortos e a nave perdida, porque o pânico em cadeia deixou a equipa a fugir e a largar as armas. A 16 de janeiro já tinha morrido mais de 15 soldados. O «Repetir a missão» salvou a vontade de jogar, e as vitórias rápidas («VITÓRIA em 3 turnos») e as explosões do Blaster foram o melhor da tarde. Na Batalha Rápida escolheu Cidónia, a «última missão da humanidade», com o mês 0 que já vinha selecionado: espingardas contra Etéreos e um Sectópode, 7 mortos em 5 turnos. Só o relatório explicou o porquê. Continua a jogar porque há explosões, dinheiro fácil (vendeu 18 pistolas de plasma por 1,5 milhões) e o botão de repetir, mas acha que «os meus soldados matam-se uns aos outros».",
+   "findings": [
+    {
+     "file": "ovni-1999/js/ui/battle_ui.js",
+     "area": "ui",
+     "severity": "major",
+     "claim": "Um tiro normal (espingarda, pistola, canhão) com aliados mesmo ao lado da linha de fogo não tem qualquer aviso. Só há aviso quando um aliado bloqueia exatamente a linha («X está na linha de tiro»). Com acertos de 20–40 %, os tiros que falham matam colegas, e o Tiago, que junta os soldados, perdeu 3 soldados assim na 1.ª missão da campanha.",
+     "evidence": "Campanha Recruta, 3 jan 1999, OVNI-2 Batedor Médio de dia. Registo: «3x: Thandiwe Dlamini foi morta em combate — tiro de Nuno Oliveira», «5x: Olivier Simon foi morto — tiro de Yuji Inoue», «8x: Felipe Lima foi morto — tiro de William Johnson». Resultado DERROTA, 10/10 mortos (/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/crianca/shots/080_c1_end.png). Repetindo a missão, medi em cada pontaria a distância dos aliados ao segmento atirador→alvo:\n- Kevin Davis: rótulo «Acerto ≈ 25 % · 12 UT (inclui rodar)», sem sub-aviso, com Wolfgang Weber a 0,41 casas da linha. Depois do tiro, o registo diz «1x: Wolfgang Weber ficou ferido: −10 … — tiro de Kevin Davis» (/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/crianca/shots/085_ff_near_line.png).\n- David Wilson: «Acerto ≈ 20 % · 20 UT», sem aviso, com 5 aliados a menos de 1 casa da linha (/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/crianca/shots/106_ff_near_line.png). O clique no contador vermelho centra o alienígena, por isso os colegas junto ao atirador ficam fora do ecrã.\n- O mesmo aconteceu em 2 de 3 Batalhas Rápidas: «Petra Schmidt ← tiro de Rodrigo Barbosa» e «Sanjay Nair ferido — tiro de Lucas dos Santos».\nEm previewTarget (~l.691), o sub-aviso bs.friendlyRisk só é posto quando tr.unitId é um aliado.",
+     "fix": "Em previewTarget, além do aliado que bloqueia, procurar aliados vistos a ≤ 1 casa do segmento atirador→alvo (sobretudo nas primeiras ~6 casas, onde o desvio dos falhanços os apanha). Se houver, pôr T0.sub = «Risco: N aliados perto da linha de tiro» (subCol 'out') e desenhar um contorno vermelho nesses soldados. Em Recruta, com acerto < 50 %, reutilizar a confirmação de 2.º clique dos explosivos («Clique outra vez — pode atingir Wolfgang»). No relatório, quando houve mortes por tiro amigo, a dica pode dizer «Não dispares por cima dos teus soldados — afasta-os da linha».",
+     "outcome": "no_change_needed"
+    },
+    {
+     "file": "ovni-1999/js/sim/battle/morale.js",
+     "area": "sim",
+     "severity": "major",
+     "claim": "Em Recruta, o pânico em cadeia transforma 2 ou 3 baixas numa derrota total: os soldados entram em pânico turno após turno, largam as armas, fogem ou disparam sobre os colegas. A perda de moral por morte de um aliado não depende da dificuldade, e o relatório não explica o pânico. Em 2 das 4 primeiras missões da campanha do Tiago morreram os 10 soldados e perdeu-se a nave.",
+     "evidence": "Campanha Recruta, sem tocar em nada da dificuldade:\n- OVNI-2 (Batedor Médio, dia): 10/10 mortos.\n- OVNI-4 (Batedor Grande, dia): 10/10 mortos, nave perdida, −374, TERRÍVEL. Registo: «6x: Yuji Inoue entrou em pânico / ficou paralisado», «6x: Nuno Oliveira enlouqueceu!» (e feriu David Wilson), «William Johnson fugiu em pânico!» em 5 turnos seguidos, e o último soldado com MOR 28/100 e as duas mãos vazias (/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/crianca/shots/176_bt2_now.png).\n- Depois: Chicago 5/7 mortos, OVNI-5 4/7.\n- A 16 jan restavam 2 soldados (G.bases[0].soldiers.length = 2) e já tinham morrido 13.\nO relatório de derrota só diz «Avance de abrigo em abrigo e ajoelhe-se (K)…». morale.onDeath tira w·200·B/loserMod/100 a cada aliado (−20 por recruta com Bravura 10) sem nenhum fator de dificuldade, e tuning.js não tem chave de moral por dificuldade.",
+     "fix": "Acrescentar ao tuning um multiplicador de moral por dificuldade (por exemplo MORALE_LOSS_MULT = [0.5, 1, 1]) e aplicá-lo em onDeath e onHit para o lado X-COM. Em Recruta, limitar também o pânico a uma vez por soldado em cada 2 turnos. No relatório, quando houve ≥ 2 episódios de pânico, mostrar a dica «Os soldados entram em pânico quando veem colegas morrer: leva um Sargento ou um oficial (sobe a moral) e não avances todos de uma vez».",
+     "outcome": "no_change_needed"
+    },
+    {
+     "file": "ovni-1999/js/ui/screens.js",
+     "area": "ui",
+     "severity": "minor",
+     "claim": "A Batalha Rápida deixa escolher Cidónia (e Base Alienígena) com o «Mês 0 · Espingardas» que vem por omissão, sem nenhum aviso. Com espingardas e Fato de Combate contra Etéreos, uma Crisálida e um Sectópode de blindagem 72, a missão é quase impossível. Só o relatório de derrota diz para escolher um mês mais alto.",
+     "evidence": "Menu → Batalha Rápida → «Cidónia» (o mês fica em 0, «Espingardas»). O resumo mostra só «Forças mistas · 7 alienígenas» (/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/crianca/shots/p2_qb_cydonia.png).\n- Alienígenas: ethereal_commander, ethereal_leader, 2 ethereal_soldier, chryssalid, sectopod (armadura 72/65/65/50/45) e muton_soldier.\n- X-COM: 6 espingardas e 2 lança-foguetes.\n- Resultado: 7 mortos em 5 turnos e 1 abate. DERROTA −541 com «Dica: As armas da equipa são fracas contra Forças mistas… Escolha um «Mês» mais alto».",
+     "fix": "No ecrã da Batalha Rápida, ao escolher Cidónia passar o Mês para 4 automaticamente (e ≥ 2 para Base Alienígena), como já se faz com o terreno e a hora («determinados pela missão»). Em alternativa, mostrar no RESUMO uma linha vermelha: «Com espingardas, esta missão é quase impossível — escolha o Mês 3 ou 4».",
+     "outcome": "no_change_needed"
+    },
+    {
+     "file": "ovni-1999/js/ui/screens.js",
+     "area": "ui",
+     "severity": "minor",
+     "claim": "Numa VITÓRIA classificada FRACO por causa de civis mortos pelos explosivos da X-COM (−200), o relatório não diz porque é que a nota é má. Além disso, o aviso dos explosivos («atinge 8 aliados») conta civis como «aliados», por isso o Tiago não percebe que vai matar civis.",
+     "evidence": "Batalha Rápida, Terror de noite, mês 4, Blaster. Relatório: «VITÓRIA… Civis mortos pela X-COM ×4 −200 … TOTAL −49 AVALIAÇÃO FRACO», sem linha de causa nem dica (/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/crianca/shots/038_night_now.png). lossNotes/lossCauses só olham para soldados X-COM (u.type === 'soldier'). blastPreview (battle_ui.js ~l.808) conta como risco qualquer unidade não alienígena, e o rótulo diz «Clique outra vez para disparar — atinge 8 aliados» (/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/crianca/shots/024_blaster_after_dbl.png).",
+     "fix": "Em lossNotes, quando houver civis mortos pela X-COM, acrescentar «N civis mortos pelas tuas armas (−X pontos)» e, em vitória, a dica «Num ataque terrorista, cada civil morto por ti tira 50 pontos: não uses o Blaster perto deles». Em blastPreview, separar a contagem em soldados e civis, e no rótulo dizer «atinge 3 soldados e 5 civis».",
+     "outcome": "no_change_needed"
+    },
+    {
+     "file": "ovni-1999/js/ui/campaign_ui.js",
+     "area": "ui",
+     "severity": "minor",
+     "claim": "Um duplo clique em «REPETIR A MISSÃO» no relatório abre o briefing, e o 2.º clique cai no botão «EQUIPAR» do briefing, que está no mesmo sítio. O Tiago vai parar ao ecrã Equipar, que não pediu.",
+     "evidence": "Relatório de derrota da campanha (OVNI-2) → page.dblclick em «REPETIR A MISSÃO». A pilha passa a [geoscape, cbriefing, equip], com «EQUIPAR A BORDO · SKYRANGER-1» aberto (/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/crianca/shots/081_repeat_click.png). Os botões estão na mesma posição: REPETIR em (937,744) no relatório (/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/crianca/shots/080_c1_end.png) e EQUIPAR em (938,744) no briefing.",
+     "fix": "Aplicar a guarda de ~400 ms e de event.detail ≥ 2, que o briefing já usa no botão primário, a todos os botões do briefing (Cancelar, Equipar), ou de forma genérica a qualquer cena acabada de abrir.",
+     "outcome": "no_change_needed"
+    },
+    {
+     "file": "ovni-1999/js/ui/screens.js",
+     "area": "ui",
+     "severity": "minor",
+     "claim": "O relatório diz «X ← tiro de Y» para uma morte por foguete quando o atirador também morreu antes do fim, enquanto o registo da batalha diz «explosão (Y)». friendlyHow decide pela arma que o atirador tem na mão no fim, e um soldado morto já largou tudo.",
+     "evidence": "Batalha Rápida Cidónia. Registo: «3x: Julie Gauthier foi morta em combate — explosão (Daniel Gauthier)». Relatório: «1 soldado morto por fogo amigo: Julie Gauthier ← tiro de Daniel Gauthier». Daniel morreu mais tarde, e killUnit → dropAll esvazia k.items, por isso friendlyHow não vê o lança-foguetes e devolve 'shot' (deathCause do foguete = 'shot'). A dica escolhida para fogo amigo também pode ficar errada (tip.friendly.shot em vez da dos explosivos).",
+     "fix": "Guardar a causa no momento da morte: em combat.killUnit (ou no impacto), registar u.deathBlast = true / u.deathWeapon = tipo da munição quando o dano vem de uma explosão. friendlyHow passa a usar esse campo em vez das mãos do atirador no fim da batalha.",
+     "outcome": "no_change_needed"
+    }
+   ],
+   "delights": [
+    "As explosões do Lançador Blaster: «Bomba guiada · rota 18 casas» e um cogumelo de fumo enorme. O aviso «Clique outra vez para disparar — atinge 8 aliados» já não é saltado pelo duplo clique.",
+    "«REPETIR A MISSÃO» depois de uma derrota com 10 mortos: na 2.ª tentativa ganhou em 2 turnos, só com 1 morto.",
+    "VITÓRIA em 3 turnos contra Flutuantes num Batedor Grande despenhado, com promoções a Sargento e a Capitão.",
+    "A pergunta «Equipa pequena demais» com «Embarcar 4 e enviar» por omissão: o Enter fez a coisa certa.",
+    "Vender 18 Pistolas de Plasma por 1 512 000 $ no Mercado. Relatório mensal «EXCELENTE» com +722 000 $ de financiamento.",
+    "O botão «Contratar soldados» aparece no próprio Geoscape quando só restam 2 soldados.",
+    "O objetivo da missão aparece em destaque no menu Esc, e Enter repetido no briefing não termina o turno logo no início."
+   ]
+  },
+  {
+   "persona": "Inês, otimizadora. Joga em Veterano com trackpad e teclado, procura exploits e usa a simulação headless. Ronda 4, cerca de 63 min de jogo real no browser (log em /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/minmaxer/mylog.txt), mais scripts Node na mesma pasta. Campanha própria (semente 4242) de 1 a 10 jan. Para chegar a conteúdo mais avançado, importei pelo ecrã Carregar uma gravação do bot de campanha a 4 mar 1999 (semente 5, Veterano) e joguei a partir daí até 1 abr: 2 OVNIs aterrados, relatório de março e início do assalto a uma base alienígena.",
+   "rating": 7,
+   "wouldContinue": true,
+   "summary": "Voltei a testar primeiro todos os meus achados das rondas 1–3 e estão corrigidos. Fabricar para vender está limitado a 100 $/h-eng (verifiquei a tabela). O aluguer das naves passou a ser proporcional (craftcycle.js: o ciclo vende/compra já não poupa nada). Com o armazém cheio, o fabrico para com o estado «storage». Os kits médicos funcionam sem investigação. Capturar sem contenção já não dá pontos. Abortar no 1.º turno de um terror custa o mesmo que o ignorar. A quinta de abortar acabou: a guarnição fica 2 → 1 → 1 → 1 e não há saque repetido. Carregar a Posição 1 sorteia outro mapa (a semente mudou de 3634733773 para 3293375965). Os 24–72 h dos destroços e a aterragem noturna até ao amanhecer nos meses 0–1 funcionam. Os textos do auto-equipar, da porta, da tecla T, do crepúsculo e do abortar sem ninguém na nave também estão corrigidos. Arbitragem compra/venda: zero (o que custa 0 dá «unavailable»). Um jogador passivo é despedido ao dia 90–120 mesmo só a investigar. Em terreno novo encontrei dois problemas sérios. (1) Na defesa da base, resolvida automaticamente, 2 Defesas de Mísseis (400 k$) e um único recruta em casa repelem sempre um Couraçado em Veterano, e só morre esse recruta; os veteranos vão passear no Skyranger. (2) Na base alienígena, o briefing e o objetivo dizem «Destruir o centro de controlo ou eliminar todos», mas destruir o centro não acaba a missão (só conta em Cidónia). Acrescento alguns problemas menores: vender o último cadáver apaga em silêncio a autópsia; o briefing de um OVNI aterrado promete «mais pontos» que nunca aparecem; a lista de construção salta e fez-me construir uma Oficina de 800 k$ por engano; duas bases alienígenas aparecem com o mesmo nome; a base alienígena entrega 2 líderes vivos quando só havia 1, e o comandante que matei aparece vivo na contenção; e o sim.js mede o mês 2 com espingardas (terror 10 % de vitórias). O jogo está muito mais sólido para quem procura falhas. Continuaria, sobretudo para ver Cidónia, mas a retaliação deixou de me assustar.",
+   "findings": [
+    {
+     "file": "ovni-1999/js/sim/campaign.js",
+     "area": "sim",
+     "severity": "major",
+     "claim": "A defesa da base (resolução automática) fica trivial: 2 Defesas de Mísseis (2 × 200 000 $) e um só recruta em casa repelem 100 % dos ataques de Couraçado, Nave de Terror ou Abastecimento em Veterano, e só esse recruta morre. Os soldados de uma nave em voo não contam para a guarnição nem para as baixas, por isso basta pôr os veteranos a patrulhar no Skyranger quando o ataque chega. A força exigida não depende do tipo de OVNI, da raça nem do mês, e as defesas contam duas vezes: primeiro disparam e depois somam o poder total à força da guarnição.",
+     "evidence": "Script headless /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/minmaxer/basedef.js, 40 sementes por linha, Campaign.baseDefence.\n- Veterano, Couraçado: 0 defesas + 10 soldados ⇒ repelled 40/40, 2,08 baixas. 0 defesas + 1 soldado ⇒ lost 40/40. 2 Defesas de Mísseis + 1 soldado ⇒ repelled 40/40, 1,00 baixa. Terror/Abastecimento dão o mesmo.\n- Super-humano: 10 soldados sem defesas ⇒ base perdida 40/40, com 8 mortos. 3 Defesas de Mísseis + 1 soldado ⇒ repelled 40/40, 1 baixa.\n- No código, need = (850 + 100 × 2·dif) × casco restante, igual para qualquer OVNI e raça. strength = Σ(UT + Pontaria + Saúde) + Σ poder das defesas (BASE_DEFENCE_FACILITY_PCT 100). As baixas são n = rand(1..3) entre a guarnição, independentemente da margem. A guarnição exclui soldados em naves AIRBORNE.\n- Captura do preço no jogo: /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/minmaxer/shots/005_base.png («Defesa de Mísseis $200 000 · Poder 500 · 6 dias»).",
+     "fix": "- Fazer need depender do OVNI atacante: tamanho da tripulação do deployment × força da raça × tier do mês. Um Couraçado de Etéreos não pode valer o mesmo que um de Sectoides.\n- As defesas devem contar só pela salva (dano ao casco), ou com BASE_DEFENCE_FACILITY_PCT ≤ 25.\n- Exigir que os soldados forneçam pelo menos ~60 % da força.\n- Tornar as baixas proporcionais ao rácio need/strength, por exemplo n = clamp(round(garrison × need / strength × 0,4), 1, garrison).\n- Contar na guarnição os soldados de naves que descolaram depois do aviso baseSpotted, ou impedir descolagens de transporte durante o cerco.\n- Juntar ao sim um teste «1 soldado + 2 defesas não pode ganhar sempre a um Couraçado em Veterano»."
+    },
+    {
+     "file": "ovni-1999/js/sim/battle/battle.js",
+     "area": "sim",
+     "severity": "major",
+     "claim": "Na base alienígena, o briefing e o objetivo do menu dizem «Destruir o centro de controlo ou eliminar todos os alienígenas da base», mas destruir o centro de controlo não ganha a missão: outcome() só verifica objectiveDestroyed em Cidónia. A otimizadora planeia uma investida com explosivos ao centro de controlo, perde soldados e a missão continua igual. Também não há linha de pontos pelo centro destruído.",
+     "evidence": "- Script /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/minmaxer/objtest.js: destruí com explosões os 4 tiles OBJECTIVE do bloco «command».\n  - alienBase, sementes 1–3: objectiveDestroyed = true, 8–9 alienígenas vivos ⇒ outcome null.\n  - cydonia, sementes 1–3: o mesmo ⇒ outcome «win».\n- No browser (base alienígena dos Flutuantes, Nigéria, 1 abr 1999), B.objectiveTiles tem 4 tiles em (19–20, 29–30). Capturas:\n  - /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/minmaxer/shots/151_ab_brief.png (objetivo 1);\n  - /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/minmaxer/shots/153_ab_objective_options.png (menu Opções: «OBJETIVO: Destruir o centro de controlo ou eliminar todos…»).\n- No código: battle.js:132 `if (B.mission.kind === 'cydonia' && objectiveDestroyed(B)) return 'win'`; texto em pt-PT.screens.js:103 scr.br.obj.alienBase.1.",
+     "fix": "Escolher uma de duas.\n(a) Alargar a condição a alienBase (`(kind === 'cydonia' || kind === 'alienBase') && objectiveDestroyed(B)`), com uma linha de debriefing «Centro de controlo destruído» (por exemplo +300) e os sobreviventes contados como no fim de uma vitória.\n(b) Mudar o texto para «Eliminar todos os alienígenas; destruir o centro de controlo enfraquece a base» e dar-lhe um efeito real (pontos, ou a moral alienígena a cair).\nEm ambos os casos, juntar um teste em tools/tests."
+    },
+    {
+     "file": "ovni-1999/js/ui/base_ui.js",
+     "area": "ui",
+     "severity": "minor",
+     "claim": "No Mercado › Vender, vender o último exemplar de um artefacto que ainda é preciso para investigação (cadáver, pistola de plasma…) faz desaparecer o tópico sem aviso. A linha não indica «necessário para investigar», «TUDO» vende também o último e não há confirmação.",
+     "evidence": "- Vendi os 4 Cadáveres de Sectoide (+80 000 $): a «Autópsia: Sectoide» desapareceu do Novo Projeto e ficou só Pistola de Plasma, Granada Alienígena, Kit Médico e Detetor.\n- A linha da Pistola de Plasma com 1 em armazém mostra só «$84 000 cada · em armazém: 1 · liberta 0,1 un.», sem qualquer aviso.\n- Capturas:\n  - /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/minmaxer/shots/049_sell.png\n  - /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/minmaxer/shots/052_sell_pp_last.png\n  - /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/minmaxer/shots/053_research_after_sell.png",
+     "fix": "- Na lista de venda, assinalar os itens que são needItem de um tópico ainda não investigado e não em curso: etiqueta «Necessário: Autópsia: Sectoide».\n- Pedir confirmação ao vender a última unidade (ou fazer «TUDO» deixar 1).\n- Pode usar Data.researchAvailable com e sem o item para detetar o tópico perdido."
+    },
+    {
+     "file": "ovni-1999/js/i18n/pt-PT.screens.js",
+     "area": "data",
+     "severity": "minor",
+     "claim": "O briefing de um OVNI aterrado diz «Uma nave capturada inteira vale mais pontos e mais material», mas no debriefing não há linha para o OVNI intacto. Os componentes recuperados (fontes de energia, navegação, ligas) só dão pontos enquanto não forem investigados, por isso a meio da campanha um OVNI aterrado dá os mesmos pontos que um despenhado: só os abates.",
+     "evidence": "Batedor Grande aterrado, 8 mar 1999 (gravação importada do bot). O relatório mostra só Alienígenas abatidos +48, capturados +20 e Soldados mortos −85, apesar de entregar 10 Ligas, 1 Fonte de Energia, 2 Navegação OVNI e 50 Elerium. Captura /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/minmaxer/shots/118_debrief_mid.png. No código, battle.js debrief: «artefactos ainda não investigados dão pontos» (`if (!rp || (topic && listHas(researched, topic))) continue`). Texto em scr.br.obj.landed.2.",
+     "fix": "Mudar o texto para «Uma nave capturada inteira dá mais material (fontes de energia intactas, ligas a 100 %)», ou acrescentar ao debriefing uma linha «OVNI capturado intacto» com pontos (por exemplo o score do OVNI, ×1 como no abate)."
+    },
+    {
+     "file": "ovni-1999/js/ui/base_ui.js",
+     "area": "ui",
+     "severity": "minor",
+     "claim": "Na lista «Construir instalação», a secção «Em construção» aparece por cima da lista assim que a primeira obra começa, e tudo desce cerca de 140 px. Quem constrói várias coisas seguidas carrega no item errado. Com Shift+clique (constrói sem confirmar) gastei 800 000 $ numa Oficina quando queria a Contenção.",
+     "evidence": "- Antes da 1.ª obra, a Contenção Alienígena estava em y≈590 e a Oficina em y≈468: /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/minmaxer/shots/055_build_lab.png.\n- Depois de iniciar o Laboratório, a secção EM CONSTRUÇÃO empurrou a lista: a Oficina passou para y≈606 e a Contenção para y≈728. O clique no sítio onde estava a Contenção escolheu a Oficina, e o Shift+clique na grelha construiu-a. O aviso diz «Obras iniciadas: Oficina (13 dias)»: /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/minmaxer/shots/057_built.png.",
+     "fix": "- Pôr «Em construção» abaixo da lista de construção (ou numa coluna ou separador próprio), para a lista não mudar de posição.\n- Em alternativa, manter o scroll ancorado no item escolhido.\n- Mostrar o nome do item selecionado junto ao cursor da grelha antes do Shift+clique."
+    },
+    {
+     "file": "ovni-1999/js/sim/campaign.js",
+     "area": "data",
+     "severity": "minor",
+     "claim": "Na vitória sobre uma base alienígena, a contenção recebe sempre 1 comandante e 2 líderes vivos, mesmo que tenham sido todos abatidos e a tripulação só tivesse 1 líder. O debriefing mostra o mesmo comandante como «Abatidos ×1» e «para a contenção», sem explicar a rendição. O atordoamento deixa de ser preciso para a história (o atalho é intencional, ALIEN_BASE_SURRENDER, mas a apresentação é incoerente).",
+     "evidence": "- Script /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/minmaxer/surrender.js, a partir da gravação do bot a 4 mar.\n- Tripulação: floater_commander, 1 floater_leader, engenheiro, médico, navegador, 3 soldados e 1 reaper. Matei os 9 (killUnit).\n- Resultado: win, kills 9, captured 0, mas capturedStored {\"floater_commander\":1,\"floater_leader\":2} e base.aliens com o mesmo.\n- O debriefing usa cp.db.contained («… ×n: para a contenção») sem qualquer texto de rendição.",
+     "fix": "- Limitar a rendição às patentes presentes na tripulação (B.crew), sem contar as já capturadas; os vivos e inconscientes contam primeiro.\n- Mostrar no debriefing uma linha própria: «Renderam-se ao tomar a base: Comandante Flutuante ×1, Líder ×1».\n- Se a intenção é garantir a história, documentar no Como Jogar que tomar uma base entrega o comandante."
+    },
+    {
+     "file": "ovni-1999/js/sim/battle/battle.js",
+     "area": "qa",
+     "severity": "minor",
+     "claim": "A ferramenta de equilíbrio dá um falso pico de dificuldade no mês 2. Battle.quickLoadout (usada por tools/sim.js) arma o X-COM com Espingarda e fato de combate até ao mês 2, contra Sectoides com 2–3 Ciberdiscos ou 7 Mutões de plasma. O sweep marca terror 10–13 %, base alienígena 13 % e Abdutor 50 %, longe das metas. Na campanha, porém, o bot já tem Espingarda Laser e Armadura Pessoal por volta do dia 23–25, e a Batalha Rápida no mês 2 usa lasers. Quem afina o jogo pelo sim.js vê um muro que não existe (ou esconde um verdadeiro).",
+     "evidence": "- node tools/sim.js battle --ufo all --month 2 --diff 1 --seeds 8 --vet: terror 13 %/7,25 baixas, alienBase 13 %/9,38, abductor 50 %/6,13. No mês 4: terror 50 %; no mês 6: 100 %. Ficheiro /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/minmaxer/sweep_m2.txt.\n- --kind terror --month 2 --seeds 10 dá 10 % (terror_m2.txt).\n- terr.js mostra as tripulações do mês 2 (sectoid_leader com heavy_plasma, 3 cyberdiscs ou 7 muton_soldier) contra «rifle, armour coveralls».\n- camp_d1.txt: o bot tem laser_rifle@23,5–27,5 e personal_armour@22,5–25,5.\n- Screens.loadoutFor usa o tier 2 = «Lasers e kits médicos».",
+     "fix": "Alinhar quickLoadout com a progressão real: mês ≥ 1 → Armadura Pessoal, mês ≥ 2 → Espingarda Laser + kit médico (como Screens.loadoutFor), ou tirar o equipamento do bot de campanha por dia. Documentar no cabeçalho do sim.js qual o equipamento de cada mês."
+    },
+    {
+     "file": "ovni-1999/js/ui/geo_ui.js",
+     "area": "ui",
+     "severity": "minor",
+     "claim": "Duas bases alienígenas descobertas a 1° uma da outra aparecem na lista LOCAIS com o mesmo texto, «Base alienígena / Nigéria». Uma é de Flutuantes e a outra de Mutões (muito mais difícil), e só se distinguem abrindo o cartão de cada uma. Os dois alertas «BASE ALIENÍGENA DESCOBERTA» (20 e 28 mar) também parecem repetidos.",
+     "evidence": "G.alienBases: a1 floater (5,8; 5,5) e a2 muton (6,8; 5,6), ambas discovered. Captura /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/minmaxer/shots/149_ab_card.png: duas linhas iguais no painel LOCAIS.",
+     "fix": "Na lista e no alerta, mostrar a raça quando é conhecida («Base alienígena · Flutuantes · Nigéria»), ou numerar («Base alienígena 2»). No alerta de descoberta, quando já existir outra base no mesmo país, dizer «outra base alienígena»."
+    }
+   ],
+   "delights": [
+    "As correções económicas aguentaram tudo o que tentei. Nenhum fabrico passa de 100 $/h-eng, o ciclo vender/comprar intercetores já não poupa aluguer, o armazém cheio para o fabrico e não há nenhuma arbitragem compra/venda.",
+    "A quinta de abortar morreu bem: com a guarnição, a mesma queda dá 2 → 1 → 1 → 1 alienígenas e o saque não se repete. A reentrada mostra o efetivo exato.",
+    "Carregar a Posição 1 deu outra semente de mapa e outros alienígenas. «Repetir a missão» depois de abortar diz claramente «terreno e alienígenas sorteados de novo».",
+    "O dogfight mostra as distâncias e os alcances («ARMAS DO OVNI ≤ 120», «Alcance 240») e explica Cauteloso/Normal/Agressivo. A dica «OVNI muito pequeno: desligue os mísseis (Q)» é ouro para quem quer destroços.",
+    "O popup de chegada à noite com «Esperar pelo dia (cerca de 4 h)» e depois «AMANHECEU NO LOCAL» foi exatamente o que eu queria fazer.",
+    "O relatório mensal é transparente: pontuação por categoria, limite do Conselho e financiamento país a país com variações.",
+    "O debriefing distingue os mortos na queda e mostra a captura «para a contenção», com «Vitória cara — dica para a próxima» quando a vitória sai cara.",
+    "Como na lógica do turno de batota original, os alienígenas só vêm atrás de nós depois do turno 10: dá para planear uma zona de fogo de reação, mas com preço (3 baixas)."
+   ]
+  }
+ ]
+}

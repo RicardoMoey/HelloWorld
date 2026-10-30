@@ -1,0 +1,103 @@
+[
+ {
+  "file": "ovni-1999/js/ui/inventory_ui.js",
+  "area": "ui",
+  "severity": "major",
+  "claim": "Regressão (correção da ronda 2): o ecrã «Equipar» mostra o carregador que vai dentro da arma como uma casa «NA ARMA» no CINTO e conta-o na lotação. O cinto aparece cheio (4/4) e recusa outra granada com «Não cabe aí». Em combate esse carregador está na arma e o cinto fica 3/4. Não se consegue planear o cinto clássico: arma carregada, 2 carregadores, granada e fumo.",
+  "evidence": "Batalha Rápida, Base Alienígena, mês 3: Richard Jackson tem no cinto «NA ARMA», «28», granada e «28», 4/4. Ao largar uma Granada de Fumo no cinto aparece «Não cabe aí» (/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r3/veterano/shots/008_smoke_belt.png). Em combate o inventário do mesmo soldado é «CINTO 3/4», com uma casa vazia, e o estado diz items.belt=[10,11,12] (011_inv_richard.png). Na campanha acontece o mesmo: Kagiso fica com o cinto 4/4, «NA ARMA», 20, granada e sinalizador (101_cequip.png). O Auto-equipar da Leonor também dá 4/4, com «NA ARMA» a ocupar uma casa.",
+  "fix": "Mostrar o carregador «Na arma» como insígnia na mão (o «28/28» já lá está), e não numa casa do cinto. Excluí-lo da contagem e da validação de espaço do cinto (eqCommit/fits), simulando o autoLoad como o combate faz. O cinto do Equipar fica igual ao do inventário em combate.",
+  "verdict": "CONFIRMED",
+  "persona": "Rui"
+ },
+ {
+  "file": "ovni-1999/js/i18n/pt-PT.hud.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "Os avisos de reserva no combate dizem «F1 = sem reserva». Num Mac (o alvo principal), F1 baixa o brilho, a não ser que se use fn. O atalho Mac documentado no «Como Jogar» é ⇧1, mas os avisos que aparecem a toda a hora nunca o referem.",
+  "evidence": "Toast «Parou para guardar as UT reservadas — para ir mais longe, mude a reserva (F1 = sem reserva)» depois de cada movimento cortado pela reserva (/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r3/veterano/shots/012_kneel_reserve.png). As chaves hud.stop.reserved, hud.path.reserve.fix e hud.path.reserve.deny (pt-PT.hud.js:140–144) dizem só F1. scr.howto.key.14 dá «⇧1 … ⇧4 (F1–F4)».",
+  "fix": "Mudar os três textos para «⇧1 = sem reserva» (ou «⇧1 / F1»), na mesma ordem de prioridade do «Como Jogar».",
+  "verdict": "CONFIRMED",
+  "persona": "Rui"
+ },
+ {
+  "file": "ovni-1999/js/i18n/pt-PT.hud.js",
+  "area": "data",
+  "severity": "minor",
+  "claim": "«ficou ferido mortalmente» é usado para qualquer ferida que sangra, mesmo de −2 de saúde. O soldado continua a lutar (reage 3 vezes) e uma criança pensa que ele vai morrer de certeza.",
+  "evidence": "Batalha Rápida de Terror com Homens-Serpente: toasts «Jean Roy ficou ferido mortalmente», «Jean Roy reage!» ×3, e no registo «4a: Mark Wilson ficou ferido mortalmente: −2 de saúde, a sangrar — tiro de Homem-Serpente Soldado». Mark Wilson continuou de pé até ao turno 10 (/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r3/crianca/shots/217_snk_after_alien_10.png, SAÚ 26/40, «A SANGRAR ×2»). As chaves são bs.ev.wounded / bs.ev.wounded.f em ovni-1999/js/i18n/pt-PT.battle.js:94-95 e hud.log.hitWound(.f) em ovni-1999/js/i18n/pt-PT.hud.js:315-316.",
+  "fix": "Trocar por «{name} ficou ferido e está a sangrar» / «{name} ficou ferida e está a sangrar», e no registo «… −{n} de saúde e uma ferida a sangrar — {how}». Guardar «mortalmente» para quando a hemorragia matará antes do fim da missão, ou acrescentar a dica «use o kit médico (Curar)».",
+  "persona": "Tiago, 11 an"
+ },
+ {
+  "file": "ovni-1999/js/ui/battle_ui.js",
+  "area": "ui",
+  "severity": "major",
+  "claim": "«Abortar missão» cannot be reached from the keyboard. There is no shortcut, Tab in combat only cycles soldiers, and the Opções opened with Esc in combat offer only «SAIR PARA O MENU» and «FECHAR». A keyboard player cannot pull the team out of a lost mission.",
+  "evidence": "Mission 2, turn 1: 15 Tabs left activeElement on BODY (soldier cycling only), and the HUD button «Abortar missão» (H.bAbort, l.1687) was never focused. Esc→Opções lists only the shared options (Som… Tamanho do texto) with the buttons «SAIR PARA O MENU» and «FECHAR». The combat dialog that has value 'abort' (l.1588–1592) is never shown. The key sheet (?) has no abort line, and the briefing says «escolha «Abortar missão»». Screenshot: /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r3/acessivel/shots/112-inv.png (the combat Opções without Abortar)",
+  "fix": "In combat, add an «Abortar missão» button to the Esc options (it calls abortMission() with the existing confirmation). Give it a dedicated key, for example ⇧A or X with confirmation, and add a line «X · Abortar missão (só regressa quem estiver na nave)» to hud.keys.",
+  "persona": "Pedro: plays"
+ },
+ {
+  "file": "ovni-1999/js/ui/battle_ui.js",
+  "area": "ui",
+  "severity": "major",
+  "claim": "When soldiers panic at the start of the X-COM turn, the turn summary does not mention it, and the squad list marks it only with a thin 3 px purple stripe (blue under deuteranopia), with no icon, text or aria. Tab silently skips those soldiers. I spent turn 10 not knowing why I could only control Jessica.",
+  "evidence": "Mission 1, turn 10. The «DURANTE O TURNO ALIENÍGENA» panel showed only «1 morto · João Almeida…». The log (N) had «Dieter Wagner / Omar Mostafa / Makoto Yamada / Chinedu Okonkwo entrou em pânico! … ficou paralisado de medo» under «TURNO 10 — FORÇAS X-COM». Their .bs-sq rows have class 'spent panic', computed border-left 3px solid rgb(180,140,255), aria-label with the name only and no title. Six Tabs gave selectedId 17 every time. Screenshots: /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r3/acessivel/shots/087-t10.png, 089-state-now-crop.png (deuteranopia), 091-squad-normal-crop.png (normal vision), 090-log-panic.png",
+  "fix": "Include panics and berserks from the turn start in the summary (a section «No início do turno: 4 em pânico»). On the squad row, add an icon and a short text («PÂNICO», «DESCONTROLO») plus aria-label «Dieter Wagner — em pânico, sem UT neste turno». Show a toast when Tab skips soldiers in panic («3 soldados em pânico não podem agir»).",
+  "persona": "Pedro: plays"
+ },
+ {
+  "file": "ovni-1999/js/ui/inventory_ui.js",
+  "area": "ui",
+  "severity": "major",
+  "claim": "In the kit médico panel the keyboard model contradicts the screen. Tab is swallowed and focus stays on BODY even though the buttons have tabIndex 0. ↑/↓ change the patient although patients are laid out horizontally, and ←/→ change the body part although parts are listed vertically. The chosen part gets no visual highlight. None of these keys is shown in the panel.",
+  "evidence": "Mission 2: Q, then 1 «Usar…» opens «KIT MÉDICO · Dieter Wagner». Six Tabs left activeElement on BODY (keyMed, l.1377–1413, returns true for every key). ArrowRight twice: no .medk-pb gained 'on' or aria-pressed, and the screen looks the same. ArrowDown changed the patient to «Jessica Wilson» (the horizontal tab row). The only key hints are 1/2/3 on the actions. Screenshots: /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r3/acessivel/shots/117-medkit-use.png, 118-medkit-arrows.png and 119-medkit-part.png",
+  "fix": "Map ←/→ to patients (the horizontal row) and ↑/↓ to body parts (the vertical list). Mark the chosen part with .on, aria-pressed and a visible outline, and select the first wounded part automatically. Let Tab/⇧Tab move natively between the panel's buttons (return false for Tab). Add a footer: «←/→ ferido · ↑/↓ parte do corpo · 1 Curar · 2 Estimulante · 3 Analgésico · Esc fecha».",
+  "persona": "Pedro: plays"
+ },
+ {
+  "file": "ovni-1999/css/battle.css",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "In keyboard mode, the hint bar («Setas: cursor · Enter: andar · …») stays fixed over the map, just above the HUD, for the whole battle. It hides the soldiers and tiles at the bottom of the screen and cannot be dismissed.",
+  "evidence": "It appears on every turn of both missions (turns 1–10). Soldiers at the bottom are partly covered at y≈790 (screen coordinates ×1.28). Screenshots: /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r3/acessivel/shots/064-t4-start.png, 070-ufo-view.png and 083-t7-start.png",
+  "fix": "Fade the bar after the first actions of the turn, or after ~6 s without changes, and bring it back with ?. Alternatively move it to the top next to the turn indicator, or let pointer-events and the camera keep a free margin so it does not cover units (offset the camera when the cursor gets close).",
+  "persona": "Pedro: plays"
+ },
+ {
+  "file": "ovni-1999/js/ui/battle_ui.js",
+  "area": "gfx",
+  "severity": "minor",
+  "claim": "Inside the UFO, the aiming labels («Sem linha de tiro — obstáculo no caminho» and «Ctrl + clique ou Ctrl + Enter: tiro forçado») are drawn on top of the shooter and next to the target. The UFO walls in front also hide the selected soldier, so it is hard to tell who is shooting at what.",
+  "evidence": "Mission 1, turn 6: Anja at (11,17) aiming at the Sectoid at (10,19). The two labels cover the area between the two, and the soldier is visible only through the TU bar above the walls. Screenshot: /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r3/acessivel/shots/081b-crop.png (crop of 081-blocked-aim.png)",
+  "fix": "Place the target label away from the shooter→target line (the opposite side, or a fixed position near the HUD). Cut away or make translucent the walls in front of the selected soldier and of the cursor tile.",
+  "persona": "Pedro: plays"
+ },
+ {
+  "file": "ovni-1999/css/screens.css",
+  "area": "gfx",
+  "severity": "minor",
+  "claim": "In the briefing's Equipar at 1024×560, the soldier area (hands, belt, backpack) shows only 182 of 457 px. On opening, the hands are cut in half and the belt is invisible behind the help card, while the footer takes two rows with empty space.",
+  "evidence": ".inv-doll scrollHeight 457, clientHeight 182, and the belt label at y 429 is outside the visible area (149–331). The arrow keys scroll it when needed (scrollTop 267 on reaching the backpack), but the first view looks broken. Screenshots: /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r3/acessivel/shots/046-brief-equip.png and 047-brief-equip-belt.png",
+  "fix": "Below ~620 px of height, collapse the help card to one line (or show it on ?), put the footer hint and the «CONCLUÍDO» button on the same row, and scale the doll down (smaller cells) so hands, belt and backpack fit.",
+  "persona": "Pedro: plays"
+ },
+ {
+  "file": "ovni-1999/css/battle.css",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "In portrait, the Equipar buttons (Copiar, Colar, Auto-equipar, Esvaziar) are 30 px tall, under the 32 px minimum. At the same time, the Equipar and Ufopédia panels leave about 300 px empty at the bottom. The Armazém list is capped at 260 px and the Ufopédia text box is short, so you scroll a lot inside small boxes.",
+  "evidence": "small() in portrait, in both the briefing Equipar and the base Equipar: «Copiar (C) 107x30, Colar (V) 77x30, Auto-equipar (A) 107x30, Esvaziar (X) 77x30». Rule battle.css:677 «@container eq (max-width:1060px) … .eq-btns .btn { min-height: 30px }». Empty space: shots/039_cp_equip_port.png (panel ends at about 1050 of 1194 CSS px, Armazém shows 1.5 rows), shots/136_base_equip_port.png (about 240 px empty below the 260 px Armazém, from .eq-stores-list{max-height:260px}). Ufopédia: shots/091_up_port.png (.up-panel 880 px tall at y=157 out of 1194; ufopaedia.css:6 height:min(880px,100%)).",
+  "fix": "Inside @media (hover:none), keep .eq-btns .btn at min-height:36px in the ≤1060px container. In portrait (@media (orientation:portrait) and (max-width:900px)), use height:100% for .up-panel and the equip panel (or height:min(100%, 100dvh − 32px)). Replace the .eq-stores-list max-height of 260px with flex:1/min-height:0 so the Armazém takes the leftover height.",
+  "persona": "Marta: iPad "
+ },
+ {
+  "file": "ovni-1999/js/ui/battle_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "When throwing a Sinalizador (or a grenade) by touch, the confirmation label says «Toque de novo para disparar · Lançar · 18 UT». The confirm-shot key is reused for a throw, and «disparar» sounds odd for a throw.",
+  "evidence": "QB night: flare button → tap a tile → label {\"label\":\"Toque de novo para disparar · Lançar · 18 UT\"} (state().throwInfo; shots/118_flare_target.png). Code: battle_ui.js:773 «label = T('hud.confirmFire') + ' · ' + label» in throw mode; 'hud.confirmFire' = 'Toque de novo para disparar' (pt-PT.hud.js:121).",
+  "fix": "Add 'hud.confirmThrow': 'Toque de novo para lançar' (and the mouse variant «Clique de novo para lançar»), and use it in the throw branch (mode 'throw') instead of hud.confirmFire.",
+  "persona": "Marta: iPad "
+ }
+]

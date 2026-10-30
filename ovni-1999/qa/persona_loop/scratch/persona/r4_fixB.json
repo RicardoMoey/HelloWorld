@@ -1,0 +1,110 @@
+[
+ {
+  "file": "ovni-1999/js/ui/campaign_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "Um duplo clique em «REPETIR A MISSÃO» no relatório abre o briefing, e o 2.º clique cai no botão «EQUIPAR» do briefing, que está no mesmo sítio. O Tiago vai parar ao ecrã Equipar, que não pediu.",
+  "evidence": "Relatório de derrota da campanha (OVNI-2) → page.dblclick em «REPETIR A MISSÃO». A pilha passa a [geoscape, cbriefing, equip], com «EQUIPAR A BORDO · SKYRANGER-1» aberto (/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/crianca/shots/081_repeat_click.png). Os botões estão na mesma posição: REPETIR em (937,744) no relatório (/tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/crianca/shots/080_c1_end.png) e EQUIPAR em (938,744) no briefing.",
+  "fix": "Aplicar a guarda de ~400 ms e de event.detail ≥ 2, que o briefing já usa no botão primário, a todos os botões do briefing (Cancelar, Equipar), ou de forma genérica a qualquer cena acabada de abrir.",
+  "persona": "Tiago, 11 anos (Recruta + Batalhas Rápidas, rato e teclado, clica depressa, não lê textos longos)"
+ },
+ {
+  "file": "ovni-1999/js/ui/base_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "No Mercado › Vender, vender o último exemplar de um artefacto que ainda é preciso para investigação (cadáver, pistola de plasma…) faz desaparecer o tópico sem aviso. A linha não indica «necessário para investigar», «TUDO» vende também o último e não há confirmação.",
+  "evidence": "- Vendi os 4 Cadáveres de Sectoide (+80 000 $): a «Autópsia: Sectoide» desapareceu do Novo Projeto e ficou só Pistola de Plasma, Granada Alienígena, Kit Médico e Detetor.\n- A linha da Pistola de Plasma com 1 em armazém mostra só «$84 000 cada · em armazém: 1 · liberta 0,1 un.», sem qualquer aviso.\n- Capturas:\n  - /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/minmaxer/shots/049_sell.png\n  - /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/minmaxer/shots/052_sell_pp_last.png\n  - /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/minmaxer/shots/053_research_after_sell.png",
+  "fix": "- Na lista de venda, assinalar os itens que são needItem de um tópico ainda não investigado e não em curso: etiqueta «Necessário: Autópsia: Sectoide».\n- Pedir confirmação ao vender a última unidade (ou fazer «TUDO» deixar 1).\n- Pode usar Data.researchAvailable com e sem o item para detetar o tópico perdido.",
+  "persona": "Inês, otimizadora. Joga em Veterano com trackpad e teclado, procura exploits e usa a simulação headless. Ronda 4, cerca de 63 min de jogo real no browser (log em /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/minmaxer/mylog.txt), mais scripts Node na mesma pasta. Campanha própria (semente 4242) de 1 a 10 jan. Para chegar a conteúdo mais avançado, importei pelo ecrã Carregar uma gravação do bot de campanha a 4 mar 1999 (semente 5, Veterano) e joguei a partir daí até 1 abr: 2 OVNIs aterrados, relatório de março e início do assalto a uma base alienígena."
+ },
+ {
+  "file": "ovni-1999/js/ui/base_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "Na lista «Construir instalação», a secção «Em construção» aparece por cima da lista assim que a primeira obra começa, e tudo desce cerca de 140 px. Quem constrói várias coisas seguidas carrega no item errado. Com Shift+clique (constrói sem confirmar) gastei 800 000 $ numa Oficina quando queria a Contenção.",
+  "evidence": "- Antes da 1.ª obra, a Contenção Alienígena estava em y≈590 e a Oficina em y≈468: /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/minmaxer/shots/055_build_lab.png.\n- Depois de iniciar o Laboratório, a secção EM CONSTRUÇÃO empurrou a lista: a Oficina passou para y≈606 e a Contenção para y≈728. O clique no sítio onde estava a Contenção escolheu a Oficina, e o Shift+clique na grelha construiu-a. O aviso diz «Obras iniciadas: Oficina (13 dias)»: /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/minmaxer/shots/057_built.png.",
+  "fix": "- Pôr «Em construção» abaixo da lista de construção (ou numa coluna ou separador próprio), para a lista não mudar de posição.\n- Em alternativa, manter o scroll ancorado no item escolhido.\n- Mostrar o nome do item selecionado junto ao cursor da grelha antes do Shift+clique.",
+  "persona": "Inês, otimizadora. Joga em Veterano com trackpad e teclado, procura exploits e usa a simulação headless. Ronda 4, cerca de 63 min de jogo real no browser (log em /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/minmaxer/mylog.txt), mais scripts Node na mesma pasta. Campanha própria (semente 4242) de 1 a 10 jan. Para chegar a conteúdo mais avançado, importei pelo ecrã Carregar uma gravação do bot de campanha a 4 mar 1999 (semente 5, Veterano) e joguei a partir daí até 1 abr: 2 OVNIs aterrados, relatório de março e início do assalto a uma base alienígena."
+ },
+ {
+  "file": "ovni-1999/js/ui/geo_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "Duas bases alienígenas descobertas a 1° uma da outra aparecem na lista LOCAIS com o mesmo texto, «Base alienígena / Nigéria». Uma é de Flutuantes e a outra de Mutões (muito mais difícil), e só se distinguem abrindo o cartão de cada uma. Os dois alertas «BASE ALIENÍGENA DESCOBERTA» (20 e 28 mar) também parecem repetidos.",
+  "evidence": "G.alienBases: a1 floater (5,8; 5,5) e a2 muton (6,8; 5,6), ambas discovered. Captura /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/minmaxer/shots/149_ab_card.png: duas linhas iguais no painel LOCAIS.",
+  "fix": "Na lista e no alerta, mostrar a raça quando é conhecida («Base alienígena · Flutuantes · Nigéria»), ou numerar («Base alienígena 2»). No alerta de descoberta, quando já existir outra base no mesmo país, dizer «outra base alienígena».",
+  "persona": "Inês, otimizadora. Joga em Veterano com trackpad e teclado, procura exploits e usa a simulação headless. Ronda 4, cerca de 63 min de jogo real no browser (log em /tmp/claude-0/-home-user-HelloWorld/b8cfbac1-629a-5f58-8dfb-0f752cc84b7c/scratchpad/persona/r4/minmaxer/mylog.txt), mais scripts Node na mesma pasta. Campanha própria (semente 4242) de 1 a 10 jan. Para chegar a conteúdo mais avançado, importei pelo ecrã Carregar uma gravação do bot de campanha a 4 mar 1999 (semente 5, Veterano) e joguei a partir daí até 1 abr: 2 OVNIs aterrados, relatório de março e início do assalto a uma base alienígena."
+ },
+ {
+  "file": "ovni-1999/js/ui/dom.js",
+  "area": "ui",
+  "severity": "major",
+  "claim": "In the base, after activating a button that has no data-act (for example the scientist stepper −5/−/+/+5/Todos in Investigação), focus jumps to «NOVO PROJETO». The next Enter opens the «Novo projeto» dialog instead of repeating the action. The same thing happens in Naves («Mudar o nome da nave», «COMPRAR NAVE») and in Soldados («Mudar o nome do soldado», armadura «NENHUMA», «DESPEDIR SOLDADO»).",
+  "evidence": "Base → 2 → Tab to «Retirar 5 cientistas — Kit Médico» → Enter. Focus goes to «Novo projeto», traced to focusin from refocus at base_ui.js:584. A second Enter opened the dialog with «Iniciar: Detetor de Movimento» focused. Shots: shots/019-focusjump.png and 018-resassign.png. The cause: OV.Dom.tooltip() sets data-lp=\"1\" on every button (dom.js:254). focusKey (dom.js:77) then prefers the dataset and returns «button[data-lp=\"1\"]», which matches 46 buttons, so refocus focuses the first one. Measured with OV.Dom.focusKey: tab 2 has 11 buttons with this generic key, tab 6 has 2 and tab 7 has 4.",
+  "fix": "In focusKey, ignore internal dataset keys (lp, and any key without identity), and fall back to id or aria-label when nothing else is left. Better still, give the stepper and soldier/craft buttons a stable data-act/data-topic (e.g. data-act=\"sci-5\" data-topic=\"medikit\"). Add a test that checks querySelectorAll(focusKey(b)).length === 1 for every button in the base.",
+  "persona": "Pedro: keyboard only, deuteranopia (CDP deuteranopia emulation), 125% zoom on 1280×800 (1024×560 CSS, DSF 2.5), prefers-reduced-motion"
+ },
+ {
+  "file": "ovni-1999/js/ui/base_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "The oneShot 400 ms guard also blocks keyboard activations. A second Enter pressed on purpose in «CONTRATAR +5» is lost without a sound, toast or visible sign, so the keyboard player does not know the order did not go through.",
+  "evidence": "Pessoal → focus «Contratar 5 soldados» → Enter, Enter (300 ms apart). Funds went from $5 020 000 to $4 820 000, which is a single order of $200 000, with no toast for the second press. Log: «base: … one Enter dropped by oneShot». Code: oneShot() at base_ui.js:95–100 uses `t - lastOnceT < 400` for any event.",
+  "fix": "Apply the time window only to pointer clicks (e.detail >= 1). For keyboard activation (e.detail === 0), accept every Enter. If a guard is still wanted, show a toast such as «Encomenda já feita — carregue outra vez para repetir».",
+  "persona": "Pedro: keyboard only, deuteranopia (CDP deuteranopia emulation), 125% zoom on 1280×800 (1024×560 CSS, DSF 2.5), prefers-reduced-motion"
+ },
+ {
+  "file": "ovni-1999/js/ui/base_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "In the Mercado, a keyboard user has to go through 87 tab stops (−, +, +10 and Comprar on every row), and ↑/↓/PageDown do nothing. Reaching Carregador de Espingarda takes about 42 Tabs and Sinalizador about 85. The Comprar/Vender toggle has no aria-pressed, so the active mode is shown only by a light background.",
+  "evidence": "Base → 8. Counted 87 buttons with tabIndex >= 0, Sinalizador at index 84 and the rifle at 32. ArrowDown/ArrowUp/PageDown with focus on «Comprar 1 × Espingarda» left focus where it was (no change). outerHTML of the toggle: `<button class=\"btn small seg on\" data-mode=\"buy\">` with no aria-pressed. Shot: shots/054-market.png.",
+  "fix": "Make each item row a single tab stop (roving tabindex). On the row, ←/→ change the quantity (Shift ×10), Enter buys, and ↑/↓/PageUp/PageDown move between rows. Add jump keys per section (Naves, Armamento, Armas…) or type-ahead by name. Put aria-pressed (or role=radio with aria-checked) on Comprar/Vender.",
+  "persona": "Pedro: keyboard only, deuteranopia (CDP deuteranopia emulation), 125% zoom on 1280×800 (1024×560 CSS, DSF 2.5), prefers-reduced-motion"
+ },
+ {
+  "file": "ovni-1999/css/basescape.css",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "In portrait (834×1194), the base shows the 6×6 facility grid, the selected-facility card and the stats on every tab. That takes about 780 px, so the tab content (Market, Soldiers, Research) gets only a 520 px scrolling box. In Soldiers, tapping a soldier opens the card (rename, armour, craft, dismiss) below the box's fold, nearly invisible. Nothing seems to happen until you scroll inside the small box.",
+  "evidence": "Base → Soldados in portrait, tap «Kenta Kato». The row is highlighted, but the card with RENOMEAR sits at y=1165 (at the bottom edge, cut off). .bsc-content scroll: clientHeight 520 / scrollHeight 905; Market: 520 / 2098. On the right of the grid there are about 330 px of empty space. Shots: persona/r4/ipad/shots/033_sold_tap_kenta.png, 031_mercado_portrait.png, 035_sold_rename.png.",
+  "fix": "Under @media (orientation:portrait) and (max-width:900px), on tabs other than Instalações, hide or collapse the grid and the facility card (e.g. a «Ver base» button), so .bsc-content takes the full height. Or shrink the grid to about 50 % with the stats beside it. Also, when a soldier is selected in Soldados, call scrollIntoView({block:'nearest'}) on the card.",
+  "persona": "Marta, a touch-only player on an iPad Pro 11\" in Safari, emulated with Playwright (hasTouch, isMobile, DPR 2, 1194×834 landscape and 834×1194 portrait). Session lasted about 75 minutes in real time. She played a Recruta campaign: base Sintra (Lisbon); base management in portrait (build, hire, Market Buy/Sell, rename by virtual keyboard, Ufopédia, Financiamento, Gravar); Medium Scout mission (day, landscape); Large Scout mission (night → «Esperar pelo dia», played in portrait). To reach the 1 Feb month report she skipped ahead by OK-ing the remaining January events. She then played one Quick Battle at an Alien Base (10 soldiers, Recruta), in landscape and portrait, and aborted it at turn 8."
+ },
+ {
+  "file": "ovni-1999/js/ui/geo_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "«Esperar pelo dia» does not speed up time. After the «Equipa no local» popup the clock is back at «5 seg», so waiting about 5 game hours takes about 5 minutes of real time with nothing to do. The toast only says «Avisamos quando amanhecer».",
+  "evidence": "Campaign, 6 jan 01:59, OVNI-3 in the Reino Unido. Tap ESPERAR PELO DIA. After 133 s of real time it was only 04:16 (2 h 17 min of game time), speed still «5 seg». Manually choosing «30 min» reached «AMANHECEU NO LOCAL» at 06:43 in 1.7 s. Shot: persona/r4/ipad/shots/084_dawn.png. waitForDay() (geo_ui.js about line 2481) only queues G.ui.waitDay and the toast.",
+  "fix": "In waitForDay, raise the clock to a fast speed (30 min or 1 hora) if it is slower, as the original does when you wait. The checkWaitDay or dawn popup already stops it. Or add a «Acelerar» button to the toast, or change the text to «…toque em 1 hora para esperar mais depressa».",
+  "persona": "Marta, a touch-only player on an iPad Pro 11\" in Safari, emulated with Playwright (hasTouch, isMobile, DPR 2, 1194×834 landscape and 834×1194 portrait). Session lasted about 75 minutes in real time. She played a Recruta campaign: base Sintra (Lisbon); base management in portrait (build, hire, Market Buy/Sell, rename by virtual keyboard, Ufopédia, Financiamento, Gravar); Medium Scout mission (day, landscape); Large Scout mission (night → «Esperar pelo dia», played in portrait). To reach the 1 Feb month report she skipped ahead by OK-ing the remaining January events. She then played one Quick Battle at an Alien Base (10 soldiers, Recruta), in landscape and portrait, and aborted it at turn 8."
+ },
+ {
+  "file": "ovni-1999/js/ui/geo_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "In Recruta, the «Equipa no local» popup at night repeats the same advice twice in a row: «É noite: os alienígenas veem no escuro e os soldados não. Esperar pelo dia (cerca de 5 h)?» and then «Lá é noite: os alienígenas veem no escuro e os soldados só veem bem perto das luzes. Esperar pelo dia (cerca de 5 h) torna a missão bem mais fácil — …».",
+  "evidence": "Campaign, 6 jan 01:59, arrival of Águia at OVNI-3 (night). Shot: persona/r4/ipad/shots/083_arrive2.png. In geo_ui.js, line 2021 unshifts geo.ev.arrived.night(.safe) and line 2025 unshifts geo.ev.arrived.night.ask, both with the same {t}.",
+  "fix": "When waitDef is true (the ask line is shown), use a short variant of the second line without «Esperar pelo dia (cerca de {t})». For example 'geo.ev.arrived.night.safe.short': «Nestes primeiros meses, um OVNI que aterra de noite fica no chão até amanhecer.» Or merge the two into a single line.",
+  "persona": "Marta, a touch-only player on an iPad Pro 11\" in Safari, emulated with Playwright (hasTouch, isMobile, DPR 2, 1194×834 landscape and 834×1194 portrait). Session lasted about 75 minutes in real time. She played a Recruta campaign: base Sintra (Lisbon); base management in portrait (build, hire, Market Buy/Sell, rename by virtual keyboard, Ufopédia, Financiamento, Gravar); Medium Scout mission (day, landscape); Large Scout mission (night → «Esperar pelo dia», played in portrait). To reach the 1 Feb month report she skipped ahead by OK-ing the remaining January events. She then played one Quick Battle at an Alien Base (10 soldiers, Recruta), in landscape and portrait, and aborted it at turn 8."
+ },
+ {
+  "file": "ovni-1999/js/ui/campaign_ui.js",
+  "area": "data",
+  "severity": "minor",
+  "claim": "The mission report shows the overfull storage with an English decimal point, «Armazém sobrelotado (51.2/50)». The rest of the game uses the pt-PT comma («ARMAZÉM 51,2/50» in the base and «41,7/50»).",
+  "evidence": "Report for mission 1 (Medium Scout), right column: «Armazém sobrelotado (51.2/50): venda material ou construa armazéns.» In the base on the same day: «ARMAZENAMENTO 51,2/50». Shot: persona/r4/ipad/shots/072_debrief_scrolled.png. campaign_ui.js:1524 passes model.storage.used (a raw number from sim/campaign.js:825) into T('cp.db.storageOver').",
+  "fix": "Format with the same helper as the base (e.g. OV.U.fmtNum(used, 1) or Number.toLocaleString('pt-PT', {maximumFractionDigits:1})) before interpolating {used}.",
+  "persona": "Marta, a touch-only player on an iPad Pro 11\" in Safari, emulated with Playwright (hasTouch, isMobile, DPR 2, 1194×834 landscape and 834×1194 portrait). Session lasted about 75 minutes in real time. She played a Recruta campaign: base Sintra (Lisbon); base management in portrait (build, hire, Market Buy/Sell, rename by virtual keyboard, Ufopédia, Financiamento, Gravar); Medium Scout mission (day, landscape); Large Scout mission (night → «Esperar pelo dia», played in portrait). To reach the 1 Feb month report she skipped ahead by OK-ing the remaining January events. She then played one Quick Battle at an Alien Base (10 soldiers, Recruta), in landscape and portrait, and aborted it at turn 8."
+ },
+ {
+  "file": "ovni-1999/js/ui/campaign_ui.js",
+  "area": "ui",
+  "severity": "minor",
+  "claim": "In «Local da primeira base», rotating the iPad from landscape to portrait keeps the globe's old centre. The chosen site (the marker over Lisbon) ends up off-screen or behind the panel until you tap CENTRAR.",
+  "evidence": "New campaign → step 2 in landscape with the site at 38.7° N 9.1° O. Rotate to 834×1194: only the Atlantic and Canada are visible and there is no marker (shot persona/r4/ipad/shots/007_step2_portrait.png). After tapping CENTRAR, Portugal and the marker appear (008_step2_portrait_centrar.png).",
+  "fix": "On the resize/orientationchange handler of the site-picking scene, re-centre the view on the selected site (or keep the lat/lon centre while recomputing the area visible above the panel in portrait).",
+  "persona": "Marta, a touch-only player on an iPad Pro 11\" in Safari, emulated with Playwright (hasTouch, isMobile, DPR 2, 1194×834 landscape and 834×1194 portrait). Session lasted about 75 minutes in real time. She played a Recruta campaign: base Sintra (Lisbon); base management in portrait (build, hire, Market Buy/Sell, rename by virtual keyboard, Ufopédia, Financiamento, Gravar); Medium Scout mission (day, landscape); Large Scout mission (night → «Esperar pelo dia», played in portrait). To reach the 1 Feb month report she skipped ahead by OK-ing the remaining January events. She then played one Quick Battle at an Alien Base (10 soldiers, Recruta), in landscape and portrait, and aborted it at turn 8."
+ }
+]
